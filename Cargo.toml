@@ -1,0 +1,12 @@
+[package]
+name = "en16931"
+version = "0.1.0"
+edition = "2024"
+rust-version = "1.85"
+description = "EN-16931 semantic model, validation rule types, and interpreter with audit trail"
+license = "MIT"
+keywords = ["en16931", "invoice", "peppol", "schematron"]
+categories = ["parsing", "finance"]
+authors = ["Andrew Kozin"]
+
+[dependencies]
