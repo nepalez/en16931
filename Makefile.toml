@@ -1,0 +1,37 @@
+# `cargo-make` tasks. The `check` task is the single gate for the workspace:
+# formatting, linting, and tests across every feature combination.
+
+[config]
+# Run each task once at the workspace root; `cargo-hack` fans out over members.
+default_to_workspace = false
+# Do not load the predefined `cargo-make` tasks, so `check` is exactly what is
+# declared here and inherits no built-in `cargo check` step.
+skip_core_tasks = true
+
+[tasks.check]
+description = "Format check, clippy, and tests across the whole feature powerset."
+dependencies = ["fmt-check", "clippy", "test"]
+
+[tasks.fmt-check]
+description = "Verify formatting of every crate."
+command = "cargo"
+args = ["fmt", "--all", "--", "--check"]
+
+[tasks.clippy]
+description = "Lint every feature combination, treating warnings as errors."
+command = "cargo"
+args = [
+    "hack",
+    "--workspace",
+    "--feature-powerset",
+    "clippy",
+    "--all-targets",
+    "--",
+    "-D",
+    "warnings",
+]
+
+[tasks.test]
+description = "Run tests over every feature combination."
+command = "cargo"
+args = ["hack", "--workspace", "--feature-powerset", "test"]

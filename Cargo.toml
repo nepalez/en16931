@@ -1,12 +1,13 @@
-[package]
-name = "en16931"
-version = "0.1.0"
+[workspace]
+resolver = "3"
+members = ["crates/core", "crates/envelopes/*", "crates/xpath/*"]
+
+# Metadata shared by every crate in the workspace.
+# Per-crate versions are declared individually:
+# the core follows its own semver, and each extension tracks its own line,
+# and pins a core compatibility range.
+[workspace.package]
 edition = "2024"
 rust-version = "1.85"
-description = "EN-16931 semantic model, validation rule types, and interpreter with audit trail"
 license = "MIT"
-keywords = ["en16931", "invoice", "peppol", "schematron"]
-categories = ["parsing", "finance"]
 authors = ["Andrew Kozin"]
-
-[dependencies]

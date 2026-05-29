@@ -1,0 +1,11 @@
+[package]
+name = "en16931-iso"
+version = "0.1.0"
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+authors.workspace = true
+description = "Normalizer extension for the ISO-skeleton XPath dialect"
+
+[dependencies]
+en16931-core = { path = "../../core", version = "0.1" }

@@ -3,5 +3,47 @@
 version = 4
 
 [[package]]
-name = "en16931"
+name = "en16931-core"
 version = "0.1.0"
+
+[[package]]
+name = "en16931-iso"
+version = "0.1.0"
+dependencies = [
+ "en16931-core",
+]
+
+[[package]]
+name = "en16931-kosit"
+version = "0.1.0"
+dependencies = [
+ "en16931-core",
+]
+
+[[package]]
+name = "en16931-phive"
+version = "0.1.0"
+dependencies = [
+ "en16931-core",
+]
+
+[[package]]
+name = "en16931-schxslt"
+version = "0.1.0"
+dependencies = [
+ "en16931-core",
+]
+
+[[package]]
+name = "en16931-schxslt2"
+version = "0.1.0"
+dependencies = [
+ "en16931-core",
+]
+
+[[package]]
+name = "en16931-svrl"
+version = "0.1.0"
+dependencies = [
+ "en16931-core",
+]
