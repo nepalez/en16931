@@ -35,3 +35,23 @@ args = [
 description = "Run tests over every feature combination."
 command = "cargo"
 args = ["hack", "--workspace", "--feature-powerset", "test"]
+
+[tasks.env-up]
+description = "Start the Docker validator services for the integration tests."
+command = "docker"
+args = ["compose", "-f", "tests/integration/docker-compose.yml", "up", "-d", "--wait"]
+
+[tasks.env-down]
+description = "Stop the Docker validator services and remove their volumes."
+command = "docker"
+args = ["compose", "-f", "tests/integration/docker-compose.yml", "down", "-v"]
+
+[tasks.smoke]
+description = "Smoke-test the running validators against the official fixtures."
+command = "bash"
+args = ["tests/integration/smoke.sh"]
+
+[tasks.smoke.env]
+KOSIT_URL = { value = "http://localhost:8082", condition = { env_not_set = ["KOSIT_URL"] } }
+PHIVE_URL = { value = "http://localhost:8083", condition = { env_not_set = ["PHIVE_URL"] } }
+PHIVE_TOKEN = { value = "phorm-dev-token", condition = { env_not_set = ["PHIVE_TOKEN"] } }

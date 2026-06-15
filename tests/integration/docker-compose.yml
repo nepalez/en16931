@@ -1,0 +1,29 @@
+# Integration-test validators (ADR-0001).
+
+# Each service is a ready, community-maintained image that wraps a real validation engine,
+# so its on-the-wire report is the genuine envelope the matching extension crate will later unwrap:
+#
+#   kosit -> XOEV VARL `rep:report` envelope, prefixed-path dialect (envelopes/kosit)
+#   phive -> phive `validationResults` envelope (envelopes/phive)
+#
+# Host ports and the phive token are overridable through the environment
+# (KOSIT_PORT, PHIVE_PORT, PHIVE_TOKEN) so the tests can point at any deployment.
+name: en16931-validators
+
+services:
+  # The official `itplr-kosit` validation tool in daemon mode,
+  # carrying the XRechnung 3.0.2 configuration
+  # (EN-16931 base + CIUS, both UBL and CII, XSD + Schematron).
+  kosit:
+    image: easybill/kosit-validator-xrechnung_3.0.2:v0.2.5
+    ports:
+      - "${KOSIT_PORT:-8082}:8080"
+
+  # The `phorm` service by Philip Helger over the phive engine,
+  # carrying the Peppol BIS and EN-16931 rule sets.
+  phive:
+    image: phelger/phorm:2.1.2
+    environment:
+      phorm.api.requiredtoken: "${PHIVE_TOKEN:-phorm-dev-token}"
+    ports:
+      - "${PHIVE_PORT:-8083}:8080"

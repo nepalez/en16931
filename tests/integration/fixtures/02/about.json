@@ -1,0 +1,10 @@
+{
+  "title": "Peppol UBL with a broken line sum (first cbc:LineExtensionAmount set to 1.00)",
+  "url": "${PHIVE_URL}/api/validate/eu.peppol.bis3:invoice:latest",
+  "headers": [
+    "Content-Type: application/xml",
+    "Accept: application/xml",
+    "X-Token: ${PHIVE_TOKEN}"
+  ],
+  "target": "BR-CO-10"
+}

@@ -1,0 +1,10 @@
+{
+  "title": "Peppol BIS base example (UBL)",
+  "url": "${PHIVE_URL}/api/validate/eu.peppol.bis3:invoice:latest",
+  "headers": [
+    "Content-Type: application/xml",
+    "Accept: application/xml",
+    "X-Token: ${PHIVE_TOKEN}"
+  ],
+  "target": "<success>true"
+}

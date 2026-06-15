@@ -1,0 +1,6 @@
+{
+  "title": "XRechnung business case 01.01a (UBL)",
+  "url": "${KOSIT_URL}/",
+  "headers": ["Content-Type: application/xml"],
+  "target": "<rep:accept>"
+}

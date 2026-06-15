@@ -1,0 +1,6 @@
+{
+  "title": "XRechnung UBL with a broken payable amount (cbc:PayableAmount set to 0.01)",
+  "url": "${KOSIT_URL}/",
+  "headers": ["Content-Type: application/xml"],
+  "target": "BR-CO-16"
+}
