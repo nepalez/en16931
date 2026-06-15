@@ -10,3 +10,4 @@ keywords = ["en16931", "invoice", "peppol", "schematron"]
 categories = ["parsing", "finance"]
 
 [dependencies]
+iso_currency = "0.5.3"

@@ -4,4 +4,6 @@
 //! The crate follows its own semver line.
 //! Extension crates depend on it and pin a compatibility range.
 
-pub mod prelude;
+mod prelude;
+
+pub use prelude::Currency;
