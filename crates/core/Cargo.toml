@@ -10,6 +10,7 @@ keywords = ["en16931", "invoice", "peppol", "schematron"]
 categories = ["parsing", "finance"]
 
 [dependencies]
+iban_validate = "5"
 iso_currency = "0.5.3"
 isocountry = "0.3"
 rust_decimal = { version = "1", default-features = false }

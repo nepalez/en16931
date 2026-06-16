@@ -36,6 +36,7 @@ dependencies = [
 name = "en16931-core"
 version = "0.1.0"
 dependencies = [
+ "iban_validate",
  "iso_currency",
  "isocountry",
  "parse-display",
@@ -83,6 +84,15 @@ name = "en16931-svrl"
 version = "0.1.0"
 dependencies = [
  "en16931-core",
+]
+
+[[package]]
+name = "iban_validate"
+version = "5.0.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "0f695c602ee9bb55c4100c3e50559461ea3f49ca0d543cf770720af8165dc756"
+dependencies = [
+ "arrayvec",
 ]
 
 [[package]]
