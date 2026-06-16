@@ -4,6 +4,8 @@
 //! The crate follows its own semver line.
 //! Extension crates depend on it and pin a compatibility range.
 
+mod error;
 mod prelude;
 
+pub use error::Error;
 pub use prelude::{CountryCode, Currency, Date, Decimal};

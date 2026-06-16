@@ -14,3 +14,4 @@ iso_currency = "0.5.3"
 isocountry = "0.3"
 rust_decimal = { version = "1", default-features = false }
 time = { version = "0.3", default-features = false }
+parse-display = "0.11.0"
