@@ -6,4 +6,4 @@
 
 mod prelude;
 
-pub use prelude::{Currency, Date};
+pub use prelude::{Currency, Date, Decimal};

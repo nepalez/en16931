@@ -11,4 +11,5 @@ categories = ["parsing", "finance"]
 
 [dependencies]
 iso_currency = "0.5.3"
+rust_decimal = { version = "1", default-features = false }
 time = { version = "0.3", default-features = false }
