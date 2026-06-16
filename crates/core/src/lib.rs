@@ -5,11 +5,13 @@
 //! Extension crates depend on it and pin a compatibility range.
 
 mod account_number;
+mod amount;
 mod error;
 mod non_empty_string;
 mod prelude;
 
 pub use account_number::AccountNumber;
+pub use amount::Amount;
 pub use error::Error;
 pub use non_empty_string::NonEmptyString;
 pub use prelude::{CountryCode, Currency, Date, Decimal};
