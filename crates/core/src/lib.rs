@@ -9,6 +9,7 @@ mod amount;
 mod error;
 mod invoice_type;
 mod non_empty_string;
+mod payment_means;
 mod prelude;
 mod vat_category;
 
@@ -17,5 +18,6 @@ pub use amount::Amount;
 pub use error::Error;
 pub use invoice_type::{DocumentKind, InvoiceType};
 pub use non_empty_string::NonEmptyString;
+pub use payment_means::PaymentMeans;
 pub use prelude::{CountryCode, Currency, Date, Decimal};
 pub use vat_category::VatCategory;
