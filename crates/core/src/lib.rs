@@ -4,20 +4,9 @@
 //! The crate follows its own semver line.
 //! Extension crates depend on it and pin a compatibility range.
 
-mod account_number;
-mod amount;
 mod error;
-mod invoice_type;
-mod non_empty_string;
-mod payment_means;
 mod prelude;
-mod vat_category;
+mod values;
 
-pub use account_number::AccountNumber;
-pub use amount::Amount;
 pub use error::Error;
-pub use invoice_type::{DocumentKind, InvoiceType};
-pub use non_empty_string::NonEmptyString;
-pub use payment_means::PaymentMeans;
-pub use prelude::{CountryCode, Currency, Date, Decimal};
-pub use vat_category::VatCategory;
+pub use values::*;
