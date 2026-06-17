@@ -7,6 +7,12 @@ pub enum Error {
     InvalidValue(String),
 }
 
+impl From<ParseError> for Error {
+    fn from(value: ParseError) -> Self {
+        Self::InvalidValue(value.to_string())
+    }
+}
+
 impl fmt::Display for Error {
     fn fmt(&self, formatter: &mut Formatter<'_>) -> fmt::Result {
         match self {
