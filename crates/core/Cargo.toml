@@ -11,6 +11,7 @@ categories = ["parsing", "finance"]
 
 [dependencies]
 cefact-units = "0.1"
+email_address = "0.2"
 iban_validate = "5"
 iso_currency = "0.5.3"
 isocountry = "0.3"

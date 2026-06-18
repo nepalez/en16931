@@ -17,7 +17,7 @@ pub mod quantity;
 pub mod vat_category;
 pub mod vat_point;
 
-pub use crate::prelude::{CountryCode, Currency, Date, Decimal, UnitOfMeasure};
+pub use crate::prelude::{CountryCode, Currency, Date, Decimal, EmailAddress, UnitOfMeasure};
 pub use account_number::AccountNumber;
 pub use allowance_reason::AllowanceReason;
 pub use amount::Amount;
