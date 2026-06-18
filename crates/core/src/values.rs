@@ -15,6 +15,7 @@ pub mod payment_means;
 pub mod percentage;
 pub mod quantity;
 pub mod vat_category;
+pub mod vat_identifier;
 pub mod vat_point;
 
 pub use crate::prelude::{CountryCode, Currency, Date, Decimal, EmailAddress, UnitOfMeasure};
@@ -35,4 +36,5 @@ pub use payment_means::PaymentMeans;
 pub use percentage::Percentage;
 pub use quantity::{Quantity, Unit};
 pub use vat_category::VatCategory;
+pub use vat_identifier::VatIdentifier;
 pub use vat_point::{Event as VatPointEvent, VatPoint};
