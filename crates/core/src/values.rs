@@ -7,6 +7,7 @@ pub mod issuing_agency;
 pub mod non_empty_string;
 pub mod payment_means;
 pub mod vat_category;
+pub mod vat_point;
 
 pub use crate::prelude::{CountryCode, Currency, Date, Decimal};
 pub use account_number::AccountNumber;
@@ -18,3 +19,4 @@ pub use issuing_agency::IssuingAgency;
 pub use non_empty_string::NonEmptyString;
 pub use payment_means::PaymentMeans;
 pub use vat_category::VatCategory;
+pub use vat_point::{Event as VatPointEvent, VatPoint};
