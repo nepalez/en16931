@@ -14,7 +14,12 @@ cefact-units = "0.1"
 iban_validate = "5"
 iso_currency = "0.5.3"
 isocountry = "0.3"
+mime = { version = "0.3", optional = true }
 num_enum = "0.7"
 parse-display = "0.11"
 rust_decimal = { version = "1", default-features = false }
 time = { version = "0.3", default-features = false }
+
+[features]
+# Enables conversions between `MimeCode` and the `mime` crate's `Mime` type.
+mime = ["dep:mime"]
