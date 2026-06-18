@@ -1,6 +1,7 @@
 pub mod account_number;
 pub mod allowance_reason;
 pub mod amount;
+pub mod bic;
 pub mod charge_reason;
 pub mod electronic_address_scheme;
 pub mod invoice_type;
@@ -19,6 +20,7 @@ pub use crate::prelude::{CountryCode, Currency, Date, Decimal, UnitOfMeasure};
 pub use account_number::AccountNumber;
 pub use allowance_reason::AllowanceReason;
 pub use amount::Amount;
+pub use bic::Bic;
 pub use charge_reason::ChargeReason;
 pub use electronic_address_scheme::ElectronicAddressScheme;
 pub use invoice_type::InvoiceType;
