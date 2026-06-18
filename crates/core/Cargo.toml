@@ -20,6 +20,7 @@ num_enum = "0.7"
 parse-display = "0.11"
 rust_decimal = { version = "1", default-features = false }
 time = { version = "0.3", default-features = false }
+url = "2"
 
 [features]
 # Enables conversions between `MimeCode` and the `mime` crate's `Mime` type.

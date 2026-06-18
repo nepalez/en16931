@@ -11,3 +11,4 @@ pub use rust_decimal::Decimal;
 pub use std::fmt::{self, Display, Formatter};
 pub use std::str::FromStr;
 pub use time::Date;
+pub use url::Url;
