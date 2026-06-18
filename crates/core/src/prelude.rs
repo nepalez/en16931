@@ -1,3 +1,4 @@
+pub use cefact_units::UnitOfMeasure;
 pub use iban::{Iban, IbanLike};
 pub use iso_currency::Currency;
 pub use isocountry::CountryCode;
