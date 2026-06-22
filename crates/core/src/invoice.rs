@@ -16,6 +16,7 @@ pub mod postal_address;
 pub mod preceding_invoice;
 pub mod price;
 pub mod supporting_document;
+pub mod tax_representative;
 
 pub use classification::Classification;
 pub use contact::Contact;
@@ -35,3 +36,4 @@ pub use postal_address::PostalAddress;
 pub use preceding_invoice::PrecedingInvoice;
 pub use price::Price;
 pub use supporting_document::SupportingDocument;
+pub use tax_representative::TaxRepresentative;
