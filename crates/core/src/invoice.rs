@@ -11,6 +11,7 @@ pub mod location_reference;
 pub mod note;
 pub mod object_reference;
 pub mod operational_entity;
+pub mod payment_card;
 pub mod postal_address;
 pub mod preceding_invoice;
 
@@ -27,5 +28,6 @@ pub use location_reference::LocationReference;
 pub use note::Note;
 pub use object_reference::ObjectReference;
 pub use operational_entity::OperationalEntity;
+pub use payment_card::PaymentCard;
 pub use postal_address::PostalAddress;
 pub use preceding_invoice::PrecedingInvoice;
