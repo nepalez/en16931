@@ -14,6 +14,7 @@ pub mod operational_entity;
 pub mod payment_card;
 pub mod postal_address;
 pub mod preceding_invoice;
+pub mod price;
 
 pub use classification::Classification;
 pub use contact::Contact;
@@ -31,3 +32,4 @@ pub use operational_entity::OperationalEntity;
 pub use payment_card::PaymentCard;
 pub use postal_address::PostalAddress;
 pub use preceding_invoice::PrecedingInvoice;
+pub use price::Price;
