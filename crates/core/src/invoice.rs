@@ -1,3 +1,4 @@
+pub mod adjustment;
 pub mod classification;
 pub mod contact;
 pub mod credit_transfer;
@@ -22,6 +23,9 @@ pub mod supporting_document;
 pub mod tax_representative;
 pub mod vat_treatment;
 
+pub use adjustment::{
+    Adjustment, Amount as AdjustmentAmount, LineAdjustment, Reason as AdjustmentReason,
+};
 pub use classification::Classification;
 pub use contact::Contact;
 pub use credit_transfer::CreditTransfer;
@@ -45,3 +49,11 @@ pub use price::Price;
 pub use supporting_document::SupportingDocument;
 pub use tax_representative::TaxRepresentative;
 pub use vat_treatment::VatTreatment;
+
+use crate::Decimal;
+use crate::prelude::*;
+
+/// Rounds a derived money amount to two decimals, half away from zero.
+pub(crate) fn rounded(value: Decimal) -> Decimal {
+    value.round_dp_with_strategy(2, RoundingStrategy::MidpointAwayFromZero)
+}
