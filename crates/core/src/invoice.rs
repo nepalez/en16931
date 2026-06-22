@@ -1,4 +1,5 @@
 pub mod adjustment;
+pub mod buyer;
 pub mod classification;
 pub mod contact;
 pub mod credit_transfer;
@@ -20,6 +21,7 @@ pub mod payment_instructions;
 pub mod postal_address;
 pub mod preceding_invoice;
 pub mod price;
+pub mod seller;
 pub mod supporting_document;
 pub mod tax_representative;
 pub mod vat_treatment;
@@ -27,6 +29,7 @@ pub mod vat_treatment;
 pub use adjustment::{
     Adjustment, Amount as AdjustmentAmount, LineAdjustment, Reason as AdjustmentReason,
 };
+pub use buyer::Buyer;
 pub use classification::Classification;
 pub use contact::Contact;
 pub use credit_transfer::CreditTransfer;
@@ -48,6 +51,7 @@ pub use payment_instructions::{Details as PaymentDetails, PaymentInstructions};
 pub use postal_address::PostalAddress;
 pub use preceding_invoice::PrecedingInvoice;
 pub use price::Price;
+pub use seller::Seller;
 pub use supporting_document::SupportingDocument;
 pub use tax_representative::TaxRepresentative;
 pub use vat_treatment::VatTreatment;
