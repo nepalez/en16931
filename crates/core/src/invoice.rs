@@ -1,6 +1,7 @@
 pub mod classification;
 pub mod contact;
 pub mod credit_transfer;
+pub mod delivery;
 pub mod direct_debit;
 pub mod electronic_address;
 pub mod item;
@@ -22,6 +23,7 @@ pub mod tax_representative;
 pub use classification::Classification;
 pub use contact::Contact;
 pub use credit_transfer::CreditTransfer;
+pub use delivery::Delivery;
 pub use direct_debit::DirectDebit;
 pub use electronic_address::ElectronicAddress;
 pub use item::Item;
