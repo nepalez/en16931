@@ -1,5 +1,6 @@
 pub mod classification;
 pub mod contact;
+pub mod credit_transfer;
 pub mod item;
 pub mod item_attribute;
 pub mod item_reference;
@@ -10,6 +11,7 @@ pub mod preceding_invoice;
 
 pub use classification::Classification;
 pub use contact::Contact;
+pub use credit_transfer::CreditTransfer;
 pub use item::Item;
 pub use item_attribute::ItemAttribute;
 pub use item_reference::ItemReference;
