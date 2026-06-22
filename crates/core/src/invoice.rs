@@ -1,4 +1,5 @@
 pub mod classification;
+pub mod contact;
 pub mod item;
 pub mod item_attribute;
 pub mod item_reference;
@@ -8,6 +9,7 @@ pub mod postal_address;
 pub mod preceding_invoice;
 
 pub use classification::Classification;
+pub use contact::Contact;
 pub use item::Item;
 pub use item_attribute::ItemAttribute;
 pub use item_reference::ItemReference;
