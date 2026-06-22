@@ -15,6 +15,7 @@ pub mod payment_card;
 pub mod postal_address;
 pub mod preceding_invoice;
 pub mod price;
+pub mod supporting_document;
 
 pub use classification::Classification;
 pub use contact::Contact;
@@ -33,3 +34,4 @@ pub use payment_card::PaymentCard;
 pub use postal_address::PostalAddress;
 pub use preceding_invoice::PrecedingInvoice;
 pub use price::Price;
+pub use supporting_document::SupportingDocument;
