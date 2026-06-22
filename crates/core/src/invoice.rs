@@ -20,6 +20,7 @@ pub mod preceding_invoice;
 pub mod price;
 pub mod supporting_document;
 pub mod tax_representative;
+pub mod vat_treatment;
 
 pub use classification::Classification;
 pub use contact::Contact;
@@ -43,3 +44,4 @@ pub use preceding_invoice::PrecedingInvoice;
 pub use price::Price;
 pub use supporting_document::SupportingDocument;
 pub use tax_representative::TaxRepresentative;
+pub use vat_treatment::VatTreatment;
