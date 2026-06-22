@@ -10,6 +10,5 @@ mod prelude;
 mod values;
 
 pub use error::Error;
-#[allow(unused_imports)]
 pub use invoice::*;
 pub use values::*;
