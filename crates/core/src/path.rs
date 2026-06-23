@@ -28,3 +28,34 @@ pub enum Namespace {
     #[display("RAM")]
     ReusableAggregateBusinessInformationEntity,
 }
+
+/// One step of a record-form path:
+/// a namespaced element with its positional index among the same-named siblings.
+///
+/// It renders as `Q{U}N[i]`, where
+/// `U` is the namespace abbreviation,
+/// `N` is the local name,
+/// `i` is the 1-based index.
+///
+/// The address is purely positional:
+/// a singleton element and the first node of a repeatable group are both index `1`.
+/// A normalizer supplies `1` for a location that omits the index.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Step {
+    /// The element namespace.
+    pub namespace: Namespace,
+    /// The element local name, copied verbatim from the location.
+    pub name: String,
+    /// The 1-based position among the same-named siblings.
+    pub index: NonZeroUsize,
+}
+
+impl Display for Step {
+    fn fmt(&self, formatter: &mut Formatter<'_>) -> fmt::Result {
+        write!(
+            formatter,
+            "Q{{{}}}{}[{}]",
+            self.namespace, self.name, self.index
+        )
+    }
+}
