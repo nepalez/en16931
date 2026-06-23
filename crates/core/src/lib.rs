@@ -6,9 +6,11 @@
 
 mod error;
 mod invoice;
+mod path;
 mod prelude;
 mod values;
 
 pub use error::Error;
 pub use invoice::*;
+pub use path::Namespace;
 pub use values::*;
