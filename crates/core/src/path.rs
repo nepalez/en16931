@@ -59,3 +59,111 @@ impl Display for Step {
         )
     }
 }
+
+/// A record-form path: the dialect-free, namespace-resolved address of one node.
+///
+/// The path is binding-specific:
+/// a UBL path and a CII path never compare equal, even for the same business term.
+/// It is the dictionary key an SVRL location resolves against.
+/// It renders with a leading slash before every step,
+/// such as `/Q{INV}Invoice[1]/Q{CAC}InvoiceLine[2]/Q{CBC}ID[1]`.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Path {
+    /// The ordered steps from the document root down to the addressed node.
+    pub steps: Vec<Step>,
+}
+
+impl Display for Path {
+    fn fmt(&self, formatter: &mut Formatter<'_>) -> fmt::Result {
+        for step in &self.steps {
+            write!(formatter, "/{step}")?;
+        }
+        Ok(())
+    }
+}
+
+#[cfg(test)]
+mod test {
+    use super::*;
+
+    fn step(namespace: Namespace, name: &str, index: usize) -> Step {
+        Step {
+            namespace,
+            name: name.to_owned(),
+            index: NonZeroUsize::new(index).expect("a positive index"),
+        }
+    }
+
+    // The identifier of the second invoice line (`BT-126`) in a UBL document.
+    fn ubl_line_id() -> Path {
+        Path {
+            steps: vec![
+                step(Namespace::Invoice, "Invoice", 1),
+                step(Namespace::CommonAggregateComponents, "InvoiceLine", 2),
+                step(Namespace::CommonBasicComponents, "ID", 1),
+            ],
+        }
+    }
+
+    // The same business term in a CII document, with its own binding vocabulary.
+    fn cii_line_id() -> Path {
+        Path {
+            steps: vec![
+                step(Namespace::CrossIndustryInvoice, "CrossIndustryInvoice", 1),
+                step(
+                    Namespace::CrossIndustryInvoice,
+                    "SupplyChainTradeTransaction",
+                    1,
+                ),
+                step(
+                    Namespace::ReusableAggregateBusinessInformationEntity,
+                    "IncludedSupplyChainTradeLineItem",
+                    2,
+                ),
+                step(
+                    Namespace::ReusableAggregateBusinessInformationEntity,
+                    "AssociatedDocumentLineDocument",
+                    1,
+                ),
+                step(
+                    Namespace::ReusableAggregateBusinessInformationEntity,
+                    "LineID",
+                    1,
+                ),
+            ],
+        }
+    }
+
+    #[test]
+    fn renders_a_ubl_path_in_record_form() {
+        assert_eq!(
+            ubl_line_id().to_string(),
+            "/Q{INV}Invoice[1]/Q{CAC}InvoiceLine[2]/Q{CBC}ID[1]"
+        );
+    }
+
+    #[test]
+    fn renders_a_cii_path_in_record_form() {
+        assert_eq!(
+            cii_line_id().to_string(),
+            "/Q{RSM}CrossIndustryInvoice[1]/Q{RSM}SupplyChainTradeTransaction[1]/Q{RAM}IncludedSupplyChainTradeLineItem[2]/Q{RAM}AssociatedDocumentLineDocument[1]/Q{RAM}LineID[1]"
+        );
+    }
+
+    #[test]
+    fn keeps_ubl_and_cii_paths_distinct() {
+        assert_ne!(ubl_line_id(), cii_line_id());
+    }
+
+    #[test]
+    fn abbreviates_each_namespace() {
+        assert_eq!(Namespace::Invoice.to_string(), "INV");
+        assert_eq!(Namespace::CommonAggregateComponents.to_string(), "CAC");
+        assert_eq!(Namespace::CommonBasicComponents.to_string(), "CBC");
+        assert_eq!(Namespace::CrossIndustryInvoice.to_string(), "RSM");
+        assert_eq!(
+            Namespace::ReusableAggregateBusinessInformationEntity.to_string(),
+            "RAM"
+        );
+    }
+}

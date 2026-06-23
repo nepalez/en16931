@@ -12,5 +12,5 @@ mod values;
 
 pub use error::Error;
 pub use invoice::*;
-pub use path::{Namespace, Step};
+pub use path::{Namespace, Path, Step};
 pub use values::*;
