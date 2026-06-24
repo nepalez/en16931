@@ -4,12 +4,14 @@
 //! The crate follows its own semver line.
 //! Extension crates depend on it and pin a compatibility range.
 
+mod context;
 mod error;
 mod invoice;
 mod path;
 mod prelude;
 mod values;
 
+pub use context::{Context, Segment};
 pub use error::Error;
 pub use invoice::*;
 pub use path::{Namespace, Path, Step};
