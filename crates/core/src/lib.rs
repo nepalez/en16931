@@ -9,10 +9,14 @@ mod error;
 mod invoice;
 mod path;
 mod prelude;
+mod profile;
+mod term;
 mod values;
 
 pub use context::{Context, Segment};
 pub use error::Error;
 pub use invoice::*;
 pub use path::{Namespace, Path, Step};
+pub use profile::Profile;
+pub use term::Term;
 pub use values::*;
