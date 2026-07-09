@@ -4,7 +4,9 @@
 //! The crate follows its own semver line.
 //! Extension crates depend on it and pin a compatibility range.
 
+mod binding;
 mod context;
+mod document_builder;
 mod error;
 mod invoice;
 mod path;
@@ -13,7 +15,9 @@ mod profile;
 mod term;
 mod values;
 
+pub use binding::Binding;
 pub use context::{Context, Segment};
+pub use document_builder::DocumentBuilder;
 pub use error::Error;
 pub use invoice::*;
 pub use path::{Namespace, Path, Step};

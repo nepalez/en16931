@@ -8,6 +8,7 @@ pub use mime::Mime;
 pub use num_enum::{IntoPrimitive, TryFromPrimitive};
 pub use parse_display::{Display, FromStr, ParseError};
 pub use rust_decimal::{Decimal, RoundingStrategy};
+pub use std::borrow::Cow;
 pub use std::fmt::{self, Display, Formatter};
 pub use std::num::NonZeroUsize;
 pub use std::str::FromStr;
