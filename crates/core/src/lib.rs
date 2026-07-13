@@ -6,6 +6,7 @@
 
 mod binding;
 mod context;
+mod document;
 mod document_builder;
 mod error;
 mod format;
@@ -18,6 +19,7 @@ mod values;
 
 pub use binding::Binding;
 pub use context::{Context, Segment};
+pub use document::Document;
 pub use document_builder::DocumentBuilder;
 pub use error::Error;
 pub use format::Dictionary;
