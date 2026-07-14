@@ -8,4 +8,4 @@ authors.workspace = true
 description = "Normalizer extension for the SchXslt XPath dialect"
 
 [dependencies]
-en16931-core = { path = "../../core", version = "0.1" }
+en16931-core.workspace = true

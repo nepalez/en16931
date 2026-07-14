@@ -11,3 +11,21 @@ edition = "2024"
 rust-version = "1.85"
 license = "MIT"
 authors = ["Andrew Kozin"]
+
+# Dependency versions shared by every crate in the workspace.
+# A crate refers to an entry with `workspace = true`,
+# and adds the features or the `optional` flag it needs on top.
+[workspace.dependencies]
+cefact-units = "0.1"
+email_address = "0.2"
+en16931-core = { path = "crates/core", version = "0.1" }
+iban_validate = "5"
+iso_currency = "0.5.3"
+isocountry = "0.3"
+mime = "0.3"
+num_enum = "0.7"
+parse-display = "0.11"
+quick-xml = { version = "0.41", default-features = false }
+rust_decimal = { version = "1", default-features = false }
+time = { version = "0.3", default-features = false }
+url = "2"

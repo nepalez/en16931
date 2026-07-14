@@ -10,18 +10,18 @@ keywords = ["en16931", "invoice", "peppol", "schematron"]
 categories = ["parsing", "finance"]
 
 [dependencies]
-cefact-units = "0.1"
-email_address = "0.2"
-iban_validate = "5"
-iso_currency = "0.5.3"
-isocountry = "0.3"
-mime = { version = "0.3", optional = true }
-num_enum = "0.7"
-parse-display = "0.11"
-quick-xml = { version = "0.41", default-features = false }
-rust_decimal = { version = "1", default-features = false }
-time = { version = "0.3", default-features = false }
-url = "2"
+cefact-units.workspace = true
+email_address.workspace = true
+iban_validate.workspace = true
+iso_currency.workspace = true
+isocountry.workspace = true
+mime = { workspace = true, optional = true }
+num_enum.workspace = true
+parse-display.workspace = true
+quick-xml.workspace = true
+rust_decimal.workspace = true
+time.workspace = true
+url.workspace = true
 
 [features]
 # Enables conversions between `MimeCode` and the `mime` crate's `Mime` type.
