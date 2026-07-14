@@ -54,12 +54,10 @@ pub use price::Price;
 pub use seller::Seller;
 pub use supporting_document::SupportingDocument;
 pub use tax_representative::TaxRepresentative;
-pub use vat_treatment::VatTreatment;
+pub use vat_treatment::{ExemptionReason, VatTreatment};
 
 use crate::prelude::*;
-use crate::{
-    Amount, Currency, Date, Decimal, InvoiceType, NonEmptyString, Period, VatCategory, VatPoint,
-};
+use crate::{Amount, Currency, Date, Decimal, InvoiceType, NonEmptyString, Period, VatPoint};
 
 /// Rounds a derived money amount to two decimals, half away from zero.
 pub(crate) fn rounded(value: Decimal) -> Decimal {
@@ -170,10 +168,30 @@ impl Invoice {
 
     /// The total VAT amount (`BT-110`): the sum of the per-category taxes, each rounded.
     pub fn vat_total(&self) -> Decimal {
+        self.vat_breakdown()
+            .into_iter()
+            .map(|group| group.tax)
+            .sum()
+    }
+
+    /// The VAT breakdown (`BG-23`): one group per category and rate,
+    /// carrying the taxable base (`BT-116`) and the rounded tax percent (`BT-117`).
+    ///
+    /// The group keeps a representative `VatTreatment`
+    /// so the exemption reason (`BT-120`/`BT-121`) survives into the serialized breakdown.
+    /// The binding renders it into the tax total.
+    pub(crate) fn vat_breakdown(&self) -> Vec<VatBreakdown> {
         self.vat_groups()
             .into_iter()
-            .map(|(_, rate, taxable)| rounded(taxable * rate / Decimal::from(100)))
-            .sum()
+            .map(|(treatment, taxable)| {
+                let tax = rounded(taxable * treatment.rate() / Decimal::from(100));
+                VatBreakdown {
+                    treatment,
+                    taxable,
+                    tax,
+                }
+            })
+            .collect()
     }
 
     /// The total with VAT (`BT-112`).
@@ -187,19 +205,22 @@ impl Invoice {
             + self.rounding.unwrap_or(Decimal::ZERO)
     }
 
-    // The taxable base per VAT category and rate: line nets plus document charges less document
-    // allowances of that treatment. It underlies the per-category tax (`BT-116`/`BT-117`).
-    fn vat_groups(&self) -> Vec<(VatCategory, Decimal, Decimal)> {
-        let mut groups: Vec<(VatCategory, Decimal, Decimal)> = Vec::new();
+    // The taxable base per VAT category and rate:
+    // it contains line nets plus document charges minus document allowances of that treatment.
+    //
+    // Each group keeps the first treatment it saw, so the exemption reason travels with it.
+    // It underlies the per-category tax (`BT-116`/`BT-117`).
+    fn vat_groups(&self) -> Vec<(VatTreatment, Decimal)> {
+        let mut groups: Vec<(VatTreatment, Decimal)> = Vec::new();
         let mut accumulate = |vat: &VatTreatment, amount: Decimal| {
             let category = vat.category();
             let rate = vat.rate();
             match groups
                 .iter_mut()
-                .find(|(grouped, rated, _)| *grouped == category && *rated == rate)
+                .find(|(grouped, _)| grouped.category() == category && grouped.rate() == rate)
             {
-                Some((_, _, taxable)) => *taxable += amount,
-                None => groups.push((category, rate, amount)),
+                Some((_, taxable)) => *taxable += amount,
+                None => groups.push((vat.clone(), amount)),
             }
         };
         for line in &self.lines {
@@ -214,6 +235,16 @@ impl Invoice {
         }
         groups
     }
+}
+
+/// One group of the VAT breakdown (`BG-23`): a category and rate, its taxable base and tax.
+pub(crate) struct VatBreakdown {
+    /// A representative treatment of the group, carrying the category, rate, and exemption reason.
+    pub treatment: VatTreatment,
+    /// The taxable base of the group (`BT-116`).
+    pub taxable: Decimal,
+    /// The tax of the group (`BT-117`), rounded.
+    pub tax: Decimal,
 }
 
 #[cfg(test)]

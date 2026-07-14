@@ -64,4 +64,28 @@ impl VatTreatment {
             _ => Decimal::ZERO,
         }
     }
+
+    /// Reconstructs a treatment from its category code and rate,
+    /// the inverse of `category`.
+    ///
+    /// A binding parser uses it to read a classified tax category.
+    /// The rate applies only to the rated categories,
+    /// and an exemption reason is filled separately from the VAT breakdown.
+    pub(crate) fn from_category(category: VatCategory, rate: Percentage) -> Self {
+        match category {
+            VatCategory::Standard => Self::Standard { rate },
+            VatCategory::CanaryIslands => Self::CanaryIslands { rate },
+            VatCategory::CeutaMelilla => Self::CeutaMelilla { rate },
+            VatCategory::TransferredItaly => Self::TransferredItaly { rate },
+            VatCategory::Exempt => Self::Exempt {
+                code: None,
+                text: None,
+            },
+            VatCategory::ZeroRated => Self::ZeroRated,
+            VatCategory::ReverseCharge => Self::ReverseCharge,
+            VatCategory::IntraCommunitySupply => Self::IntraCommunitySupply,
+            VatCategory::FreeExport => Self::FreeExport,
+            VatCategory::OutsideScope => Self::OutsideScope,
+        }
+    }
 }
