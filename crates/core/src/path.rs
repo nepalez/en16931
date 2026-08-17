@@ -6,7 +6,7 @@ use crate::prelude::*;
 /// The variants cover the two bindings and never mix.
 /// The abbreviation stands in for the full namespace in a rendered path,
 /// so a UBL path and a CII path never compare equal.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Display)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Display)]
 pub enum Namespace {
     /// The UBL namespace of the root `Invoice` document
     /// (`urn:oasis:names:specification:ubl:schema:xsd:Invoice-2`).
@@ -29,6 +29,44 @@ pub enum Namespace {
     ReusableAggregateBusinessInformationEntity,
 }
 
+impl Namespace {
+    const INV: &str = "urn:oasis:names:specification:ubl:schema:xsd:Invoice-2";
+    const CAC: &str = "urn:oasis:names:specification:ubl:schema:xsd:CommonAggregateComponents-2";
+    const CBC: &str = "urn:oasis:names:specification:ubl:schema:xsd:CommonBasicComponents-2";
+    const CII: &str = "urn:un:unece:uncefact:data:standard:CrossIndustryInvoice:100";
+    const RAM: &str =
+        "urn:un:unece:uncefact:data:standard:ReusableAggregateBusinessInformationEntity:100";
+
+    /// The full namespace URI the abbreviation stands for.
+    ///
+    /// A `Binding` writes it as the element namespace,
+    /// and `Binding::detect` matches a document's root element against the two root URIs.
+    pub fn uri(self) -> &'static str {
+        match self {
+            Self::Invoice => Self::INV,
+            Self::CommonAggregateComponents => Self::CAC,
+            Self::CommonBasicComponents => Self::CBC,
+            Self::CrossIndustryInvoice => Self::CII,
+            Self::ReusableAggregateBusinessInformationEntity => Self::RAM,
+        }
+    }
+
+    /// The namespace whose URI is `uri`, if it is one a binding carries.
+    ///
+    /// It is the inverse of `uri`, used by a `Binding` parser
+    /// to resolve an element's namespace back into its record-form abbreviation.
+    pub fn from_uri(uri: &str) -> Option<Self> {
+        match uri {
+            Self::INV => Some(Self::Invoice),
+            Self::CAC => Some(Self::CommonAggregateComponents),
+            Self::CBC => Some(Self::CommonBasicComponents),
+            Self::CII => Some(Self::CrossIndustryInvoice),
+            Self::RAM => Some(Self::ReusableAggregateBusinessInformationEntity),
+            _ => None,
+        }
+    }
+}
+
 /// One step of a record-form path:
 /// a namespaced element with its positional index among the same-named siblings.
 ///
@@ -40,7 +78,7 @@ pub enum Namespace {
 /// The address is purely positional:
 /// a singleton element and the first node of a repeatable group are both index `1`.
 /// A normalizer supplies `1` for a location that omits the index.
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub struct Step {
     /// The element namespace.
     pub namespace: Namespace,
@@ -67,7 +105,7 @@ impl Display for Step {
 /// It is the dictionary key an SVRL location resolves against.
 /// It renders with a leading slash before every step,
 /// such as `/Q{INV}Invoice[1]/Q{CAC}InvoiceLine[2]/Q{CBC}ID[1]`.
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub struct Path {
     /// The ordered steps from the document root down to the addressed node.
     pub steps: Vec<Step>,

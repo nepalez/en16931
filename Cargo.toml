@@ -16,6 +16,7 @@ authors = ["Andrew Kozin"]
 # A crate refers to an entry with `workspace = true`,
 # and adds the features or the `optional` flag it needs on top.
 [workspace.dependencies]
+base64 = "0.22"
 cefact-units = "0.1"
 email_address = "0.2"
 en16931-core = { path = "crates/core", version = "0.1" }
@@ -26,6 +27,7 @@ mime = "0.3"
 num_enum = "0.7"
 parse-display = "0.11"
 quick-xml = { version = "0.41", default-features = false }
+reqwest = { version = "0.12", default-features = false, features = ["blocking"] }
 rust_decimal = { version = "1", default-features = false }
 time = { version = "0.3", default-features = false }
 url = "2"

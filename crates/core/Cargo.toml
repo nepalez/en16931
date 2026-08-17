@@ -10,6 +10,7 @@ keywords = ["en16931", "invoice", "peppol", "schematron"]
 categories = ["parsing", "finance"]
 
 [dependencies]
+base64.workspace = true
 cefact-units.workspace = true
 email_address.workspace = true
 iban_validate.workspace = true
@@ -22,6 +23,9 @@ quick-xml.workspace = true
 rust_decimal.workspace = true
 time.workspace = true
 url.workspace = true
+
+[dev-dependencies]
+reqwest.workspace = true
 
 [features]
 # Enables conversions between `MimeCode` and the `mime` crate's `Mime` type.

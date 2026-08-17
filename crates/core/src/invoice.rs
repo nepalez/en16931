@@ -174,6 +174,17 @@ impl Invoice {
             .sum()
     }
 
+    /// The total with VAT (`BT-112`).
+    pub fn gross_total(&self) -> Decimal {
+        self.net_total() + self.vat_total()
+    }
+
+    /// The amount due for payment (`BT-115`).
+    pub fn due(&self) -> Decimal {
+        self.gross_total() - self.paid.unwrap_or(Decimal::ZERO)
+            + self.rounding.unwrap_or(Decimal::ZERO)
+    }
+
     /// The VAT breakdown (`BG-23`): one group per category and rate,
     /// carrying the taxable base (`BT-116`) and the rounded tax percent (`BT-117`).
     ///
@@ -192,17 +203,6 @@ impl Invoice {
                 }
             })
             .collect()
-    }
-
-    /// The total with VAT (`BT-112`).
-    pub fn gross_total(&self) -> Decimal {
-        self.net_total() + self.vat_total()
-    }
-
-    /// The amount due for payment (`BT-115`).
-    pub fn due(&self) -> Decimal {
-        self.gross_total() - self.paid.unwrap_or(Decimal::ZERO)
-            + self.rounding.unwrap_or(Decimal::ZERO)
     }
 
     // The taxable base per VAT category and rate:
