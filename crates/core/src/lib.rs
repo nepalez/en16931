@@ -24,7 +24,7 @@ pub use document_builder::DocumentBuilder;
 pub use error::Error;
 pub use format::Dictionary;
 pub use invoice::*;
-pub use path::{Namespace, Path, Step};
+pub use path::{Abbreviations, Namespace, Path, Step};
 pub use profile::Profile;
 pub use term::Term;
 pub use values::*;

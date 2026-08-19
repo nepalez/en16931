@@ -1,3 +1,4 @@
+use crate::Error;
 use crate::prelude::*;
 
 /// An XML namespace of a record-form step,
@@ -30,12 +31,26 @@ pub enum Namespace {
 }
 
 impl Namespace {
-    const INV: &str = "urn:oasis:names:specification:ubl:schema:xsd:Invoice-2";
-    const CAC: &str = "urn:oasis:names:specification:ubl:schema:xsd:CommonAggregateComponents-2";
-    const CBC: &str = "urn:oasis:names:specification:ubl:schema:xsd:CommonBasicComponents-2";
-    const CII: &str = "urn:un:unece:uncefact:data:standard:CrossIndustryInvoice:100";
-    const RAM: &str =
-        "urn:un:unece:uncefact:data:standard:ReusableAggregateBusinessInformationEntity:100";
+    const INV: (&str, &str) = (
+        "ubl",
+        "urn:oasis:names:specification:ubl:schema:xsd:Invoice-2",
+    );
+    const CAC: (&str, &str) = (
+        "cac",
+        "urn:oasis:names:specification:ubl:schema:xsd:CommonAggregateComponents-2",
+    );
+    const CBC: (&str, &str) = (
+        "cbc",
+        "urn:oasis:names:specification:ubl:schema:xsd:CommonBasicComponents-2",
+    );
+    const CII: (&str, &str) = (
+        "rsm",
+        "urn:un:unece:uncefact:data:standard:CrossIndustryInvoice:100",
+    );
+    const RAM: (&str, &str) = (
+        "ram",
+        "urn:un:unece:uncefact:data:standard:ReusableAggregateBusinessInformationEntity:100",
+    );
 
     /// The full namespace URI the abbreviation stands for.
     ///
@@ -43,11 +58,11 @@ impl Namespace {
     /// and `Binding::detect` matches a document's root element against the two root URIs.
     pub fn uri(self) -> &'static str {
         match self {
-            Self::Invoice => Self::INV,
-            Self::CommonAggregateComponents => Self::CAC,
-            Self::CommonBasicComponents => Self::CBC,
-            Self::CrossIndustryInvoice => Self::CII,
-            Self::ReusableAggregateBusinessInformationEntity => Self::RAM,
+            Self::Invoice => Self::INV.1,
+            Self::CommonAggregateComponents => Self::CAC.1,
+            Self::CommonBasicComponents => Self::CBC.1,
+            Self::CrossIndustryInvoice => Self::CII.1,
+            Self::ReusableAggregateBusinessInformationEntity => Self::RAM.1,
         }
     }
 
@@ -57,13 +72,66 @@ impl Namespace {
     /// to resolve an element's namespace back into its record-form abbreviation.
     pub fn from_uri(uri: &str) -> Option<Self> {
         match uri {
-            Self::INV => Some(Self::Invoice),
-            Self::CAC => Some(Self::CommonAggregateComponents),
-            Self::CBC => Some(Self::CommonBasicComponents),
-            Self::CII => Some(Self::CrossIndustryInvoice),
-            Self::RAM => Some(Self::ReusableAggregateBusinessInformationEntity),
+            _ if uri == Self::INV.1 => Some(Self::Invoice),
+            _ if uri == Self::CAC.1 => Some(Self::CommonAggregateComponents),
+            _ if uri == Self::CBC.1 => Some(Self::CommonBasicComponents),
+            _ if uri == Self::CII.1 => Some(Self::CrossIndustryInvoice),
+            _ if uri == Self::RAM.1 => Some(Self::ReusableAggregateBusinessInformationEntity),
             _ => None,
         }
+    }
+}
+
+/// Resolves an abbreviated namespace of a report location.
+///
+/// A validator may abbreviate the namespace of every step of a location.
+/// The abbreviation comes either from the rule set or from the checked document,
+/// this is decided by a validator outside the library's control.
+///
+/// That's why we should know how to map either choice to a proper namepsaces.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Abbreviations(HashMap<String, Namespace>);
+
+impl Abbreviations {
+    /// Adds an abbreviation the document binds.
+    ///
+    /// Rebinding one to the same namespace changes nothing.
+    /// Binding it to another namespace yields `Error::AmbiguousAbbreviation`.
+    pub fn declare(&mut self, abbreviation: &str, namespace: Namespace) -> Result<(), Error> {
+        match self.0.get(abbreviation) {
+            None => {
+                self.0.insert(abbreviation.to_owned(), namespace);
+                Ok(())
+            }
+            Some(bound) if *bound == namespace => Ok(()),
+            _ => Err(Error::AmbiguousAbbreviation(abbreviation.to_owned())),
+        }
+    }
+
+    /// The namespace an abbreviation stands for, or `None` when neither origin binds it.
+    pub fn resolve(&self, abbreviation: &str) -> Option<Namespace> {
+        self.0.get(abbreviation).copied()
+    }
+}
+
+impl Default for Abbreviations {
+    /// A table of the rule-set abbreviations alone, before a document declares its own.
+    fn default() -> Self {
+        Self(
+            [
+                (Namespace::INV.0, Namespace::Invoice),
+                (Namespace::CAC.0, Namespace::CommonAggregateComponents),
+                (Namespace::CBC.0, Namespace::CommonBasicComponents),
+                (Namespace::CII.0, Namespace::CrossIndustryInvoice),
+                (
+                    Namespace::RAM.0,
+                    Namespace::ReusableAggregateBusinessInformationEntity,
+                ),
+            ]
+            .into_iter()
+            .map(|(abbreviation, namespace)| (abbreviation.to_owned(), namespace))
+            .collect(),
+        )
     }
 }
 
@@ -203,5 +271,66 @@ mod test {
             Namespace::ReusableAggregateBusinessInformationEntity.to_string(),
             "RAM"
         );
+    }
+
+    #[test]
+    fn resolves_an_abbreviation_of_a_rule_set() {
+        let abbreviations = Abbreviations::default();
+
+        assert_eq!(abbreviations.resolve("ubl"), Some(Namespace::Invoice));
+        assert_eq!(
+            abbreviations.resolve("cac"),
+            Some(Namespace::CommonAggregateComponents)
+        );
+        assert_eq!(
+            abbreviations.resolve("ram"),
+            Some(Namespace::ReusableAggregateBusinessInformationEntity)
+        );
+    }
+
+    #[test]
+    fn resolves_an_abbreviation_of_the_document() {
+        let mut abbreviations = Abbreviations::default();
+
+        abbreviations
+            .declare("", Namespace::Invoice)
+            .expect("a free abbreviation");
+        abbreviations
+            .declare("basic", Namespace::CommonBasicComponents)
+            .expect("a free abbreviation");
+
+        assert_eq!(abbreviations.resolve(""), Some(Namespace::Invoice));
+        assert_eq!(
+            abbreviations.resolve("basic"),
+            Some(Namespace::CommonBasicComponents)
+        );
+    }
+
+    #[test]
+    fn keeps_an_abbreviation_the_document_repeats() {
+        let mut abbreviations = Abbreviations::default();
+
+        abbreviations
+            .declare("cbc", Namespace::CommonBasicComponents)
+            .expect("the namespace the rule sets bind");
+
+        assert_eq!(
+            abbreviations.resolve("cbc"),
+            Some(Namespace::CommonBasicComponents)
+        );
+    }
+
+    #[test]
+    fn rejects_an_abbreviation_of_two_namespaces() {
+        let mut abbreviations = Abbreviations::default();
+
+        let outcome = abbreviations.declare("cbc", Namespace::CommonAggregateComponents);
+
+        assert!(matches!(outcome, Err(Error::AmbiguousAbbreviation(_))));
+    }
+
+    #[test]
+    fn resolves_no_abbreviation_of_an_unknown_name() {
+        assert_eq!(Abbreviations::default().resolve("xsi"), None);
     }
 }

@@ -51,39 +51,69 @@ mod test {
 
     #[test]
     fn detects_its_own_output_as_ubl() {
-        let (xml, _) = serialize(&builder(Binding::Ubl));
+        let (xml, _, _) = serialize(&builder(Binding::Ubl));
 
         assert_eq!(Binding::detect(&xml).expect("a UBL document"), Binding::Ubl);
     }
 
     #[test]
     fn rebuilds_the_same_dictionary_on_parse() {
-        let (xml, written) = serialize(&builder(Binding::Ubl));
+        let (xml, written, _) = serialize(&builder(Binding::Ubl));
 
-        let (_, read) = deserialize(&xml).expect("a valid UBL document");
+        let (_, read, _) = deserialize(&xml).expect("a valid UBL document");
 
         assert_eq!(read, written);
     }
 
     #[test]
+    fn binds_the_abbreviations_it_writes() {
+        let (_, _, abbreviations) = serialize(&builder(Binding::Ubl));
+
+        // The root carries the default namespace, so its abbreviation is empty.
+        assert_eq!(abbreviations.resolve(""), Some(INV));
+        assert_eq!(abbreviations.resolve("cac"), Some(CAC));
+        assert_eq!(abbreviations.resolve("cbc"), Some(CBC));
+    }
+
+    #[test]
+    fn rebuilds_the_same_abbreviations_on_parse() {
+        let (xml, _, written) = serialize(&builder(Binding::Ubl));
+
+        let (_, _, read) = deserialize(&xml).expect("a valid UBL document");
+
+        assert_eq!(read, written);
+    }
+
+    #[test]
+    fn binds_an_abbreviation_of_its_own_choice() {
+        // The fixture is the rich document with `cbc` renamed to `foo`.
+        let (_, _, abbreviations) =
+            deserialize(include_str!("ubl/fixtures/3.xml")).expect("a valid UBL document");
+
+        // The document's own abbreviation joins the ones the rule sets bind.
+        assert_eq!(abbreviations.resolve("foo"), Some(CBC));
+        assert_eq!(abbreviations.resolve("cbc"), Some(CBC));
+    }
+
+    #[test]
     fn emit_fixtures() {
         let base = concat!(env!("CARGO_MANIFEST_DIR"), "/src/format/ubl/fixtures");
-        let (rich, _) = serialize(&builder(Binding::Ubl));
-        let (variant, _) = serialize(&variant_builder(Binding::Ubl));
+        let (rich, _, _) = serialize(&builder(Binding::Ubl));
+        let (variant, _, _) = serialize(&variant_builder(Binding::Ubl));
         std::fs::write(format!("{base}/1.xml"), pretty(&rich)).expect("write");
         std::fs::write(format!("{base}/2.xml"), pretty(&variant)).expect("write");
     }
 
     #[test]
     fn serializes_the_document_to_ubl() {
-        let (xml, _) = serialize(&builder(Binding::Ubl));
+        let (xml, _, _) = serialize(&builder(Binding::Ubl));
 
         assert_eq!(pretty(&xml), include_str!("ubl/fixtures/1.xml"));
     }
 
     #[test]
     fn deserializes_the_document_from_ubl() {
-        let (parsed, _) =
+        let (parsed, _, _) =
             deserialize(include_str!("ubl/fixtures/1.xml")).expect("a valid UBL document");
 
         assert_eq!(parsed, builder(Binding::Ubl));
@@ -91,14 +121,14 @@ mod test {
 
     #[test]
     fn serializes_the_variant_document_to_ubl() {
-        let (xml, _) = serialize(&variant_builder(Binding::Ubl));
+        let (xml, _, _) = serialize(&variant_builder(Binding::Ubl));
 
         assert_eq!(pretty(&xml), include_str!("ubl/fixtures/2.xml"));
     }
 
     #[test]
     fn deserializes_the_variant_document_from_ubl() {
-        let (parsed, _) =
+        let (parsed, _, _) =
             deserialize(include_str!("ubl/fixtures/2.xml")).expect("a valid UBL document");
 
         assert_eq!(parsed, variant_builder(Binding::Ubl));
@@ -106,7 +136,7 @@ mod test {
 
     #[test]
     fn maps_nodes_to_their_contexts() {
-        let (_, dictionary) = serialize(&builder(Binding::Ubl));
+        let (_, dictionary, _) = serialize(&builder(Binding::Ubl));
 
         let root = path(vec![step(INV, "Invoice", 1)]);
         let seller_name = path(vec![
@@ -144,7 +174,7 @@ mod test {
         // Peppol BIS forbids the note subject code (BT-21).
         let mut document = builder(Binding::Ubl);
         document.profile = Profile::PeppolBisBilling30;
-        let (xml, _) = serialize(&document);
+        let (xml, _, _) = serialize(&document);
 
         assert!(xml.contains("<cbc:CustomizationID>urn:cen.eu:en16931:2017#compliant"));
         assert!(xml.contains("<cbc:Note>General note text</cbc:Note>"));

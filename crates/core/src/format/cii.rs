@@ -32,39 +32,70 @@ mod test {
 
     #[test]
     fn detects_its_own_output_as_cii() {
-        let (xml, _) = serialize(&builder(Binding::Cii));
+        let (xml, _, _) = serialize(&builder(Binding::Cii));
 
         assert_eq!(Binding::detect(&xml).expect("a CII document"), Binding::Cii);
     }
 
     #[test]
     fn rebuilds_the_same_dictionary_on_parse() {
-        let (xml, written) = serialize(&builder(Binding::Cii));
+        let (xml, written, _) = serialize(&builder(Binding::Cii));
 
-        let (_, read) = deserialize(&xml).expect("a valid CII document");
+        let (_, read, _) = deserialize(&xml).expect("a valid CII document");
 
         assert_eq!(read, written);
     }
 
     #[test]
+    fn binds_the_abbreviations_it_writes() {
+        let (_, _, abbreviations) = serialize(&builder(Binding::Cii));
+
+        assert_eq!(abbreviations.resolve("rsm"), Some(RSM));
+        assert_eq!(abbreviations.resolve("ram"), Some(RAM));
+        // The datatype carriers name no record-form namespace.
+        assert_eq!(abbreviations.resolve(UDT_PREFIX), None);
+        assert_eq!(abbreviations.resolve(QDT_PREFIX), None);
+    }
+
+    #[test]
+    fn rebuilds_the_same_abbreviations_on_parse() {
+        let (xml, _, written) = serialize(&builder(Binding::Cii));
+
+        let (_, _, read) = deserialize(&xml).expect("a valid CII document");
+
+        assert_eq!(read, written);
+    }
+
+    #[test]
+    fn binds_an_abbreviation_of_its_own_choice() {
+        // The fixture is the rich document with `ram` renamed to `bar`.
+        let (_, _, abbreviations) =
+            deserialize(include_str!("cii/fixtures/3.xml")).expect("a valid CII document");
+
+        // The document's own abbreviation joins the ones the rule sets bind.
+        assert_eq!(abbreviations.resolve("bar"), Some(RAM));
+        assert_eq!(abbreviations.resolve("ram"), Some(RAM));
+    }
+
+    #[test]
     fn emit_fixtures() {
         let base = concat!(env!("CARGO_MANIFEST_DIR"), "/src/format/cii/fixtures");
-        let (rich, _) = serialize(&builder(Binding::Cii));
-        let (variant, _) = serialize(&variant_builder(Binding::Cii));
+        let (rich, _, _) = serialize(&builder(Binding::Cii));
+        let (variant, _, _) = serialize(&variant_builder(Binding::Cii));
         std::fs::write(format!("{base}/1.xml"), pretty(&rich)).expect("write");
         std::fs::write(format!("{base}/2.xml"), pretty(&variant)).expect("write");
     }
 
     #[test]
     fn serializes_the_document_to_cii() {
-        let (xml, _) = serialize(&builder(Binding::Cii));
+        let (xml, _, _) = serialize(&builder(Binding::Cii));
 
         assert_eq!(pretty(&xml), include_str!("cii/fixtures/1.xml"));
     }
 
     #[test]
     fn deserializes_the_document_from_cii() {
-        let (parsed, _) =
+        let (parsed, _, _) =
             deserialize(include_str!("cii/fixtures/1.xml")).expect("a valid CII document");
 
         assert_eq!(parsed, builder(Binding::Cii));
@@ -72,14 +103,14 @@ mod test {
 
     #[test]
     fn serializes_the_variant_document_to_cii() {
-        let (xml, _) = serialize(&variant_builder(Binding::Cii));
+        let (xml, _, _) = serialize(&variant_builder(Binding::Cii));
 
         assert_eq!(pretty(&xml), include_str!("cii/fixtures/2.xml"));
     }
 
     #[test]
     fn deserializes_the_variant_document_from_cii() {
-        let (parsed, _) =
+        let (parsed, _, _) =
             deserialize(include_str!("cii/fixtures/2.xml")).expect("a valid CII document");
 
         assert_eq!(parsed, variant_builder(Binding::Cii));

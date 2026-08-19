@@ -22,7 +22,13 @@ The library records every path in one form. It is namespace-resolved, dialect-fr
 
 > A [UBL] path and a [CII] path never unify. The record form is binding-specific, not a cross-binding canonical [XPath]. Only the dialect is normalized away.
 
-A per-dialect step rewrites a processor's location into this form. It reads names and namespaces from the location and the report's own declarations. It needs neither the schema nor the binding, so one such step serves every binding.
+A per-dialect step rewrites a processor's location into this form. It reads names from the location alone. It needs neither the schema nor the binding, so one such step serves every binding.
+
+A dialect names the namespace of a step in one of two ways. It writes the full URI, which the step resolves on its own. Or it writes a short abbreviation, which the step resolves through a table.
+
+Such an abbreviation has two origins. One processor copies the abbreviation of the checked document. Another writes the abbreviation of its own rule set. So the binding builds one table per document, holding both origins.
+
+An abbreviation that stands for two namespaces at once is a hard failure of that document.
 
 The binding enters only when a path is written. The dialect enters only when a report is read.
 
@@ -32,6 +38,10 @@ The binding enters only when a path is written. The dialect enters only when a r
 
 * **Dialect folded into the binding I/O.** The binding-aware writer also absorbs the processor dialect, since the document fixes the binding. Rejected because the dialect comes from the validator, not the binding. Folding it multiplies binding handlers by every dialect.
 
+* **Declarations of the report as the only source.** A report declares the namespaces it uses, so a step could read them. Rejected because a processor may copy the abbreviation of the document, which the report never declares.
+
+* **A fixed table inside every normalizer.** The rule sets fix `cac`, `cbc`, `ram`, and `rsm`, so no input is needed. Rejected because a document may declare an abbreviation of its own, which such a table misses.
+
 ## Consequences
 
 ### Pros
@@ -39,17 +49,20 @@ The binding enters only when a path is written. The dialect enters only when a r
 * One normalizing step per dialect serves every binding, because it never reads the schema.
 * The binding and the dialect recombine freely, with neither leaking into the other.
 * A wrong-binding location fails to match, instead of resolving to the wrong field.
+* Both origins of an abbreviation resolve through a single table.
 
 ### Cons
 
 * Every supported processor dialect needs its own normalizing step.
+* The abbreviation table travels from the document to the step that reads a report.
+* A document that binds a standard abbreviation to another namespace is rejected.
 
 ## Examples
 
-The normalizer applies one mechanical rewrite. It reads names and namespaces from the location and the report's declarations:
+The normalizer applies one mechanical rewrite. It reads names from the location, and namespaces from the location or the abbreviation table:
 
 * `*[local-name()='N' and namespace-uri()='U'][i]` → `Q{U}N[i]`;
-* `p:N[i]` → `Q{U}N[i]`, where `p` resolves to `U` through the report's declarations;
+* `p:N[i]` → `Q{U}N[i]`, where `p` resolves to `U` through the abbreviation table;
 * a step with no index → index `[1]`.
 
 Namespace URIs are abbreviated: UBL by `INV`, `CAC`, `CBC`. CII by `RSM`, `RAM`.

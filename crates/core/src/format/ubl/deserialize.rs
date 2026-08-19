@@ -9,24 +9,28 @@ use crate::format::trace::Trace;
 use crate::format::ubl::{CAC, CBC, INV};
 use crate::prelude::*;
 use crate::{
-    Adjustment, AdjustmentAmount, AdjustmentReason, Amount, BinaryObject, Buyer, Classification,
-    Contact, CreditTransfer, Delivery, Dictionary, DirectDebit, DocumentBuilder, ElectronicAddress,
-    Error, ExemptionReason, Invoice, InvoiceLine, Item, ItemAttribute, LegalEntity, LineAdjustment,
-    LocationReference, MimeCode, Namespace, NonEmptyString, Note, ObjectReference,
-    OperationalEntity, Payee, PaymentCard, PaymentDetails, PaymentInstructions, Period,
-    PostalAddress, PrecedingInvoice, Price, Quantity, Seller, SupportingDocument,
+    Abbreviations, Adjustment, AdjustmentAmount, AdjustmentReason, Amount, BinaryObject, Buyer,
+    Classification, Contact, CreditTransfer, Delivery, Dictionary, DirectDebit, DocumentBuilder,
+    ElectronicAddress, Error, ExemptionReason, Invoice, InvoiceLine, Item, ItemAttribute,
+    LegalEntity, LineAdjustment, LocationReference, MimeCode, Namespace, NonEmptyString, Note,
+    ObjectReference, OperationalEntity, Payee, PaymentCard, PaymentDetails, PaymentInstructions,
+    Period, PostalAddress, PrecedingInvoice, Price, Quantity, Seller, SupportingDocument,
     TaxRepresentative, Unit, VatCategory, VatPoint, VatTreatment,
 };
 
-/// Parses a UBL document from XML, rebuilding the dictionary on the inverse path.
-pub(crate) fn deserialize(xml: &str) -> Result<(DocumentBuilder, Dictionary), Error> {
+/// Parses a UBL document from XML,
+/// rebuilding the dictionary and the abbreviations on the inverse path.
+pub(crate) fn deserialize(
+    xml: &str,
+) -> Result<(DocumentBuilder, Dictionary, Abbreviations), Error> {
+    let (tokens, abbreviations) = tokenize(xml)?;
     let mut parser = Parser {
-        tokens: tokenize(xml)?,
+        tokens,
         cursor: 0,
         trace: Trace::new(),
     };
     let builder = parser.document()?;
-    Ok((builder, parser.trace.into_dictionary()))
+    Ok((builder, parser.trace.into_dictionary(), abbreviations))
 }
 
 // ---- tokens --------------------------------------------------------------
@@ -41,19 +45,22 @@ enum Token {
     Close,
 }
 
-// Reads the document into resolved, owned tokens, dropping namespace declarations
-// and insignificant whitespace.
-fn tokenize(xml: &str) -> Result<Vec<Token>, Error> {
+// Reads the document into resolved, owned tokens, collecting the abbreviations it
+// declares and dropping insignificant whitespace.
+fn tokenize(xml: &str) -> Result<(Vec<Token>, Abbreviations), Error> {
     let mut reader = NsReader::from_str(xml);
     let mut tokens = Vec::new();
+    let mut abbreviations = Abbreviations::default();
     loop {
         let (resolved, event) = reader
             .read_resolved_event()
             .map_err(|error| Error::MalformedXml(error.to_string()))?;
         match event {
-            Event::Start(start) => tokens.push(open_token(resolved, &start)?),
+            Event::Start(start) => {
+                tokens.push(open_token(resolved, &start, &mut abbreviations)?);
+            }
             Event::Empty(start) => {
-                tokens.push(open_token(resolved, &start)?);
+                tokens.push(open_token(resolved, &start, &mut abbreviations)?);
                 tokens.push(Token::Close);
             }
             Event::End(_) => tokens.push(Token::Close),
@@ -64,15 +71,19 @@ fn tokenize(xml: &str) -> Result<Vec<Token>, Error> {
                     tokens.push(Token::Text(text.into_owned()));
                 }
             }
-            Event::Eof => return Ok(tokens),
+            Event::Eof => return Ok((tokens, abbreviations)),
             _ => {}
         }
     }
 }
 
 // Builds an `Open` token from a start tag, resolving its namespace and reading
-// its attributes, less the namespace declarations.
-fn open_token(resolved: ResolveResult<'_>, start: &BytesStart<'_>) -> Result<Token, Error> {
+// its attributes. A namespace declaration binds an abbreviation instead.
+fn open_token(
+    resolved: ResolveResult<'_>,
+    start: &BytesStart<'_>,
+    abbreviations: &mut Abbreviations,
+) -> Result<Token, Error> {
     let ResolveResult::Bound(uri) = resolved else {
         return Err(Error::MalformedXml(
             "an element has no namespace".to_owned(),
@@ -85,7 +96,13 @@ fn open_token(resolved: ResolveResult<'_>, start: &BytesStart<'_>) -> Result<Tok
     let mut attributes = Vec::new();
     for attribute in start.attributes() {
         let attribute = attribute.map_err(|error| Error::MalformedXml(error.to_string()))?;
-        if attribute.key.as_ref() == b"xmlns" || attribute.key.as_ref().starts_with(b"xmlns:") {
+        let key = attribute.key.as_ref();
+        if key == b"xmlns" || key.starts_with(b"xmlns:") {
+            let abbreviation = String::from_utf8_lossy(key.strip_prefix(b"xmlns:").unwrap_or(b""));
+            let uri = String::from_utf8_lossy(&attribute.value);
+            if let Some(namespace) = Namespace::from_uri(&uri) {
+                abbreviations.declare(&abbreviation, namespace)?;
+            }
             continue;
         }
         let key = String::from_utf8_lossy(attribute.key.local_name().as_ref()).into_owned();

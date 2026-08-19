@@ -7,6 +7,8 @@ pub enum Error {
     InvalidValue(String),
     /// A malformed XML document, or one with an unrecognized binding, rejected on parse.
     MalformedXml(String),
+    /// An abbreviation the document binds to a second namespace.
+    AmbiguousAbbreviation(String),
 }
 
 impl From<ParseError> for Error {
@@ -23,6 +25,9 @@ impl fmt::Display for Error {
             }
             Self::MalformedXml(s) => {
                 write!(formatter, "malformed XML: {s}")
+            }
+            Self::AmbiguousAbbreviation(s) => {
+                write!(formatter, "ambiguous abbreviation: {s}")
             }
         }
     }

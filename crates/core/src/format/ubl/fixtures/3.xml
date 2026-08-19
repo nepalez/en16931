@@ -1,0 +1,352 @@
+<Invoice xmlns="urn:oasis:names:specification:ubl:schema:xsd:Invoice-2" xmlns:cac="urn:oasis:names:specification:ubl:schema:xsd:CommonAggregateComponents-2" xmlns:foo="urn:oasis:names:specification:ubl:schema:xsd:CommonBasicComponents-2">
+  <foo:CustomizationID>urn:cen.eu:en16931:2017</foo:CustomizationID>
+  <foo:ProfileID>urn:fdc:peppol.eu:2017:poacc:billing:01:1.0</foo:ProfileID>
+  <foo:ID>INV-2026-001</foo:ID>
+  <foo:IssueDate>2026-01-15</foo:IssueDate>
+  <foo:DueDate>2026-02-15</foo:DueDate>
+  <foo:InvoiceTypeCode>380</foo:InvoiceTypeCode>
+  <foo:Note>#AAB#General note text</foo:Note>
+  <foo:DocumentCurrencyCode>EUR</foo:DocumentCurrencyCode>
+  <foo:AccountingCost>ACCOUNT-500</foo:AccountingCost>
+  <foo:BuyerReference>BUYER-REF-01</foo:BuyerReference>
+  <cac:InvoicePeriod>
+    <foo:StartDate>2026-01-01</foo:StartDate>
+    <foo:EndDate>2026-01-31</foo:EndDate>
+  </cac:InvoicePeriod>
+  <cac:OrderReference>
+    <foo:ID>PO-2026-9</foo:ID>
+    <foo:SalesOrderID>SO-2026-3</foo:SalesOrderID>
+  </cac:OrderReference>
+  <cac:BillingReference>
+    <cac:InvoiceDocumentReference>
+      <foo:ID>INV-2025-900</foo:ID>
+      <foo:IssueDate>2025-12-01</foo:IssueDate>
+    </cac:InvoiceDocumentReference>
+  </cac:BillingReference>
+  <cac:DespatchDocumentReference>
+    <foo:ID>DESADV-2</foo:ID>
+  </cac:DespatchDocumentReference>
+  <cac:ReceiptDocumentReference>
+    <foo:ID>RECADV-2</foo:ID>
+  </cac:ReceiptDocumentReference>
+  <cac:OriginatorDocumentReference>
+    <foo:ID>TENDER-1</foo:ID>
+  </cac:OriginatorDocumentReference>
+  <cac:ContractDocumentReference>
+    <foo:ID>CONTRACT-7</foo:ID>
+  </cac:ContractDocumentReference>
+  <cac:AdditionalDocumentReference>
+    <foo:ID>OBJ-100</foo:ID>
+    <foo:DocumentTypeCode>130</foo:DocumentTypeCode>
+  </cac:AdditionalDocumentReference>
+  <cac:AdditionalDocumentReference>
+    <foo:ID>DOC-REF-1</foo:ID>
+    <foo:DocumentDescription>Supporting document</foo:DocumentDescription>
+    <cac:Attachment>
+      <cac:ExternalReference>
+        <foo:URI>https://example.com/doc.pdf</foo:URI>
+      </cac:ExternalReference>
+    </cac:Attachment>
+  </cac:AdditionalDocumentReference>
+  <cac:ProjectReference>
+    <foo:ID>PROJECT-42</foo:ID>
+  </cac:ProjectReference>
+  <cac:AccountingSupplierParty>
+    <cac:Party>
+      <foo:EndpointID schemeID="EM">seller@example.de</foo:EndpointID>
+      <cac:PartyIdentification>
+        <foo:ID schemeID="0088">SELLER-ID-1</foo:ID>
+      </cac:PartyIdentification>
+      <cac:PartyName>
+        <foo:Name>SellerTrading</foo:Name>
+      </cac:PartyName>
+      <cac:PostalAddress>
+        <foo:StreetName>Main street 1</foo:StreetName>
+        <foo:AdditionalStreetName>Building A</foo:AdditionalStreetName>
+        <foo:CityName>Berlin</foo:CityName>
+        <foo:PostalZone>10115</foo:PostalZone>
+        <foo:CountrySubentity>Berlin region</foo:CountrySubentity>
+        <cac:AddressLine>
+          <foo:Line>Floor 2</foo:Line>
+        </cac:AddressLine>
+        <cac:Country>
+          <foo:IdentificationCode>DE</foo:IdentificationCode>
+        </cac:Country>
+      </cac:PostalAddress>
+      <cac:PartyTaxScheme>
+        <foo:CompanyID>DE123456789</foo:CompanyID>
+        <cac:TaxScheme>
+          <foo:ID>VAT</foo:ID>
+        </cac:TaxScheme>
+      </cac:PartyTaxScheme>
+      <cac:PartyTaxScheme>
+        <foo:CompanyID>TAX-REG-9</foo:CompanyID>
+        <cac:TaxScheme>
+          <foo:ID>FC</foo:ID>
+        </cac:TaxScheme>
+      </cac:PartyTaxScheme>
+      <cac:PartyLegalEntity>
+        <foo:RegistrationName>Seller Official Name Ltd</foo:RegistrationName>
+        <foo:CompanyID>DE12345</foo:CompanyID>
+        <foo:CompanyLegalForm>Registered in Berlin</foo:CompanyLegalForm>
+      </cac:PartyLegalEntity>
+      <cac:Contact>
+        <foo:Name>Anna Seller</foo:Name>
+        <foo:Telephone>+49 30 1234</foo:Telephone>
+        <foo:ElectronicMail>anna@example.de</foo:ElectronicMail>
+      </cac:Contact>
+    </cac:Party>
+  </cac:AccountingSupplierParty>
+  <cac:AccountingCustomerParty>
+    <cac:Party>
+      <foo:EndpointID schemeID="EM">buyer@example.fr</foo:EndpointID>
+      <cac:PartyIdentification>
+        <foo:ID>BUYER-ID-1</foo:ID>
+      </cac:PartyIdentification>
+      <cac:PartyName>
+        <foo:Name>BuyerTrading</foo:Name>
+      </cac:PartyName>
+      <cac:PostalAddress>
+        <foo:StreetName>Rue centrale 2</foo:StreetName>
+        <foo:AdditionalStreetName>Building A</foo:AdditionalStreetName>
+        <foo:CityName>Berlin</foo:CityName>
+        <foo:PostalZone>10115</foo:PostalZone>
+        <foo:CountrySubentity>Berlin region</foo:CountrySubentity>
+        <cac:AddressLine>
+          <foo:Line>Floor 2</foo:Line>
+        </cac:AddressLine>
+        <cac:Country>
+          <foo:IdentificationCode>FR</foo:IdentificationCode>
+        </cac:Country>
+      </cac:PostalAddress>
+      <cac:PartyTaxScheme>
+        <foo:CompanyID>FR12345678901</foo:CompanyID>
+        <cac:TaxScheme>
+          <foo:ID>VAT</foo:ID>
+        </cac:TaxScheme>
+      </cac:PartyTaxScheme>
+      <cac:PartyLegalEntity>
+        <foo:RegistrationName>Buyer Official Name</foo:RegistrationName>
+        <foo:CompanyID>FR98765</foo:CompanyID>
+      </cac:PartyLegalEntity>
+      <cac:Contact>
+        <foo:Name>Bob Buyer</foo:Name>
+        <foo:Telephone>+33 1 9876</foo:Telephone>
+        <foo:ElectronicMail>bob@example.fr</foo:ElectronicMail>
+      </cac:Contact>
+    </cac:Party>
+  </cac:AccountingCustomerParty>
+  <cac:PayeeParty>
+    <cac:PartyIdentification>
+      <foo:ID>PAYEE-ID</foo:ID>
+    </cac:PartyIdentification>
+    <cac:PartyName>
+      <foo:Name>Payee Name</foo:Name>
+    </cac:PartyName>
+    <cac:PartyLegalEntity>
+      <foo:CompanyID>PAYEE-LE</foo:CompanyID>
+    </cac:PartyLegalEntity>
+  </cac:PayeeParty>
+  <cac:TaxRepresentativeParty>
+    <cac:PartyName>
+      <foo:Name>Tax Rep Name</foo:Name>
+    </cac:PartyName>
+    <cac:PostalAddress>
+      <foo:StreetName>Rep street 3</foo:StreetName>
+      <foo:AdditionalStreetName>Building A</foo:AdditionalStreetName>
+      <foo:CityName>Berlin</foo:CityName>
+      <foo:PostalZone>10115</foo:PostalZone>
+      <foo:CountrySubentity>Berlin region</foo:CountrySubentity>
+      <cac:AddressLine>
+        <foo:Line>Floor 2</foo:Line>
+      </cac:AddressLine>
+      <cac:Country>
+        <foo:IdentificationCode>DE</foo:IdentificationCode>
+      </cac:Country>
+    </cac:PostalAddress>
+    <cac:PartyTaxScheme>
+      <foo:CompanyID>DE999888777</foo:CompanyID>
+      <cac:TaxScheme>
+        <foo:ID>VAT</foo:ID>
+      </cac:TaxScheme>
+    </cac:PartyTaxScheme>
+  </cac:TaxRepresentativeParty>
+  <cac:Delivery>
+    <foo:ActualDeliveryDate>2026-01-20</foo:ActualDeliveryDate>
+    <cac:DeliveryLocation>
+      <foo:ID>LOC-1</foo:ID>
+      <cac:Address>
+        <foo:StreetName>Delivery street 4</foo:StreetName>
+        <foo:AdditionalStreetName>Building A</foo:AdditionalStreetName>
+        <foo:CityName>Berlin</foo:CityName>
+        <foo:PostalZone>10115</foo:PostalZone>
+        <foo:CountrySubentity>Berlin region</foo:CountrySubentity>
+        <cac:AddressLine>
+          <foo:Line>Floor 2</foo:Line>
+        </cac:AddressLine>
+        <cac:Country>
+          <foo:IdentificationCode>DE</foo:IdentificationCode>
+        </cac:Country>
+      </cac:Address>
+    </cac:DeliveryLocation>
+    <cac:DeliveryParty>
+      <cac:PartyName>
+        <foo:Name>Delivery Party</foo:Name>
+      </cac:PartyName>
+    </cac:DeliveryParty>
+  </cac:Delivery>
+  <cac:PaymentMeans>
+    <foo:PaymentMeansCode name="Credit transfer">30</foo:PaymentMeansCode>
+    <foo:PaymentID>PAY-REF-1</foo:PaymentID>
+    <cac:PayeeFinancialAccount>
+      <foo:ID>DE89370400440532013000</foo:ID>
+      <foo:Name>Seller Account</foo:Name>
+      <cac:FinancialInstitutionBranch>
+        <foo:ID>DEUTDEFF</foo:ID>
+      </cac:FinancialInstitutionBranch>
+    </cac:PayeeFinancialAccount>
+  </cac:PaymentMeans>
+  <cac:PaymentTerms>
+    <foo:Note>Net 30 days</foo:Note>
+  </cac:PaymentTerms>
+  <cac:AllowanceCharge>
+    <foo:ChargeIndicator>false</foo:ChargeIndicator>
+    <foo:AllowanceChargeReasonCode>95</foo:AllowanceChargeReasonCode>
+    <foo:AllowanceChargeReason>Loyal customer</foo:AllowanceChargeReason>
+    <foo:Amount currencyID="EUR">10.00</foo:Amount>
+    <cac:TaxCategory>
+      <foo:ID>S</foo:ID>
+      <foo:Percent>19</foo:Percent>
+      <cac:TaxScheme>
+        <foo:ID>VAT</foo:ID>
+      </cac:TaxScheme>
+    </cac:TaxCategory>
+  </cac:AllowanceCharge>
+  <cac:TaxTotal>
+    <foo:TaxAmount currencyID="EUR">44.84</foo:TaxAmount>
+    <cac:TaxSubtotal>
+      <foo:TaxableAmount currencyID="EUR">236.00</foo:TaxableAmount>
+      <foo:TaxAmount currencyID="EUR">44.84</foo:TaxAmount>
+      <cac:TaxCategory>
+        <foo:ID>S</foo:ID>
+        <foo:Percent>19</foo:Percent>
+        <cac:TaxScheme>
+          <foo:ID>VAT</foo:ID>
+        </cac:TaxScheme>
+      </cac:TaxCategory>
+    </cac:TaxSubtotal>
+  </cac:TaxTotal>
+  <cac:LegalMonetaryTotal>
+    <foo:LineExtensionAmount currencyID="EUR">246.00</foo:LineExtensionAmount>
+    <foo:TaxExclusiveAmount currencyID="EUR">236.00</foo:TaxExclusiveAmount>
+    <foo:TaxInclusiveAmount currencyID="EUR">280.84</foo:TaxInclusiveAmount>
+    <foo:AllowanceTotalAmount currencyID="EUR">10.00</foo:AllowanceTotalAmount>
+    <foo:PrepaidAmount currencyID="EUR">50.00</foo:PrepaidAmount>
+    <foo:PayableRoundingAmount currencyID="EUR">-0.03</foo:PayableRoundingAmount>
+    <foo:PayableAmount currencyID="EUR">230.81</foo:PayableAmount>
+  </cac:LegalMonetaryTotal>
+  <cac:InvoiceLine>
+    <foo:ID>1</foo:ID>
+    <foo:Note>line note</foo:Note>
+    <foo:InvoicedQuantity unitCode="C62">2</foo:InvoicedQuantity>
+    <foo:LineExtensionAmount currencyID="EUR">198.00</foo:LineExtensionAmount>
+    <foo:AccountingCost>LINE-ACC-1</foo:AccountingCost>
+    <cac:InvoicePeriod>
+      <foo:StartDate>2026-01-01</foo:StartDate>
+      <foo:EndDate>2026-01-31</foo:EndDate>
+    </cac:InvoicePeriod>
+    <cac:OrderLineReference>
+      <foo:LineID>OL-1</foo:LineID>
+    </cac:OrderLineReference>
+    <cac:AllowanceCharge>
+      <foo:ChargeIndicator>false</foo:ChargeIndicator>
+      <foo:AllowanceChargeReason>line discount</foo:AllowanceChargeReason>
+      <foo:Amount currencyID="EUR">2.00</foo:Amount>
+    </cac:AllowanceCharge>
+    <cac:Item>
+      <foo:Description>Item description</foo:Description>
+      <foo:Name>Item name</foo:Name>
+      <cac:BuyersItemIdentification>
+        <foo:ID>BUYER-ITEM-1</foo:ID>
+      </cac:BuyersItemIdentification>
+      <cac:SellersItemIdentification>
+        <foo:ID>SELLER-ITEM-1</foo:ID>
+      </cac:SellersItemIdentification>
+      <cac:StandardItemIdentification>
+        <foo:ID schemeID="0088">1234567890128</foo:ID>
+      </cac:StandardItemIdentification>
+      <cac:OriginCountry>
+        <foo:IdentificationCode>DE</foo:IdentificationCode>
+      </cac:OriginCountry>
+      <cac:CommodityClassification>
+        <foo:ItemClassificationCode listID="ZZZ">65434</foo:ItemClassificationCode>
+      </cac:CommodityClassification>
+      <cac:ClassifiedTaxCategory>
+        <foo:ID>S</foo:ID>
+        <foo:Percent>19</foo:Percent>
+        <cac:TaxScheme>
+          <foo:ID>VAT</foo:ID>
+        </cac:TaxScheme>
+      </cac:ClassifiedTaxCategory>
+      <cac:AdditionalItemProperty>
+        <foo:Name>Color</foo:Name>
+        <foo:Value>Blue</foo:Value>
+      </cac:AdditionalItemProperty>
+    </cac:Item>
+    <cac:Price>
+      <foo:PriceAmount currencyID="EUR">100.00</foo:PriceAmount>
+    </cac:Price>
+  </cac:InvoiceLine>
+  <cac:InvoiceLine>
+    <foo:ID>2</foo:ID>
+    <foo:Note>line note</foo:Note>
+    <foo:InvoicedQuantity unitCode="C62">1</foo:InvoicedQuantity>
+    <foo:LineExtensionAmount currencyID="EUR">48.00</foo:LineExtensionAmount>
+    <foo:AccountingCost>LINE-ACC-1</foo:AccountingCost>
+    <cac:InvoicePeriod>
+      <foo:StartDate>2026-01-01</foo:StartDate>
+      <foo:EndDate>2026-01-31</foo:EndDate>
+    </cac:InvoicePeriod>
+    <cac:OrderLineReference>
+      <foo:LineID>OL-1</foo:LineID>
+    </cac:OrderLineReference>
+    <cac:AllowanceCharge>
+      <foo:ChargeIndicator>false</foo:ChargeIndicator>
+      <foo:AllowanceChargeReason>line discount</foo:AllowanceChargeReason>
+      <foo:Amount currencyID="EUR">2.00</foo:Amount>
+    </cac:AllowanceCharge>
+    <cac:Item>
+      <foo:Description>Item description</foo:Description>
+      <foo:Name>Item name</foo:Name>
+      <cac:BuyersItemIdentification>
+        <foo:ID>BUYER-ITEM-1</foo:ID>
+      </cac:BuyersItemIdentification>
+      <cac:SellersItemIdentification>
+        <foo:ID>SELLER-ITEM-1</foo:ID>
+      </cac:SellersItemIdentification>
+      <cac:StandardItemIdentification>
+        <foo:ID schemeID="0088">1234567890128</foo:ID>
+      </cac:StandardItemIdentification>
+      <cac:OriginCountry>
+        <foo:IdentificationCode>DE</foo:IdentificationCode>
+      </cac:OriginCountry>
+      <cac:CommodityClassification>
+        <foo:ItemClassificationCode listID="ZZZ">65434</foo:ItemClassificationCode>
+      </cac:CommodityClassification>
+      <cac:ClassifiedTaxCategory>
+        <foo:ID>S</foo:ID>
+        <foo:Percent>19</foo:Percent>
+        <cac:TaxScheme>
+          <foo:ID>VAT</foo:ID>
+        </cac:TaxScheme>
+      </cac:ClassifiedTaxCategory>
+      <cac:AdditionalItemProperty>
+        <foo:Name>Color</foo:Name>
+        <foo:Value>Blue</foo:Value>
+      </cac:AdditionalItemProperty>
+    </cac:Item>
+    <cac:Price>
+      <foo:PriceAmount currencyID="EUR">50.00</foo:PriceAmount>
+    </cac:Price>
+  </cac:InvoiceLine>
+</Invoice>

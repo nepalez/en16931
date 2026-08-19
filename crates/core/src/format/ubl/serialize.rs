@@ -4,15 +4,16 @@ use crate::format::trace::Trace;
 use crate::format::ubl::{CAC, CBC, INV, prefix};
 use crate::prelude::*;
 use crate::{
-    Adjustment, AdjustmentAmount, AdjustmentReason, BinaryObject, Buyer, Contact, Delivery,
-    Dictionary, DocumentBuilder, ElectronicAddress, Invoice, InvoiceLine, Item, LegalEntity,
-    LineAdjustment, Namespace, Note, ObjectReference, OperationalEntity, Payee, PaymentDetails,
-    PaymentInstructions, Period, PostalAddress, PrecedingInvoice, Seller, SupportingDocument,
-    TaxRepresentative, Term, VatPoint, VatTreatment,
+    Abbreviations, Adjustment, AdjustmentAmount, AdjustmentReason, BinaryObject, Buyer, Contact,
+    Delivery, Dictionary, DocumentBuilder, ElectronicAddress, Invoice, InvoiceLine, Item,
+    LegalEntity, LineAdjustment, Namespace, Note, ObjectReference, OperationalEntity, Payee,
+    PaymentDetails, PaymentInstructions, Period, PostalAddress, PrecedingInvoice, Seller,
+    SupportingDocument, TaxRepresentative, Term, VatPoint, VatTreatment,
 };
 
-/// Serializes a `DocumentBuilder` to UBL XML, returning the document and its dictionary.
-pub(crate) fn serialize(builder: &DocumentBuilder) -> (String, Dictionary) {
+/// Serializes a `DocumentBuilder` to UBL XML,
+/// returning the document, its dictionary, and its abbreviations.
+pub(crate) fn serialize(builder: &DocumentBuilder) -> (String, Dictionary, Abbreviations) {
     let mut serializer = Serializer::new(builder);
     serializer.document(builder);
     serializer.finish()
@@ -50,6 +51,7 @@ fn note_text(note: &Note, drop_subject: bool) -> String {
 struct Serializer {
     inner: Writer<Vec<u8>>,
     trace: Trace,
+    abbreviations: Abbreviations,
     forbidden: &'static [Term],
     currency: &'static str,
 }
@@ -59,14 +61,15 @@ impl Serializer {
         Self {
             inner: Writer::new(Vec::new()),
             trace: Trace::new(),
+            abbreviations: Abbreviations::default(),
             forbidden: builder.profile.forbidden_terms(),
             currency: builder.invoice.currency.code(),
         }
     }
 
-    fn finish(self) -> (String, Dictionary) {
+    fn finish(self) -> (String, Dictionary, Abbreviations) {
         let xml = String::from_utf8(self.inner.into_inner()).expect("quick-xml emits valid UTF-8");
-        (xml, self.trace.into_dictionary())
+        (xml, self.trace.into_dictionary(), self.abbreviations)
     }
 
     // Whether the profile forbids the term of a node about to be written.
@@ -83,6 +86,11 @@ impl Serializer {
             ("xmlns:cbc", CBC.uri()),
         ]);
         self.write(Event::Start(root));
+        for namespace in [INV, CAC, CBC] {
+            self.abbreviations
+                .declare(prefix(namespace), namespace)
+                .expect("the writer binds each abbreviation to one namespace");
+        }
         self.trace.enter(INV, "Invoice");
         self.trace.record_root();
 

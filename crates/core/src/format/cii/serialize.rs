@@ -2,15 +2,16 @@ use crate::format::cii::{QDT_PREFIX, QDT_URI, RAM, RSM, UDT_PREFIX, UDT_URI, pre
 use crate::format::trace::Trace;
 use crate::prelude::*;
 use crate::{
-    Adjustment, AdjustmentAmount, AdjustmentReason, Buyer, Contact, Delivery, Dictionary,
-    DocumentBuilder, ElectronicAddress, Invoice, InvoiceLine, Item, LegalEntity, LineAdjustment,
-    Namespace, NonEmptyString, OperationalEntity, Payee, PaymentDetails, PaymentInstructions,
-    Period, PostalAddress, PrecedingInvoice, Seller, TaxRepresentative, Term, VatPoint,
-    VatTreatment,
+    Abbreviations, Adjustment, AdjustmentAmount, AdjustmentReason, Buyer, Contact, Delivery,
+    Dictionary, DocumentBuilder, ElectronicAddress, Invoice, InvoiceLine, Item, LegalEntity,
+    LineAdjustment, Namespace, NonEmptyString, OperationalEntity, Payee, PaymentDetails,
+    PaymentInstructions, Period, PostalAddress, PrecedingInvoice, Seller, TaxRepresentative, Term,
+    VatPoint, VatTreatment,
 };
 
-/// Serializes a `DocumentBuilder` to CII XML, returning the document and its dictionary.
-pub(crate) fn serialize(builder: &DocumentBuilder) -> (String, Dictionary) {
+/// Serializes a `DocumentBuilder` to CII XML,
+/// returning the document, its dictionary, and its abbreviations.
+pub(crate) fn serialize(builder: &DocumentBuilder) -> (String, Dictionary, Abbreviations) {
     let mut serializer = Serializer::new(builder);
     serializer.document(builder);
     serializer.finish()
@@ -40,6 +41,7 @@ fn plain(value: Decimal) -> String {
 struct Serializer {
     inner: Writer<Vec<u8>>,
     trace: Trace,
+    abbreviations: Abbreviations,
     forbidden: &'static [Term],
     currency: &'static str,
 }
@@ -49,14 +51,15 @@ impl Serializer {
         Self {
             inner: Writer::new(Vec::new()),
             trace: Trace::new(),
+            abbreviations: Abbreviations::default(),
             forbidden: builder.profile.forbidden_terms(),
             currency: builder.invoice.currency.code(),
         }
     }
 
-    fn finish(self) -> (String, Dictionary) {
+    fn finish(self) -> (String, Dictionary, Abbreviations) {
         let xml = String::from_utf8(self.inner.into_inner()).expect("quick-xml emits valid UTF-8");
-        (xml, self.trace.into_dictionary())
+        (xml, self.trace.into_dictionary(), self.abbreviations)
     }
 
     fn is_forbidden(&self, term: Term) -> bool {
@@ -73,6 +76,12 @@ impl Serializer {
             ("xmlns:qdt", QDT_URI),
         ]);
         self.write(Event::Start(root));
+        // The datatype carriers stay out: no record-form path names them.
+        for namespace in [RSM, RAM] {
+            self.abbreviations
+                .declare(prefix(namespace), namespace)
+                .expect("the writer binds each abbreviation to one namespace");
+        }
         self.trace.enter(RSM, "CrossIndustryInvoice");
         self.trace.record_root();
 

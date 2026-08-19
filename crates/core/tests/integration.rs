@@ -200,7 +200,7 @@ fn post(url: &str, headers: &[(&str, &str)], body: String) -> String {
 #[test]
 #[ignore = "requires live validators (cargo make env-up)"]
 fn validates_ubl_against_kosit() {
-    let (xml, _) = Binding::Ubl.serialize(&document(Profile::XRechnung30, Binding::Ubl));
+    let (xml, _, _) = Binding::Ubl.serialize(&document(Profile::XRechnung30, Binding::Ubl));
     let body = post(&kosit_url(), &[("Content-Type", "application/xml")], xml);
 
     assert!(
@@ -212,7 +212,7 @@ fn validates_ubl_against_kosit() {
 #[test]
 #[ignore = "requires live validators (cargo make env-up)"]
 fn validates_cii_against_kosit() {
-    let (xml, _) = Binding::Cii.serialize(&document(Profile::XRechnung30, Binding::Cii));
+    let (xml, _, _) = Binding::Cii.serialize(&document(Profile::XRechnung30, Binding::Cii));
     let body = post(&kosit_url(), &[("Content-Type", "application/xml")], xml);
 
     assert!(
@@ -224,7 +224,7 @@ fn validates_cii_against_kosit() {
 #[test]
 #[ignore = "requires live validators (cargo make env-up)"]
 fn validates_ubl_against_phive() {
-    let (xml, _) = Binding::Ubl.serialize(&document(Profile::PeppolBisBilling30, Binding::Ubl));
+    let (xml, _, _) = Binding::Ubl.serialize(&document(Profile::PeppolBisBilling30, Binding::Ubl));
     let url = std::env::var("PHIVE_URL").unwrap_or_else(|_| "http://localhost:8083".to_owned())
         + "/api/validate/eu.peppol.bis3:invoice:latest";
     let token = std::env::var("PHIVE_TOKEN").unwrap_or_else(|_| "phorm-dev-token".to_owned());

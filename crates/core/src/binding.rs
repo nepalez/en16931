@@ -1,6 +1,6 @@
 use crate::format::{cii, ubl};
 use crate::prelude::*;
-use crate::{Dictionary, DocumentBuilder, Error, Namespace};
+use crate::{Abbreviations, Dictionary, DocumentBuilder, Error, Namespace};
 
 /// A serialization binding: one of the two EN-16931 XML syntaxes.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -29,8 +29,9 @@ impl Binding {
     }
 
     /// Serializes a `DocumentBuilder` to this binding's XML.
-    /// Returns the XML along with the dictionary binding its nodes to the document's.
-    pub fn serialize(self, builder: &DocumentBuilder) -> (String, Dictionary) {
+    /// Returns the XML along with the dictionary binding its nodes to the document's,
+    /// and the abbreviations its own namespace declarations bind.
+    pub fn serialize(self, builder: &DocumentBuilder) -> (String, Dictionary, Abbreviations) {
         match self {
             Self::Ubl => ubl::serialize(builder),
             Self::Cii => cii::serialize(builder),
@@ -38,11 +39,16 @@ impl Binding {
     }
 
     /// Parses a `DocumentBuilder` from this binding's XML,
-    /// rebuilding the dictionary on the inverse path.
+    /// rebuilding the dictionary and the abbreviations on the inverse path.
     /// The profile is recovered from `BT-24`.
     ///
     /// A malformed document yields `Error::MalformedXml`.
-    pub fn deserialize(self, xml: &str) -> Result<(DocumentBuilder, Dictionary), Error> {
+    /// An abbreviation the document binds to a second namespace
+    /// yields `Error::AmbiguousAbbreviation`.
+    pub fn deserialize(
+        self,
+        xml: &str,
+    ) -> Result<(DocumentBuilder, Dictionary, Abbreviations), Error> {
         match self {
             Self::Ubl => ubl::deserialize(xml),
             Self::Cii => cii::deserialize(xml),

@@ -1,0 +1,371 @@
+<rsm:CrossIndustryInvoice xmlns:rsm="urn:un:unece:uncefact:data:standard:CrossIndustryInvoice:100" xmlns:bar="urn:un:unece:uncefact:data:standard:ReusableAggregateBusinessInformationEntity:100" xmlns:udt="urn:un:unece:uncefact:data:standard:UnqualifiedDataType:100" xmlns:qdt="urn:un:unece:uncefact:data:standard:QualifiedDataType:100">
+  <rsm:ExchangedDocumentContext>
+    <bar:BusinessProcessSpecifiedDocumentContextParameter>
+      <bar:ID>urn:fdc:peppol.eu:2017:poacc:billing:01:1.0</bar:ID>
+    </bar:BusinessProcessSpecifiedDocumentContextParameter>
+    <bar:GuidelineSpecifiedDocumentContextParameter>
+      <bar:ID>urn:cen.eu:en16931:2017</bar:ID>
+    </bar:GuidelineSpecifiedDocumentContextParameter>
+  </rsm:ExchangedDocumentContext>
+  <rsm:ExchangedDocument>
+    <bar:ID>INV-2026-001</bar:ID>
+    <bar:TypeCode>380</bar:TypeCode>
+    <bar:IssueDateTime>
+      <udt:DateTimeString format="102">20260115</udt:DateTimeString>
+    </bar:IssueDateTime>
+    <bar:IncludedNote>
+      <bar:Content>General note text</bar:Content>
+      <bar:SubjectCode>AAB</bar:SubjectCode>
+    </bar:IncludedNote>
+  </rsm:ExchangedDocument>
+  <rsm:SupplyChainTradeTransaction>
+    <bar:IncludedSupplyChainTradeLineItem>
+      <bar:AssociatedDocumentLineDocument>
+        <bar:LineID>1</bar:LineID>
+        <bar:IncludedNote>
+          <bar:Content>line note</bar:Content>
+        </bar:IncludedNote>
+      </bar:AssociatedDocumentLineDocument>
+      <bar:SpecifiedTradeProduct>
+        <bar:GlobalID schemeID="0088">1234567890128</bar:GlobalID>
+        <bar:SellerAssignedID>SELLER-ITEM-1</bar:SellerAssignedID>
+        <bar:BuyerAssignedID>BUYER-ITEM-1</bar:BuyerAssignedID>
+        <bar:Name>Item name</bar:Name>
+        <bar:Description>Item description</bar:Description>
+        <bar:ApplicableProductCharacteristic>
+          <bar:Description>Color</bar:Description>
+          <bar:Value>Blue</bar:Value>
+        </bar:ApplicableProductCharacteristic>
+        <bar:DesignatedProductClassification>
+          <bar:ClassCode listID="ZZZ">65434</bar:ClassCode>
+        </bar:DesignatedProductClassification>
+        <bar:OriginTradeCountry>
+          <bar:ID>DE</bar:ID>
+        </bar:OriginTradeCountry>
+      </bar:SpecifiedTradeProduct>
+      <bar:SpecifiedLineTradeAgreement>
+        <bar:BuyerOrderReferencedDocument>
+          <bar:LineID>OL-1</bar:LineID>
+        </bar:BuyerOrderReferencedDocument>
+        <bar:GrossPriceProductTradePrice>
+          <bar:ChargeAmount>100.00</bar:ChargeAmount>
+        </bar:GrossPriceProductTradePrice>
+        <bar:NetPriceProductTradePrice>
+          <bar:ChargeAmount>100.00</bar:ChargeAmount>
+        </bar:NetPriceProductTradePrice>
+      </bar:SpecifiedLineTradeAgreement>
+      <bar:SpecifiedLineTradeDelivery>
+        <bar:BilledQuantity unitCode="C62">2</bar:BilledQuantity>
+      </bar:SpecifiedLineTradeDelivery>
+      <bar:SpecifiedLineTradeSettlement>
+        <bar:ApplicableTradeTax>
+          <bar:TypeCode>VAT</bar:TypeCode>
+          <bar:CategoryCode>S</bar:CategoryCode>
+          <bar:RateApplicablePercent>19</bar:RateApplicablePercent>
+        </bar:ApplicableTradeTax>
+        <bar:BillingSpecifiedPeriod>
+          <bar:StartDateTime>
+            <udt:DateTimeString format="102">20260101</udt:DateTimeString>
+          </bar:StartDateTime>
+          <bar:EndDateTime>
+            <udt:DateTimeString format="102">20260131</udt:DateTimeString>
+          </bar:EndDateTime>
+        </bar:BillingSpecifiedPeriod>
+        <bar:SpecifiedTradeAllowanceCharge>
+          <bar:ChargeIndicator>
+            <udt:Indicator>false</udt:Indicator>
+          </bar:ChargeIndicator>
+          <bar:ActualAmount>2.00</bar:ActualAmount>
+          <bar:Reason>line discount</bar:Reason>
+        </bar:SpecifiedTradeAllowanceCharge>
+        <bar:SpecifiedTradeSettlementLineMonetarySummation>
+          <bar:LineTotalAmount>198.00</bar:LineTotalAmount>
+        </bar:SpecifiedTradeSettlementLineMonetarySummation>
+        <bar:ReceivableSpecifiedTradeAccountingAccount>
+          <bar:ID>LINE-ACC-1</bar:ID>
+        </bar:ReceivableSpecifiedTradeAccountingAccount>
+      </bar:SpecifiedLineTradeSettlement>
+    </bar:IncludedSupplyChainTradeLineItem>
+    <bar:IncludedSupplyChainTradeLineItem>
+      <bar:AssociatedDocumentLineDocument>
+        <bar:LineID>2</bar:LineID>
+        <bar:IncludedNote>
+          <bar:Content>line note</bar:Content>
+        </bar:IncludedNote>
+      </bar:AssociatedDocumentLineDocument>
+      <bar:SpecifiedTradeProduct>
+        <bar:GlobalID schemeID="0088">1234567890128</bar:GlobalID>
+        <bar:SellerAssignedID>SELLER-ITEM-1</bar:SellerAssignedID>
+        <bar:BuyerAssignedID>BUYER-ITEM-1</bar:BuyerAssignedID>
+        <bar:Name>Item name</bar:Name>
+        <bar:Description>Item description</bar:Description>
+        <bar:ApplicableProductCharacteristic>
+          <bar:Description>Color</bar:Description>
+          <bar:Value>Blue</bar:Value>
+        </bar:ApplicableProductCharacteristic>
+        <bar:DesignatedProductClassification>
+          <bar:ClassCode listID="ZZZ">65434</bar:ClassCode>
+        </bar:DesignatedProductClassification>
+        <bar:OriginTradeCountry>
+          <bar:ID>DE</bar:ID>
+        </bar:OriginTradeCountry>
+      </bar:SpecifiedTradeProduct>
+      <bar:SpecifiedLineTradeAgreement>
+        <bar:BuyerOrderReferencedDocument>
+          <bar:LineID>OL-1</bar:LineID>
+        </bar:BuyerOrderReferencedDocument>
+        <bar:GrossPriceProductTradePrice>
+          <bar:ChargeAmount>50.00</bar:ChargeAmount>
+        </bar:GrossPriceProductTradePrice>
+        <bar:NetPriceProductTradePrice>
+          <bar:ChargeAmount>50.00</bar:ChargeAmount>
+        </bar:NetPriceProductTradePrice>
+      </bar:SpecifiedLineTradeAgreement>
+      <bar:SpecifiedLineTradeDelivery>
+        <bar:BilledQuantity unitCode="C62">1</bar:BilledQuantity>
+      </bar:SpecifiedLineTradeDelivery>
+      <bar:SpecifiedLineTradeSettlement>
+        <bar:ApplicableTradeTax>
+          <bar:TypeCode>VAT</bar:TypeCode>
+          <bar:CategoryCode>S</bar:CategoryCode>
+          <bar:RateApplicablePercent>19</bar:RateApplicablePercent>
+        </bar:ApplicableTradeTax>
+        <bar:BillingSpecifiedPeriod>
+          <bar:StartDateTime>
+            <udt:DateTimeString format="102">20260101</udt:DateTimeString>
+          </bar:StartDateTime>
+          <bar:EndDateTime>
+            <udt:DateTimeString format="102">20260131</udt:DateTimeString>
+          </bar:EndDateTime>
+        </bar:BillingSpecifiedPeriod>
+        <bar:SpecifiedTradeAllowanceCharge>
+          <bar:ChargeIndicator>
+            <udt:Indicator>false</udt:Indicator>
+          </bar:ChargeIndicator>
+          <bar:ActualAmount>2.00</bar:ActualAmount>
+          <bar:Reason>line discount</bar:Reason>
+        </bar:SpecifiedTradeAllowanceCharge>
+        <bar:SpecifiedTradeSettlementLineMonetarySummation>
+          <bar:LineTotalAmount>48.00</bar:LineTotalAmount>
+        </bar:SpecifiedTradeSettlementLineMonetarySummation>
+        <bar:ReceivableSpecifiedTradeAccountingAccount>
+          <bar:ID>LINE-ACC-1</bar:ID>
+        </bar:ReceivableSpecifiedTradeAccountingAccount>
+      </bar:SpecifiedLineTradeSettlement>
+    </bar:IncludedSupplyChainTradeLineItem>
+    <bar:ApplicableHeaderTradeAgreement>
+      <bar:BuyerReference>BUYER-REF-01</bar:BuyerReference>
+      <bar:SellerTradeParty>
+        <bar:GlobalID schemeID="0088">SELLER-ID-1</bar:GlobalID>
+        <bar:Name>Seller Official Name Ltd</bar:Name>
+        <bar:Description>Registered in Berlin</bar:Description>
+        <bar:SpecifiedLegalOrganization>
+          <bar:ID>DE12345</bar:ID>
+          <bar:TradingBusinessName>SellerTrading</bar:TradingBusinessName>
+        </bar:SpecifiedLegalOrganization>
+        <bar:DefinedTradeContact>
+          <bar:PersonName>Anna Seller</bar:PersonName>
+          <bar:TelephoneUniversalCommunication>
+            <bar:CompleteNumber>+49 30 1234</bar:CompleteNumber>
+          </bar:TelephoneUniversalCommunication>
+          <bar:EmailURIUniversalCommunication>
+            <bar:URIID>anna@example.de</bar:URIID>
+          </bar:EmailURIUniversalCommunication>
+        </bar:DefinedTradeContact>
+        <bar:PostalTradeAddress>
+          <bar:PostcodeCode>10115</bar:PostcodeCode>
+          <bar:LineOne>Main street 1</bar:LineOne>
+          <bar:LineTwo>Building A</bar:LineTwo>
+          <bar:LineThree>Floor 2</bar:LineThree>
+          <bar:CityName>Berlin</bar:CityName>
+          <bar:CountryID>DE</bar:CountryID>
+          <bar:CountrySubDivisionName>Berlin region</bar:CountrySubDivisionName>
+        </bar:PostalTradeAddress>
+        <bar:URIUniversalCommunication>
+          <bar:URIID schemeID="EM">seller@example.de</bar:URIID>
+        </bar:URIUniversalCommunication>
+        <bar:SpecifiedTaxRegistration>
+          <bar:ID schemeID="VA">DE123456789</bar:ID>
+        </bar:SpecifiedTaxRegistration>
+        <bar:SpecifiedTaxRegistration>
+          <bar:ID schemeID="FC">TAX-REG-9</bar:ID>
+        </bar:SpecifiedTaxRegistration>
+      </bar:SellerTradeParty>
+      <bar:BuyerTradeParty>
+        <bar:ID>BUYER-ID-1</bar:ID>
+        <bar:Name>Buyer Official Name</bar:Name>
+        <bar:SpecifiedLegalOrganization>
+          <bar:ID>FR98765</bar:ID>
+          <bar:TradingBusinessName>BuyerTrading</bar:TradingBusinessName>
+        </bar:SpecifiedLegalOrganization>
+        <bar:DefinedTradeContact>
+          <bar:PersonName>Bob Buyer</bar:PersonName>
+          <bar:TelephoneUniversalCommunication>
+            <bar:CompleteNumber>+33 1 9876</bar:CompleteNumber>
+          </bar:TelephoneUniversalCommunication>
+          <bar:EmailURIUniversalCommunication>
+            <bar:URIID>bob@example.fr</bar:URIID>
+          </bar:EmailURIUniversalCommunication>
+        </bar:DefinedTradeContact>
+        <bar:PostalTradeAddress>
+          <bar:PostcodeCode>10115</bar:PostcodeCode>
+          <bar:LineOne>Rue centrale 2</bar:LineOne>
+          <bar:LineTwo>Building A</bar:LineTwo>
+          <bar:LineThree>Floor 2</bar:LineThree>
+          <bar:CityName>Berlin</bar:CityName>
+          <bar:CountryID>FR</bar:CountryID>
+          <bar:CountrySubDivisionName>Berlin region</bar:CountrySubDivisionName>
+        </bar:PostalTradeAddress>
+        <bar:URIUniversalCommunication>
+          <bar:URIID schemeID="EM">buyer@example.fr</bar:URIID>
+        </bar:URIUniversalCommunication>
+        <bar:SpecifiedTaxRegistration>
+          <bar:ID schemeID="VA">FR12345678901</bar:ID>
+        </bar:SpecifiedTaxRegistration>
+      </bar:BuyerTradeParty>
+      <bar:SellerTaxRepresentativeTradeParty>
+        <bar:Name>Tax Rep Name</bar:Name>
+        <bar:PostalTradeAddress>
+          <bar:PostcodeCode>10115</bar:PostcodeCode>
+          <bar:LineOne>Rep street 3</bar:LineOne>
+          <bar:LineTwo>Building A</bar:LineTwo>
+          <bar:LineThree>Floor 2</bar:LineThree>
+          <bar:CityName>Berlin</bar:CityName>
+          <bar:CountryID>DE</bar:CountryID>
+          <bar:CountrySubDivisionName>Berlin region</bar:CountrySubDivisionName>
+        </bar:PostalTradeAddress>
+        <bar:SpecifiedTaxRegistration>
+          <bar:ID schemeID="VA">DE999888777</bar:ID>
+        </bar:SpecifiedTaxRegistration>
+      </bar:SellerTaxRepresentativeTradeParty>
+      <bar:SellerOrderReferencedDocument>
+        <bar:IssuerAssignedID>SO-2026-3</bar:IssuerAssignedID>
+      </bar:SellerOrderReferencedDocument>
+      <bar:BuyerOrderReferencedDocument>
+        <bar:IssuerAssignedID>PO-2026-9</bar:IssuerAssignedID>
+      </bar:BuyerOrderReferencedDocument>
+      <bar:ContractReferencedDocument>
+        <bar:IssuerAssignedID>CONTRACT-7</bar:IssuerAssignedID>
+      </bar:ContractReferencedDocument>
+      <bar:AdditionalReferencedDocument>
+        <bar:IssuerAssignedID>OBJ-100</bar:IssuerAssignedID>
+        <bar:TypeCode>130</bar:TypeCode>
+      </bar:AdditionalReferencedDocument>
+      <bar:AdditionalReferencedDocument>
+        <bar:IssuerAssignedID>TENDER-1</bar:IssuerAssignedID>
+        <bar:TypeCode>50</bar:TypeCode>
+      </bar:AdditionalReferencedDocument>
+      <bar:AdditionalReferencedDocument>
+        <bar:IssuerAssignedID>DOC-REF-1</bar:IssuerAssignedID>
+        <bar:URIID>https://example.com/doc.pdf</bar:URIID>
+        <bar:TypeCode>916</bar:TypeCode>
+        <bar:Name>Supporting document</bar:Name>
+      </bar:AdditionalReferencedDocument>
+      <bar:SpecifiedProcuringProject>
+        <bar:ID>PROJECT-42</bar:ID>
+        <bar:Name>Project</bar:Name>
+      </bar:SpecifiedProcuringProject>
+    </bar:ApplicableHeaderTradeAgreement>
+    <bar:ApplicableHeaderTradeDelivery>
+      <bar:ShipToTradeParty>
+        <bar:ID>LOC-1</bar:ID>
+        <bar:Name>Delivery Party</bar:Name>
+        <bar:PostalTradeAddress>
+          <bar:PostcodeCode>10115</bar:PostcodeCode>
+          <bar:LineOne>Delivery street 4</bar:LineOne>
+          <bar:LineTwo>Building A</bar:LineTwo>
+          <bar:LineThree>Floor 2</bar:LineThree>
+          <bar:CityName>Berlin</bar:CityName>
+          <bar:CountryID>DE</bar:CountryID>
+          <bar:CountrySubDivisionName>Berlin region</bar:CountrySubDivisionName>
+        </bar:PostalTradeAddress>
+      </bar:ShipToTradeParty>
+      <bar:ActualDeliverySupplyChainEvent>
+        <bar:OccurrenceDateTime>
+          <udt:DateTimeString format="102">20260120</udt:DateTimeString>
+        </bar:OccurrenceDateTime>
+      </bar:ActualDeliverySupplyChainEvent>
+      <bar:DespatchAdviceReferencedDocument>
+        <bar:IssuerAssignedID>DESADV-2</bar:IssuerAssignedID>
+      </bar:DespatchAdviceReferencedDocument>
+      <bar:ReceivingAdviceReferencedDocument>
+        <bar:IssuerAssignedID>RECADV-2</bar:IssuerAssignedID>
+      </bar:ReceivingAdviceReferencedDocument>
+    </bar:ApplicableHeaderTradeDelivery>
+    <bar:ApplicableHeaderTradeSettlement>
+      <bar:PaymentReference>PAY-REF-1</bar:PaymentReference>
+      <bar:InvoiceCurrencyCode>EUR</bar:InvoiceCurrencyCode>
+      <bar:PayeeTradeParty>
+        <bar:ID>PAYEE-ID</bar:ID>
+        <bar:Name>Payee Name</bar:Name>
+        <bar:SpecifiedLegalOrganization>
+          <bar:ID>PAYEE-LE</bar:ID>
+        </bar:SpecifiedLegalOrganization>
+      </bar:PayeeTradeParty>
+      <bar:SpecifiedTradeSettlementPaymentMeans>
+        <bar:TypeCode>30</bar:TypeCode>
+        <bar:Information>Credit transfer</bar:Information>
+        <bar:PayeePartyCreditorFinancialAccount>
+          <bar:IBANID>DE89370400440532013000</bar:IBANID>
+          <bar:AccountName>Seller Account</bar:AccountName>
+        </bar:PayeePartyCreditorFinancialAccount>
+        <bar:PayeeSpecifiedCreditorFinancialInstitution>
+          <bar:BICID>DEUTDEFF</bar:BICID>
+        </bar:PayeeSpecifiedCreditorFinancialInstitution>
+      </bar:SpecifiedTradeSettlementPaymentMeans>
+      <bar:ApplicableTradeTax>
+        <bar:CalculatedAmount>44.84</bar:CalculatedAmount>
+        <bar:TypeCode>VAT</bar:TypeCode>
+        <bar:BasisAmount>236.00</bar:BasisAmount>
+        <bar:CategoryCode>S</bar:CategoryCode>
+        <bar:RateApplicablePercent>19</bar:RateApplicablePercent>
+      </bar:ApplicableTradeTax>
+      <bar:BillingSpecifiedPeriod>
+        <bar:StartDateTime>
+          <udt:DateTimeString format="102">20260101</udt:DateTimeString>
+        </bar:StartDateTime>
+        <bar:EndDateTime>
+          <udt:DateTimeString format="102">20260131</udt:DateTimeString>
+        </bar:EndDateTime>
+      </bar:BillingSpecifiedPeriod>
+      <bar:SpecifiedTradeAllowanceCharge>
+        <bar:ChargeIndicator>
+          <udt:Indicator>false</udt:Indicator>
+        </bar:ChargeIndicator>
+        <bar:ActualAmount>10.00</bar:ActualAmount>
+        <bar:ReasonCode>95</bar:ReasonCode>
+        <bar:Reason>Loyal customer</bar:Reason>
+        <bar:CategoryTradeTax>
+          <bar:TypeCode>VAT</bar:TypeCode>
+          <bar:CategoryCode>S</bar:CategoryCode>
+          <bar:RateApplicablePercent>19</bar:RateApplicablePercent>
+        </bar:CategoryTradeTax>
+      </bar:SpecifiedTradeAllowanceCharge>
+      <bar:SpecifiedTradePaymentTerms>
+        <bar:Description>Net 30 days</bar:Description>
+        <bar:DueDateDateTime>
+          <udt:DateTimeString format="102">20260215</udt:DateTimeString>
+        </bar:DueDateDateTime>
+      </bar:SpecifiedTradePaymentTerms>
+      <bar:SpecifiedTradeSettlementHeaderMonetarySummation>
+        <bar:LineTotalAmount>246.00</bar:LineTotalAmount>
+        <bar:AllowanceTotalAmount>10.00</bar:AllowanceTotalAmount>
+        <bar:TaxBasisTotalAmount>236.00</bar:TaxBasisTotalAmount>
+        <bar:TaxTotalAmount currencyID="EUR">44.84</bar:TaxTotalAmount>
+        <bar:RoundingAmount>-0.03</bar:RoundingAmount>
+        <bar:GrandTotalAmount>280.84</bar:GrandTotalAmount>
+        <bar:TotalPrepaidAmount>50.00</bar:TotalPrepaidAmount>
+        <bar:DuePayableAmount>230.81</bar:DuePayableAmount>
+      </bar:SpecifiedTradeSettlementHeaderMonetarySummation>
+      <bar:InvoiceReferencedDocument>
+        <bar:IssuerAssignedID>INV-2025-900</bar:IssuerAssignedID>
+        <bar:FormattedIssueDateTime>
+          <qdt:DateTimeString format="102">20251201</qdt:DateTimeString>
+        </bar:FormattedIssueDateTime>
+      </bar:InvoiceReferencedDocument>
+      <bar:ReceivableSpecifiedTradeAccountingAccount>
+        <bar:ID>ACCOUNT-500</bar:ID>
+      </bar:ReceivableSpecifiedTradeAccountingAccount>
+    </bar:ApplicableHeaderTradeSettlement>
+  </rsm:SupplyChainTradeTransaction>
+</rsm:CrossIndustryInvoice>

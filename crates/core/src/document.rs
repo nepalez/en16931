@@ -1,4 +1,4 @@
-use crate::{Binding, Dictionary, DocumentBuilder, Error, Invoice, Profile};
+use crate::{Abbreviations, Binding, Dictionary, DocumentBuilder, Error, Invoice, Profile};
 
 /// The public reporting artifact of the library.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -9,6 +9,8 @@ pub struct Document {
     xml: String,
     // One entry per node the binding handled: record-form path to `Context`.
     dictionary: Dictionary,
+    // The abbreviations a report location of this document may name.
+    abbreviations: Abbreviations,
 }
 
 impl Document {
@@ -19,11 +21,12 @@ impl Document {
     /// one with an unrecognized binding, yields `Error::MalformedXml`.
     pub fn parse(xml: &str) -> Result<Self, Error> {
         let binding = Binding::detect(xml)?;
-        let (builder, dictionary) = binding.deserialize(xml)?;
+        let (builder, dictionary, abbreviations) = binding.deserialize(xml)?;
         Ok(Self {
             builder,
             xml: xml.to_owned(),
             dictionary,
+            abbreviations,
         })
     }
 
@@ -41,6 +44,11 @@ impl Document {
     pub fn binding(&self) -> Binding {
         self.builder.binding
     }
+
+    /// The abbreviations a normalizer resolves a report location against.
+    pub fn abbreviations(&self) -> &Abbreviations {
+        &self.abbreviations
+    }
 }
 
 impl TryFrom<DocumentBuilder> for Document {
@@ -50,11 +58,12 @@ impl TryFrom<DocumentBuilder> for Document {
     ///
     /// The pass renders the XML and fills the dictionary in lockstep.
     fn try_from(builder: DocumentBuilder) -> Result<Self, Self::Error> {
-        let (xml, dictionary) = builder.binding.serialize(&builder);
+        let (xml, dictionary, abbreviations) = builder.binding.serialize(&builder);
         Ok(Self {
             builder,
             xml,
             dictionary,
+            abbreviations,
         })
     }
 }
@@ -97,7 +106,7 @@ mod test {
     #[test]
     fn yields_the_request_parts() {
         let source = builder(Binding::Ubl);
-        let (xml, _) = source.binding.serialize(&source);
+        let (xml, _, _) = source.binding.serialize(&source);
         let document = Document::try_from(source.clone()).expect("a serialized document");
 
         assert_eq!(document.xml(), xml);

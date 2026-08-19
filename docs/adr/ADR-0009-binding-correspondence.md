@@ -20,6 +20,8 @@ What if a location matches no node?
 
 It enters every node, even one that carries no model term. Serialization of a `DocumentBuilder` drives it, and `Document::parse` drives the inverse path. The key is the node's path in record form (ADR-0004). The value is a `Context`. Knowledge of the binding enters only here, through `Binding`.
 
+The same pass yields the abbreviation table of the document (ADR-0004). The keys keep the namespace itself, so a path stays comparable across documents.
+
 The dictionary serves one purpose. It matches a rule violation to a model field following the location where the rule fired. So the dictionary needs only those entries that the rules can refer to. The [CII] datatype namespaces `udt` and `qdt` carry values, like `udt:DateTimeString`, but no rules ever reference them. The `Binding` writes such a wrapper into the XML, yet stores no entry in the dictionary.
 
 `Document::check` resolves each location against the dictionary by a bounded lookup. It never evaluates [XPath]. The location and the keys share the positional record form. So each positional predicate matches the stored index. An incompatible location stays unresolved, which is a library error, not a finding (ADR-0007).
@@ -34,6 +36,10 @@ The dictionary serves one purpose. It matches a rule violation to a model field 
 
 * **Opaque [XPath] string in `Report`.** Each entry keeps the raw location and offers no model-side path. Rejected because it drops the typed-path promise of ADR-0008. It pushes the resolution problem onto every consumer.
 
+* **Abbreviations as the keys.** A location would match a key literally, with no translation at all. Rejected because a dialect that writes the URI would then need the reverse translation. Such a key would also turn specific to one document.
+
+* **Local names and indexes as the keys.** The namespace would be dropped, and a lookup would compare names alone. Rejected because a location of the wrong binding would then match a node of the right name.
+
 ## Consequences
 
 ### Pros
@@ -45,6 +51,7 @@ The dictionary serves one purpose. It matches a rule violation to a model field 
 
 * The dictionary holds an entry per node, growing with document size.
 * `Document` carries the dictionary alongside its `xml`, which complicates its passage through FFI.
+* A location that names an abbreviation resolves it before the lookup can start.
 
 ## References
 
