@@ -9,6 +9,10 @@ pub enum Error {
     MalformedXml(String),
     /// An abbreviation the document binds to a second namespace.
     AmbiguousAbbreviation(String),
+    /// An answer of a validator whose entries could not be read.
+    UnreadableReport(Box<dyn std::error::Error + Send + Sync>),
+    /// An address of a report entry that could not be rewritten into the normalized form.
+    UnreadableLocation(Box<dyn std::error::Error + Send + Sync>),
 }
 
 impl From<ParseError> for Error {
@@ -29,8 +33,24 @@ impl fmt::Display for Error {
             Self::AmbiguousAbbreviation(s) => {
                 write!(formatter, "ambiguous abbreviation: {s}")
             }
+            Self::UnreadableReport(source) => {
+                write!(formatter, "unreadable report: {source}")
+            }
+            Self::UnreadableLocation(source) => {
+                write!(formatter, "unreadable location: {source}")
+            }
         }
     }
 }
 
-impl std::error::Error for Error {}
+impl std::error::Error for Error {
+    /// The failure an extension reported, kept for a consumer that wants its own type.
+    fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
+        match self {
+            Self::UnreadableReport(source) | Self::UnreadableLocation(source) => {
+                Some(source.as_ref())
+            }
+            _ => None,
+        }
+    }
+}

@@ -22,15 +22,15 @@ The library records every path in one form. It is namespace-resolved, dialect-fr
 
 > A [UBL] path and a [CII] path never unify. The record form is binding-specific, not a cross-binding canonical [XPath]. Only the dialect is normalized away.
 
-A per-dialect step rewrites a processor's location into this form. It reads names from the location alone. It needs neither the schema nor the binding, so one such step serves every binding.
+A per-dialect step rewrites a processor's location into a dialect-free address. It reads names, positions and namespaces from the location alone. It needs neither the schema nor the binding, so one such step serves every binding. It resolves nothing, and it drops nothing.
 
-A dialect names the namespace of a step in one of two ways. It writes the full URI, which the step resolves on its own. Or it writes a short abbreviation, which the step resolves through a table.
+A dialect names the namespace of a step in one of two ways. It writes the full URI, or it writes a short abbreviation. The address keeps the form the dialect used.
 
 Such an abbreviation has two origins. One processor copies the abbreviation of the checked document. Another writes the abbreviation of its own rule set. So the binding builds one table per document, holding both origins.
 
-An abbreviation that stands for two namespaces at once is a hard failure of that document.
+The match against a document turns the address into the record form. It resolves a URI on its own, and an abbreviation through that table. Then it walks the dictionary and drops the tail no node answers, an attribute step among them.
 
-The binding enters only when a path is written. The dialect enters only when a report is read.
+An abbreviation that stands for two namespaces at once is a hard failure of that document.
 
 ## Alternatives Considered
 
@@ -54,16 +54,23 @@ The binding enters only when a path is written. The dialect enters only when a r
 ### Cons
 
 * Every supported processor dialect needs its own normalizing step.
-* The abbreviation table travels from the document to the step that reads a report.
+* A normalized address means nothing until a document resolves its namespaces.
 * A document that binds a standard abbreviation to another namespace is rejected.
+* A location deeper than the document points to the nearest node above it.
 
 ## Examples
 
-The normalizer applies one mechanical rewrite. It reads names from the location, and namespaces from the location or the abbreviation table:
+The normalizer applies one mechanical rewrite, copying the name, the namespace and the index of every step:
 
-* `*[local-name()='N' and namespace-uri()='U'][i]` → `Q{U}N[i]`;
-* `p:N[i]` → `Q{U}N[i]`, where `p` resolves to `U` through the abbreviation table;
+* `*[local-name()='N' and namespace-uri()='U'][i]` → the name `N`, the URI `U`, the index `i`;
+* `p:N[i]` → the name `N`, the abbreviation `p`, the index `i`;
 * a step with no index → index `[1]`.
+
+The match then resolves each namespace and drops the tail no node answers:
+
+* the URI `U` → the record-form step `Q{U}N[i]`;
+* the abbreviation `p` → the same step, once the table binds `p` to `U`;
+* a trailing attribute step `/@a` → the path of the element that carries it.
 
 Namespace URIs are abbreviated: UBL by `INV`, `CAC`, `CBC`. CII by `RSM`, `RAM`.
 

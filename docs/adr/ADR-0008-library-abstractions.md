@@ -20,7 +20,7 @@ What abstractions does the library offer to a consumer?
 
 `Document` is the public artifact. It holds a private `builder`, the `xml`, and the `dictionary` from record-form paths to `Context`-s. `TryFrom<DocumentBuilder>` serializes into it, and `Document::parse` detects the binding and reconstructs it. It converts into the `Invoice` through `From<Document>`. A received document must become a business object. An `Invoice` never parses from XML alone.
 
-`RawReport` is the normalized validator output. The core defines its shape and parsing pipeline, through `Wrapper` and `Normalizer` (ADR-0006). A user can build one too.
+`RawReport` is the normalized validator output. The core defines its shape and parsing pipeline, through `Wrapper` and `Normalizer` (ADR-0006). Every entry carries a severity, the rule identifier, the message text, and the address of the reported node. The severity tells an error from a warning. The entry keeps the address twice, as the processor wrote it and in the normalized form. Neither form is resolved yet, which `Document::check` supplies (ADR-0004). A user can build one too.
 
 `Report` is the typed list of findings bound to `Context`-s. `Document::check` extends it from a `RawReport`.
 
