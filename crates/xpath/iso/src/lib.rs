@@ -1,6 +1,11 @@
 //! `Normalizer` for the ISO-skeleton XPath dialect.
 //!
-//! Stub crate. The implementation lands in step 9, where this crate and
-//! `en16931-svrl` form the first working pair on each extension axis.
+//! The crate covers the addresses a processor of that skeleton writes.
+//! It pairs with a wrapper of the service that answered with them.
 
-pub mod prelude;
+mod error;
+mod normalizer;
+mod prelude;
+
+pub use error::Error;
+pub use normalizer::Iso;
