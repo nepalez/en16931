@@ -9,3 +9,7 @@ description = "Wrapper extension for the KoSIT validator envelope"
 
 [dependencies]
 en16931-core.workspace = true
+roxmltree.workspace = true
+
+[dev-dependencies]
+reqwest.workspace = true
