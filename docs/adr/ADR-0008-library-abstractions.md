@@ -22,7 +22,7 @@ What abstractions does the library offer to a consumer?
 
 `RawReport` is the normalized validator output. The core defines its shape and parsing pipeline, through `Wrapper` and `Normalizer` (ADR-0006). Every entry carries a severity, the rule identifier, the message text, and the address of the reported node. The severity tells an error from a warning. The entry keeps the address twice, as the processor wrote it and in the normalized form. Neither form is resolved yet, which `Document::check` supplies (ADR-0004). A user can build one too.
 
-`Report` is the typed list of findings bound to `Context`-s. `Document::check` extends it from a `RawReport`.
+`Report` is the typed list of problems bound to `Context`-s, without references to XML. `Document::check` extends it from a `RawReport`.
 
 `Document::check` binds each location of the `RawReport` to a `Context` through the dictionary. It returns `Result<Result<ValidDocument, InvalidDocument>, Error>`. A separate `Error` covers resolution failures (ADR-0007).
 

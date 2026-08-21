@@ -13,6 +13,9 @@ pub enum Error {
     UnreadableReport(Box<dyn std::error::Error + Send + Sync>),
     /// An address of a report entry that could not be rewritten into the normalized form.
     UnreadableLocation(Box<dyn std::error::Error + Send + Sync>),
+    /// An address of a report entry that binds to no node of the checked document,
+    /// kept as the validator wrote it.
+    UnboundLocation(String),
 }
 
 impl From<ParseError> for Error {
@@ -38,6 +41,9 @@ impl fmt::Display for Error {
             }
             Self::UnreadableLocation(source) => {
                 write!(formatter, "unreadable location: {source}")
+            }
+            Self::UnboundLocation(s) => {
+                write!(formatter, "unbound location: {s}")
             }
         }
     }
