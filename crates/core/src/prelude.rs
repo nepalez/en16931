@@ -8,8 +8,8 @@ pub use mime::Mime;
 pub use num_enum::{IntoPrimitive, TryFromPrimitive};
 pub use parse_display::{Display, FromStr, ParseError};
 pub use quick_xml::{
-    Writer,
-    events::{BytesEnd, BytesStart, BytesText, Event},
+    Error as XmlError, Writer,
+    events::{BytesEnd, BytesStart, BytesText, Event, attributes::AttrError},
     name::ResolveResult,
     reader::NsReader,
 };

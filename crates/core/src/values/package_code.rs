@@ -2630,7 +2630,7 @@ impl FromStr for PackageCode {
     type Err = Error;
 
     fn from_str(value: &str) -> Result<Self, Self::Err> {
-        Self::from_code(value).ok_or_else(|| Error::InvalidValue(format!("{value:?}")))
+        Self::from_code(value).ok_or_else(|| Error::invalid_value(format!("{value:?}")))
     }
 }
 

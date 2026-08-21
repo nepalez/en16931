@@ -45,7 +45,7 @@ impl FromStr for AllowanceReason {
             .parse::<u16>()
             .ok()
             .and_then(|code| Self::try_from(code).ok())
-            .ok_or_else(|| Error::InvalidValue(format!("{value:?}")))
+            .ok_or_else(|| Error::invalid_value(format!("{value:?}")))
     }
 }
 
@@ -70,7 +70,7 @@ impl TryFrom<u32> for AllowanceReason {
         u16::try_from(value)
             .ok()
             .and_then(|code| Self::try_from(code).ok())
-            .ok_or_else(|| Error::InvalidValue(format!("{value:?}")))
+            .ok_or_else(|| Error::invalid_value(format!("{value:?}")))
     }
 }
 
@@ -99,7 +99,7 @@ mod test {
         );
         assert!(matches!(
             AllowanceReason::try_from("999"),
-            Err(Error::InvalidValue(_))
+            Err(Error::InvalidValue { .. })
         ));
     }
 }

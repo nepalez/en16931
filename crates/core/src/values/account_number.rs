@@ -80,7 +80,7 @@ mod test {
     fn rejects_a_blank_value() {
         assert!(matches!(
             "   ".parse::<AccountNumber>(),
-            Err(Error::InvalidValue(_))
+            Err(Error::InvalidValue { .. })
         ));
     }
 

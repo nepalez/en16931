@@ -31,7 +31,7 @@ impl FromStr for Bic {
         if well_formed {
             Ok(Self(code))
         } else {
-            Err(Error::InvalidValue(format!("{value:?}")))
+            Err(Error::invalid_value(format!("{value:?}")))
         }
     }
 }

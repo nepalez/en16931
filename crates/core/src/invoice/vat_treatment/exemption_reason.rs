@@ -223,7 +223,7 @@ mod test {
         );
         assert!(matches!(
             ExemptionReason::try_from("FOO"),
-            Err(Error::InvalidValue(_))
+            Err(Error::InvalidValue { .. })
         ));
     }
 }

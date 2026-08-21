@@ -16,7 +16,7 @@ impl TryFrom<Decimal> for Percentage {
 
     fn try_from(value: Decimal) -> Result<Self, Self::Error> {
         if value < Decimal::ZERO {
-            Err(Error::InvalidValue(format!("{value}")))
+            Err(Error::invalid_value(format!("{value}")))
         } else {
             Ok(Self(value))
         }
@@ -30,7 +30,7 @@ impl FromStr for Percentage {
         let decimal = value
             .trim()
             .parse::<Decimal>()
-            .map_err(|_| Error::InvalidValue(format!("{value:?}")))?;
+            .map_err(|_| Error::invalid_value(format!("{value:?}")))?;
         Self::try_from(decimal)
     }
 }
@@ -75,7 +75,7 @@ mod test {
     fn rejects_a_negative_rate() {
         assert!(matches!(
             "-5".parse::<Percentage>(),
-            Err(Error::InvalidValue(_))
+            Err(Error::InvalidValue { .. })
         ));
     }
 

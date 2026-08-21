@@ -255,7 +255,7 @@ mod test {
         );
         assert!(matches!(
             ElectronicAddressScheme::try_from("ZZ"),
-            Err(Error::InvalidValue(_))
+            Err(Error::InvalidValue { .. })
         ));
     }
 }

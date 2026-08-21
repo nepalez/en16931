@@ -400,7 +400,7 @@ mod test {
         );
         assert!(matches!(
             ChargeReason::try_from("XYZ"),
-            Err(Error::InvalidValue(_))
+            Err(Error::InvalidValue { .. })
         ));
     }
 }

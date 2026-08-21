@@ -19,7 +19,7 @@ impl FromStr for NonEmptyString {
     fn from_str(value: &str) -> Result<Self, Self::Err> {
         let trimmed = value.trim();
         if trimmed.is_empty() {
-            return Err(Error::InvalidValue(format!("{value:?}")));
+            return Err(Error::invalid_value(format!("{value:?}")));
         }
         Ok(Self(trimmed.to_owned()))
     }
@@ -65,7 +65,7 @@ mod test {
     fn rejects_a_blank_value() {
         assert!(matches!(
             "   ".parse::<NonEmptyString>(),
-            Err(Error::InvalidValue(_))
+            Err(Error::InvalidValue { .. })
         ));
     }
 

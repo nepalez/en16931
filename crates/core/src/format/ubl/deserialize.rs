@@ -52,9 +52,7 @@ fn tokenize(xml: &str) -> Result<(Vec<Token>, Abbreviations), Error> {
     let mut tokens = Vec::new();
     let mut abbreviations = Abbreviations::default();
     loop {
-        let (resolved, event) = reader
-            .read_resolved_event()
-            .map_err(|error| Error::MalformedXml(error.to_string()))?;
+        let (resolved, event) = reader.read_resolved_event()?;
         match event {
             Event::Start(start) => {
                 tokens.push(open_token(resolved, &start, &mut abbreviations)?);
@@ -85,17 +83,15 @@ fn open_token(
     abbreviations: &mut Abbreviations,
 ) -> Result<Token, Error> {
     let ResolveResult::Bound(uri) = resolved else {
-        return Err(Error::MalformedXml(
-            "an element has no namespace".to_owned(),
-        ));
+        return Err(Error::malformed_xml("an element has no namespace"));
     };
     let uri = String::from_utf8_lossy(uri.into_inner());
     let namespace = Namespace::from_uri(&uri)
-        .ok_or_else(|| Error::MalformedXml(format!("unknown namespace: {uri}")))?;
+        .ok_or_else(|| Error::malformed_xml(format!("unknown namespace: {uri}")))?;
     let name = String::from_utf8_lossy(start.local_name().as_ref()).into_owned();
     let mut attributes = Vec::new();
     for attribute in start.attributes() {
-        let attribute = attribute.map_err(|error| Error::MalformedXml(error.to_string()))?;
+        let attribute = attribute?;
         let key = attribute.key.as_ref();
         if key == b"xmlns" || key.starts_with(b"xmlns:") {
             let abbreviation = String::from_utf8_lossy(key.strip_prefix(b"xmlns:").unwrap_or(b""));
@@ -434,7 +430,7 @@ impl Parser {
             .ok_or_else(|| bad("a binary object without a filename"))?;
         let content = base64::engine::general_purpose::STANDARD
             .decode(encoded.trim())
-            .map_err(|error| Error::MalformedXml(error.to_string()))?;
+            .map_err(|error| Error::malformed_xml(error.to_string()).caused_by(error))?;
         BinaryObject::new(content, mime, filename)
     }
 
@@ -1472,7 +1468,7 @@ impl Parser {
                 self.cursor += 1;
                 Ok(attributes)
             }
-            _ => Err(Error::MalformedXml(format!("expected <{name}>"))),
+            _ => Err(Error::malformed_xml(format!("expected <{name}>"))),
         }
     }
 
@@ -1570,7 +1566,7 @@ fn period_from(start: Option<Date>, end: Option<Date>) -> Option<Period> {
 fn parse_quantity(attributes: &[(String, String)], text: &str) -> Result<Quantity, Error> {
     let code = attr(attributes, "unitCode").ok_or_else(|| bad("a quantity without a unit"))?;
     let unit = Unit::from_code(code)
-        .ok_or_else(|| Error::MalformedXml(format!("invalid unit: {code}")))?;
+        .ok_or_else(|| Error::malformed_xml(format!("invalid unit: {code}")))?;
     Ok(Quantity {
         unit,
         value: parse_decimal(text)?,
@@ -1601,9 +1597,12 @@ fn parse_date(value: &str) -> Result<Date, Error> {
         .and_then(|month| Month::try_from(month).ok());
     let day = parts.next().and_then(|part| part.parse::<u8>().ok());
     match (year, month, day) {
-        (Some(year), Some(month), Some(day)) => Date::from_calendar_date(year, month, day)
-            .map_err(|_| Error::MalformedXml(format!("invalid date: {value}"))),
-        _ => Err(Error::MalformedXml(format!("invalid date: {value}"))),
+        (Some(year), Some(month), Some(day)) => {
+            Date::from_calendar_date(year, month, day).map_err(|error| {
+                Error::malformed_xml(format!("invalid date: {value}")).caused_by(error)
+            })
+        }
+        _ => Err(Error::malformed_xml(format!("invalid date: {value}"))),
     }
 }
 
@@ -1611,33 +1610,33 @@ fn parse_decimal(value: &str) -> Result<Decimal, Error> {
     value
         .trim()
         .parse::<Decimal>()
-        .map_err(|_| Error::MalformedXml(format!("invalid decimal: {value}")))
+        .map_err(|_| Error::malformed_xml(format!("invalid decimal: {value}")))
 }
 
 fn parse_currency(value: &str) -> Result<Currency, Error> {
     Currency::from_code(value.trim())
-        .ok_or_else(|| Error::MalformedXml(format!("invalid currency: {value}")))
+        .ok_or_else(|| Error::malformed_xml(format!("invalid currency: {value}")))
 }
 
 fn parse_country(value: &str) -> Result<CountryCode, Error> {
     CountryCode::for_alpha2(value.trim())
-        .map_err(|_| Error::MalformedXml(format!("invalid country: {value}")))
+        .map_err(|error| Error::malformed_xml(format!("invalid country: {value}")).caused_by(error))
 }
 
 fn parse_email(value: &str) -> Result<EmailAddress, Error> {
     value
         .trim()
         .parse::<EmailAddress>()
-        .map_err(|_| Error::MalformedXml(format!("invalid email: {value}")))
+        .map_err(|error| Error::malformed_xml(format!("invalid email: {value}")).caused_by(error))
 }
 
 fn parse_url(value: &str) -> Result<Url, Error> {
     value
         .trim()
         .parse::<Url>()
-        .map_err(|_| Error::MalformedXml(format!("invalid url: {value}")))
+        .map_err(|error| Error::malformed_xml(format!("invalid url: {value}")).caused_by(error))
 }
 
 fn bad(message: &str) -> Error {
-    Error::MalformedXml(message.to_owned())
+    Error::malformed_xml(message)
 }

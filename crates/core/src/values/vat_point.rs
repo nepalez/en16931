@@ -42,7 +42,7 @@ impl FromStr for Event {
             .parse::<u16>()
             .ok()
             .and_then(|code| Self::try_from(code).ok())
-            .ok_or_else(|| Error::InvalidValue(format!("{value:?}")))
+            .ok_or_else(|| Error::invalid_value(format!("{value:?}")))
     }
 }
 
@@ -67,7 +67,7 @@ impl TryFrom<u32> for Event {
         u16::try_from(value)
             .ok()
             .and_then(|code| Self::try_from(code).ok())
-            .ok_or_else(|| Error::InvalidValue(format!("{value:?}")))
+            .ok_or_else(|| Error::invalid_value(format!("{value:?}")))
     }
 }
 
@@ -89,7 +89,7 @@ impl TryFrom<u16> for VatPoint {
     fn try_from(value: u16) -> Result<Self, Self::Error> {
         Event::try_from(value)
             .map(Self::Event)
-            .map_err(|_| Error::InvalidValue(format!("{value:?}")))
+            .map_err(|_| Error::invalid_value(format!("{value:?}")))
     }
 }
 
@@ -124,7 +124,10 @@ mod test {
             Event::try_from("432").expect("432 is a valid VAT point event"),
             Event::Payment
         );
-        assert!(matches!(Event::try_from("1"), Err(Error::InvalidValue(_))));
+        assert!(matches!(
+            Event::try_from("1"),
+            Err(Error::InvalidValue { .. })
+        ));
     }
 
     #[test]
@@ -135,7 +138,7 @@ mod test {
         );
         assert!(matches!(
             VatPoint::try_from(1u32),
-            Err(Error::InvalidValue(_))
+            Err(Error::InvalidValue { .. })
         ));
     }
 }

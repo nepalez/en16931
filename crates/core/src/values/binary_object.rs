@@ -18,7 +18,7 @@ impl BinaryObject {
     /// Rejects empty content and a blank filename.
     pub fn new(content: Vec<u8>, mime_code: MimeCode, filename: &str) -> Result<Self, Error> {
         if content.is_empty() {
-            return Err(Error::InvalidValue("an empty binary object".to_owned()));
+            return Err(Error::invalid_value("an empty binary object"));
         }
         Ok(Self {
             content,
@@ -61,7 +61,7 @@ mod test {
     fn rejects_empty_content() {
         assert!(matches!(
             BinaryObject::new(vec![], MimeCode::Pdf, "invoice.pdf"),
-            Err(Error::InvalidValue(_))
+            Err(Error::InvalidValue { .. })
         ));
     }
 

@@ -63,7 +63,7 @@ mod test {
         );
         assert!(matches!(
             VatCategory::try_from("X"),
-            Err(Error::InvalidValue(_))
+            Err(Error::InvalidValue { .. })
         ));
     }
 }

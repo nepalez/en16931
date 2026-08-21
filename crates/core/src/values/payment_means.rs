@@ -223,7 +223,7 @@ mod test {
         );
         assert!(matches!(
             PaymentMeans::try_from("999"),
-            Err(Error::InvalidValue(_))
+            Err(Error::InvalidValue { .. })
         ));
     }
 }

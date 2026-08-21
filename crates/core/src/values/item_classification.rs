@@ -416,7 +416,7 @@ mod test {
         );
         assert!(matches!(
             ItemClassification::try_from("XX"),
-            Err(Error::InvalidValue(_))
+            Err(Error::InvalidValue { .. })
         ));
     }
 }

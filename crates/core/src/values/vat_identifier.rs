@@ -53,12 +53,12 @@ impl FromStr for VatIdentifier {
         let has_prefix =
             bytes.len() >= 2 && bytes[0].is_ascii_uppercase() && bytes[1].is_ascii_uppercase();
         if !has_prefix {
-            return Err(Error::InvalidValue(format!("{value:?}")));
+            return Err(Error::invalid_value(format!("{value:?}")));
         }
 
         let alpha2 = if &code[..2] == "EL" { "GR" } else { &code[..2] };
         let country = CountryCode::for_alpha2(alpha2)
-            .map_err(|_| Error::InvalidValue(format!("{value:?}")))?;
+            .map_err(|error| Error::invalid_value(format!("{value:?}")).caused_by(error))?;
 
         Ok(Self {
             country,

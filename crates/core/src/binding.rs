@@ -17,12 +17,10 @@ impl Binding {
     pub fn detect(xml: &str) -> Result<Self, Error> {
         let mut reader = NsReader::from_str(xml);
         loop {
-            let (namespace, event) = reader
-                .read_resolved_event()
-                .map_err(|error| Error::MalformedXml(error.to_string()))?;
+            let (namespace, event) = reader.read_resolved_event()?;
             match event {
                 Event::Start(_) | Event::Empty(_) => return Self::from_root(namespace),
-                Event::Eof => return Err(Error::MalformedXml("no root element".to_owned())),
+                Event::Eof => return Err(Error::malformed_xml("no root element")),
                 _ => {}
             }
         }
@@ -57,9 +55,7 @@ impl Binding {
 
     fn from_root(namespace: ResolveResult<'_>) -> Result<Self, Error> {
         let ResolveResult::Bound(uri) = namespace else {
-            return Err(Error::MalformedXml(
-                "the root element has no namespace".to_owned(),
-            ));
+            return Err(Error::malformed_xml("the root element has no namespace"));
         };
         let uri = uri.into_inner();
         if uri == Namespace::Invoice.uri().as_bytes() {
@@ -67,7 +63,7 @@ impl Binding {
         } else if uri == Namespace::CrossIndustryInvoice.uri().as_bytes() {
             Ok(Self::Cii)
         } else {
-            Err(Error::MalformedXml(format!(
+            Err(Error::malformed_xml(format!(
                 "unrecognized root namespace: {}",
                 String::from_utf8_lossy(uri)
             )))
@@ -98,6 +94,9 @@ mod test {
     fn rejects_an_unrecognized_root_namespace() {
         let xml = r#"<foo xmlns="urn:example:unknown"/>"#;
 
-        assert!(matches!(Binding::detect(xml), Err(Error::MalformedXml(_))));
+        assert!(matches!(
+            Binding::detect(xml),
+            Err(Error::MalformedXml { .. })
+        ));
     }
 }
