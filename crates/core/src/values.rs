@@ -30,7 +30,7 @@ pub use binary_object::BinaryObject;
 pub use business_process::BusinessProcess;
 pub use charge_reason::ChargeReason;
 pub use electronic_address_scheme::ElectronicAddressScheme;
-pub use invoice_type::InvoiceType;
+pub use invoice_type::{DocumentKind, InvoiceType};
 pub use invoiced_object_type::InvoicedObjectType;
 pub use issuing_agency::IssuingAgency;
 pub use item_classification::ItemClassification;

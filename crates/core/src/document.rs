@@ -1,6 +1,6 @@
 use crate::{
     Abbreviations, Binding, Context, Dictionary, DocumentBuilder, Error, InvalidDocument, Invoice,
-    Location, Namespace, Path, Problem, Profile, RawNamespace, RawReport, Report, Step,
+    Location, Namespace, Path, Problem, RawNamespace, RawReport, Report, Step, Target,
     ValidDocument,
 };
 
@@ -39,14 +39,13 @@ impl Document {
         &self.xml
     }
 
-    /// The profile the document was serialized under.
-    pub fn profile(&self) -> Profile {
-        self.builder.profile
-    }
-
-    /// The binding the document is serialized in.
-    pub fn binding(&self) -> Binding {
-        self.builder.binding
+    /// What a validator needs to pick the rule set for this document.
+    pub fn target(&self) -> Target {
+        Target {
+            profile: self.builder.profile,
+            binding: self.builder.binding,
+            kind: self.builder.invoice.type_code.kind(),
+        }
     }
 
     /// The abbreviations a normalizer resolves a report location against.
@@ -145,7 +144,7 @@ mod test {
     use super::*;
     use crate::format::test_helpers::builder;
     use crate::prelude::*;
-    use crate::{Context, Entry, Location, LocationStep, RawNamespace, Segment, Severity};
+    use crate::{Context, Entry, Location, LocationStep, Profile, RawNamespace, Segment, Severity};
 
     // A serialized document of the rich UBL fixture.
     fn document() -> Document {
@@ -455,35 +454,35 @@ mod test {
         let (xml, _, _) = source.binding.serialize(&source);
         let document = Document::try_from(source.clone()).expect("a serialized document");
 
+        let target = Target {
+            profile: source.profile,
+            binding: source.binding,
+            kind: source.invoice.type_code.kind(),
+        };
+
         assert_eq!(document.xml(), xml);
-        assert_eq!(document.profile(), source.profile);
-        assert_eq!(document.binding(), source.binding);
+        assert_eq!(document.target(), target);
     }
 
     #[test]
     fn yields_the_request_parts_of_each_profile_of_one_invoice() {
         let source = builder(Binding::Ubl);
-        let parts = |profile| {
+
+        for profile in [Profile::Nlcius10, Profile::PeppolBisBilling30] {
             let document = Document::try_from(DocumentBuilder {
                 profile,
                 ..source.clone()
             })
             .expect("a serialized document");
-            (
-                document.profile(),
-                document.binding(),
-                document.xml().to_owned(),
-            )
-        };
+            let target = Target {
+                profile,
+                binding: source.binding,
+                kind: source.invoice.type_code.kind(),
+            };
 
-        let (dutch_profile, dutch_binding, dutch_xml) = parts(Profile::Nlcius10);
-        let (peppol_profile, peppol_binding, peppol_xml) = parts(Profile::PeppolBisBilling30);
-
-        assert_eq!(dutch_profile, Profile::Nlcius10);
-        assert_eq!(peppol_profile, Profile::PeppolBisBilling30);
-        assert_eq!(dutch_binding, peppol_binding);
-        assert!(dutch_xml.contains(&Profile::Nlcius10.to_string()));
-        assert!(peppol_xml.contains(&Profile::PeppolBisBilling30.to_string()));
+            assert_eq!(document.target(), target);
+            assert!(document.xml().contains(&profile.to_string()));
+        }
     }
 
     #[test]

@@ -1,3 +1,4 @@
+use crate::Target;
 use crate::prelude::*;
 
 /// The single error type of the core.
@@ -30,6 +31,8 @@ pub enum Error {
     /// An address of a report entry that binds to no node of the checked document,
     /// kept as the validator wrote it.
     UnboundLocation(String),
+    /// A document the validator checks by no rule set of its own.
+    UnsupportedTarget(Target),
 }
 
 impl Error {
@@ -105,6 +108,13 @@ impl fmt::Display for Error {
             }
             Self::UnboundLocation(s) => {
                 write!(formatter, "unbound location: {s}")
+            }
+            Self::UnsupportedTarget(target) => {
+                write!(
+                    formatter,
+                    "unsupported by the validator: {}, {:?}, {:?}",
+                    target.profile, target.binding, target.kind
+                )
             }
         }
     }

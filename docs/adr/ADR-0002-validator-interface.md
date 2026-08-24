@@ -18,15 +18,16 @@ What does the library hand a validator? Who owns the rules and their versions?
 
 The library produces request parts, not the wire request. It exposes:
 * the serialized invoice;
-* the profile;
-* the binding.
+* the target of the check.
 
 The application builds the request and routes it, owning the transport (ADR-0001).
 
 > The library carries no stylesheets. A supported validator owns its rules, or runs behind a proxy that holds them.
 
-The profile and the binding are always selected outside the invoice body. Each validator takes them in its own form:
-* [phive] takes a vendor id the extension derives for that profile and binding;
+The target names the profile, the binding, and the document kind. An invoice and a credit note are checked by different rule sets. So the kind belongs there.
+
+The target is always selected outside the invoice body. Each validator takes it in its own form:
+* [phive] takes a vendor id the extension derives for that target;
 * [KoSIT] takes the bare invoice, routed to the image built for that profile and binding;
 * [Saxon] engine needs a proxy holding the per-profile, per-binding stylesheets, and isn't supported directly.
 

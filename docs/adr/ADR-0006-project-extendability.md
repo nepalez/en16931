@@ -29,7 +29,7 @@ en16931/
 They live in the core (ADR-0005), unified across standards. A `Profile` only stamps `BT-24` and forbids terms of the core superset model (ADR-0003). So it supplies no vocabulary the core lacks. A profile that needs a new term grows the core model first. Its volatile rules are [Schematron], owned by the validator or its proxy (ADR-0002). So a profile belongs to the core, like a binding.
 
 The core defines the `Binding` and `Profile` enums, and ships their variants. `Binding` carries [UBL] and [CII] (ADR-0005). `Profile` enumerates the per-standard profiles. Both are closed, core-only sets, so neither is a trait. The core also defines two extension traits:
-* `Wrapper` unwraps the validator-specific envelope around the artifact,
+* `Wrapper` unwraps the validator-specific envelope, and optionally derives the vendor id of a rule set,
 * `Normalizer` rewrites a processor dialect into the record form (ADR-0004).
 
 Extensions are plain Cargo dependencies, not feature flags. The consumer composes them at the call site, pairing a `Wrapper` with a `Normalizer`. Together they turn a validator artifact into the record form (ADR-0004).
