@@ -1,0 +1,62 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<validationResults>
+  <invocationDateTime>2026-08-24T10:43:39.547487687Z</invocationDateTime>
+  <invocationDurationMillis>4908</invocationDurationMillis>
+  <validationDateTime>2026-08-24T10:43:39.563968579Z</validationDateTime>
+  <validationSource>
+    <sourceTypeID>xml</sourceTypeID>
+    <partialSource>false</partialSource>
+  </validationSource>
+  <ves>
+    <vesid>eu.peppol.bis3:invoice:2026.5</vesid>
+    <name>OpenPeppol UBL Invoice (2026.5) (aka BIS Billing 3.0.21)</name>
+    <deprecated>false</deprecated>
+    <status>
+      <lastModification>2026-08-24T10:43:38.88Z</lastModification>
+      <type>valid</type>
+      <validFrom>2026-08-17T00:00:00Z</validFrom>
+    </status>
+  </ves>
+  <success>false</success>
+  <interrupted>false</interrupted>
+  <mostSevereErrorLevel>ERROR</mostSevereErrorLevel>
+  <result>
+    <success>TRUE</success>
+    <validity>valid</validity>
+    <artifactType>xsd</artifactType>
+    <artifactPathType>classpath</artifactPathType>
+    <artifactPath>external/schemas/ubl21/maindoc/UBL-Invoice-2.1.xsd</artifactPath>
+    <durationMS>775</durationMS>
+  </result>
+  <result>
+    <success>FALSE</success>
+    <validity>invalid</validity>
+    <artifactType>schematron-xslt</artifactType>
+    <artifactPathType>classpath</artifactPathType>
+    <artifactPath>external/schematron/openpeppol/2026.5/xslt/CEN-EN16931-UBL.xslt</artifactPath>
+    <item>
+      <errorLevel>ERROR</errorLevel>
+      <errorID>BR-CO-10</errorID>
+      <errorFieldName>/:Invoice[1]/cac:LegalMonetaryTotal[1]</errorFieldName>
+      <test>(xs:decimal(cbc:LineExtensionAmount) = xs:decimal(round(sum(//(cac:InvoiceLine|cac:CreditNoteLine)/xs:decimal(cbc:LineExtensionAmount)) * 10 * 10) div 100))</test>
+      <errorText>[BR-CO-10]-Sum of Invoice line net amount (BT-106) = Σ Invoice line net amount (BT-131).</errorText>
+    </item>
+    <item>
+      <errorLevel>ERROR</errorLevel>
+      <errorID>BR-CO-13</errorID>
+      <errorFieldName>/:Invoice[1]/cac:LegalMonetaryTotal[1]</errorFieldName>
+      <test>((cbc:ChargeTotalAmount) and (cbc:AllowanceTotalAmount) and (xs:decimal(cbc:TaxExclusiveAmount) = round((xs:decimal(cbc:LineExtensionAmount) + xs:decimal(cbc:ChargeTotalAmount) - xs:decimal(cbc:AllowanceTotalAmount)) * 10 * 10) div 100 )) or (not(cbc:ChargeTotalAmount) and (cbc:AllowanceTotalAmount) and (xs:decimal(cbc:TaxExclusiveAmount) = round((xs:decimal(cbc:LineExtensionAmount) - xs:decimal(cbc:AllowanceTotalAmount)) * 10 * 10 ) div 100)) or ((cbc:ChargeTotalAmount) and not(cbc:AllowanceTotalAmount) and (xs:decimal(cbc:TaxExclusiveAmount) = round((xs:decimal(cbc:LineExtensionAmount) + xs:decimal(cbc:ChargeTotalAmount)) * 10 * 10 ) div 100)) or (not(cbc:ChargeTotalAmount) and not(cbc:AllowanceTotalAmount) and (xs:decimal(cbc:TaxExclusiveAmount) = xs:decimal(cbc:LineExtensionAmount)))</test>
+      <errorText>[BR-CO-13]-Invoice total amount without VAT (BT-109) = Σ Invoice line net amount (BT-131) - Sum of allowances on document level (BT-107) + Sum of charges on document level (BT-108).</errorText>
+    </item>
+    <durationMS>3136</durationMS>
+  </result>
+  <result>
+    <success>TRUE</success>
+    <validity>valid</validity>
+    <artifactType>schematron-xslt</artifactType>
+    <artifactPathType>classpath</artifactPathType>
+    <artifactPath>external/schematron/openpeppol/2026.5/xslt/PEPPOL-EN16931-UBL.xslt</artifactPath>
+    <durationMS>975</durationMS>
+  </result>
+  <durationMS>4888</durationMS>
+</validationResults>

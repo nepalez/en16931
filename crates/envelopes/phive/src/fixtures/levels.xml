@@ -1,0 +1,61 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<validationResults>
+  <invocationDateTime>2026-08-24T11:18:00.692899588Z</invocationDateTime>
+  <invocationDurationMillis>712</invocationDurationMillis>
+  <validationDateTime>2026-08-24T11:18:00.69323037Z</validationDateTime>
+  <validationSource>
+    <sourceTypeID>xml</sourceTypeID>
+    <partialSource>false</partialSource>
+  </validationSource>
+  <ves>
+    <vesid>de.xrechnung:ubl-invoice:3.0.2</vesid>
+    <name>XRechnung UBL Invoice 3.0.2 (rules v2.5.0)</name>
+    <deprecated>false</deprecated>
+    <status>
+      <lastModification>2026-08-24T10:43:39.523Z</lastModification>
+      <type>valid</type>
+    </status>
+  </ves>
+  <success>false</success>
+  <interrupted>false</interrupted>
+  <mostSevereErrorLevel>ERROR</mostSevereErrorLevel>
+  <result>
+    <success>TRUE</success>
+    <validity>valid</validity>
+    <artifactType>xsd</artifactType>
+    <artifactPathType>classpath</artifactPathType>
+    <artifactPath>external/schemas/ubl21/maindoc/UBL-Invoice-2.1.xsd</artifactPath>
+    <durationMS>1</durationMS>
+  </result>
+  <result>
+    <success>FALSE</success>
+    <validity>invalid</validity>
+    <artifactType>schematron-xslt</artifactType>
+    <artifactPathType>classpath</artifactPathType>
+    <artifactPath>/external/schematron/1.3.15/ubl/EN16931-UBL-validation.xslt</artifactPath>
+    <item>
+      <errorLevel>ERROR</errorLevel>
+      <errorID>BR-CO-16</errorID>
+      <errorFieldName>/:Invoice[1]/cac:LegalMonetaryTotal[1]</errorFieldName>
+      <test>(exists(cbc:PrepaidAmount) and not(exists(cbc:PayableRoundingAmount)) and (xs:decimal(cbc:PayableAmount) = (round((xs:decimal(cbc:TaxInclusiveAmount) - xs:decimal(cbc:PrepaidAmount)) * 10 * 10) div 100))) or (not(exists(cbc:PrepaidAmount)) and not(exists(cbc:PayableRoundingAmount)) and xs:decimal(cbc:PayableAmount) = xs:decimal(cbc:TaxInclusiveAmount)) or (exists(cbc:PrepaidAmount) and exists(cbc:PayableRoundingAmount) and ((round((xs:decimal(cbc:PayableAmount) - xs:decimal(cbc:PayableRoundingAmount)) * 10 * 10) div 100) = (round((xs:decimal(cbc:TaxInclusiveAmount) - xs:decimal(cbc:PrepaidAmount)) * 10 * 10) div 100))) or (not(exists(cbc:PrepaidAmount)) and exists(cbc:PayableRoundingAmount) and ((round((xs:decimal(cbc:PayableAmount) - xs:decimal(cbc:PayableRoundingAmount)) * 10 * 10) div 100) = xs:decimal(cbc:TaxInclusiveAmount)))</test>
+      <errorText>[BR-CO-16]-Amount due for payment (BT-115) = Invoice total amount with VAT (BT-112) -Paid amount (BT-113) +Rounding amount (BT-114).</errorText>
+    </item>
+    <durationMS>559</durationMS>
+  </result>
+  <result>
+    <success>TRUE</success>
+    <validity>valid</validity>
+    <artifactType>schematron-xslt</artifactType>
+    <artifactPathType>classpath</artifactPathType>
+    <artifactPath>/external/schematron/3.0.2/XRechnung-UBL-validation.xslt</artifactPath>
+    <item>
+      <errorLevel>SUCCESS</errorLevel>
+      <errorID>BR-DE-TMP-32</errorID>
+      <errorFieldName>/:Invoice[1]</errorFieldName>
+      <test>cac:Delivery/cbc:ActualDeliveryDate or cac:InvoicePeriod or (every $line in (cac:InvoiceLine | cac:CreditNoteLine) satisfies $line/cac:InvoicePeriod)</test>
+      <errorText>[BR-DE-TMP-32] Eine Rechnung sollte zur Angabe des Liefer-/Leistungsdatums entweder BT-72 "Actual delivery date", BG-14 "Invoicing period" oder in jeder Rechnungsposition BG-26 "Invoice line period" enthalten.</errorText>
+    </item>
+    <durationMS>150</durationMS>
+  </result>
+  <durationMS>711</durationMS>
+</validationResults>

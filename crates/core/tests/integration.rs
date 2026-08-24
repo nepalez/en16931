@@ -221,21 +221,37 @@ fn validates_cii_against_kosit() {
     );
 }
 
+// Posts an XML body to the phive service under the named rule set.
+fn phive_post(rules: &str, xml: String) -> String {
+    let base = std::env::var("PHIVE_URL").unwrap_or_else(|_| "http://localhost:8083".to_owned());
+    let token = std::env::var("PHIVE_TOKEN").unwrap_or_else(|_| "phorm-dev-token".to_owned());
+    post(
+        &format!("{base}/api/validate/{rules}:latest"),
+        &[("X-Token", &token), ("Content-Type", "application/xml")],
+        xml,
+    )
+}
+
 #[test]
 #[ignore = "requires live validators (cargo make env-up)"]
 fn validates_ubl_against_phive() {
     let (xml, _, _) = Binding::Ubl.serialize(&document(Profile::PeppolBisBilling30, Binding::Ubl));
-    let url = std::env::var("PHIVE_URL").unwrap_or_else(|_| "http://localhost:8083".to_owned())
-        + "/api/validate/eu.peppol.bis3:invoice:latest";
-    let token = std::env::var("PHIVE_TOKEN").unwrap_or_else(|_| "phorm-dev-token".to_owned());
-    let body = post(
-        &url,
-        &[("X-Token", &token), ("Content-Type", "application/xml")],
-        xml,
-    );
+    let body = phive_post("eu.peppol.bis3:invoice", xml);
 
     assert!(
         body.contains("\"success\":true"),
         "phive should validate the UBL invoice"
+    );
+}
+
+#[test]
+#[ignore = "requires live validators (cargo make env-up)"]
+fn validates_cii_against_phive() {
+    let (xml, _, _) = Binding::Cii.serialize(&document(Profile::En16931, Binding::Cii));
+    let body = phive_post("eu.cen.en16931:cii", xml);
+
+    assert!(
+        body.contains("\"success\":true"),
+        "phive should validate the CII invoice"
     );
 }

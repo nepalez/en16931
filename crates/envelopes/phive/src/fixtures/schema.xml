@@ -1,0 +1,90 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<validationResults>
+  <invocationDateTime>2026-08-24T11:12:25.212619603Z</invocationDateTime>
+  <invocationDurationMillis>21</invocationDurationMillis>
+  <validationDateTime>2026-08-24T11:12:25.212921856Z</validationDateTime>
+  <validationSource>
+    <sourceTypeID>xml</sourceTypeID>
+    <partialSource>false</partialSource>
+  </validationSource>
+  <ves>
+    <vesid>eu.peppol.bis3:invoice:2026.5</vesid>
+    <name>OpenPeppol UBL Invoice (2026.5) (aka BIS Billing 3.0.21)</name>
+    <deprecated>false</deprecated>
+    <status>
+      <lastModification>2026-08-24T10:43:38.88Z</lastModification>
+      <type>valid</type>
+      <validFrom>2026-08-17T00:00:00Z</validFrom>
+    </status>
+  </ves>
+  <success>false</success>
+  <interrupted>true</interrupted>
+  <mostSevereErrorLevel>ERROR</mostSevereErrorLevel>
+  <result>
+    <success>FALSE</success>
+    <validity>invalid</validity>
+    <artifactType>xsd</artifactType>
+    <artifactPathType>classpath</artifactPathType>
+    <artifactPath>external/schemas/ubl21/maindoc/UBL-Invoice-2.1.xsd</artifactPath>
+    <item>
+      <errorLevel>ERROR</errorLevel>
+      <errorText>[SAX] cvc-complex-type.2.4.a: Invalid content was found starting with element '{"urn:oasis:names:specification:ubl:schema:xsd:Invoice-2":NotAThing}'. One of '{"urn:oasis:names:specification:ubl:schema:xsd:CommonExtensionComponents-2":UBLExtensions, "urn:oasis:names:specification:ubl:schema:xsd:CommonBasicComponents-2":UBLVersionID, "urn:oasis:names:specification:ubl:schema:xsd:CommonBasicComponents-2":CustomizationID, "urn:oasis:names:specification:ubl:schema:xsd:CommonBasicComponents-2":ProfileID, "urn:oasis:names:specification:ubl:schema:xsd:CommonBasicComponents-2":ProfileExecutionID, "urn:oasis:names:specification:ubl:schema:xsd:CommonBasicComponents-2":ID}' is expected.</errorText>
+      <exception>
+        <class>org.xml.sax.SAXParseException</class>
+        <message>cvc-complex-type.2.4.a: Invalid content was found starting with element '{"urn:oasis:names:specification:ubl:schema:xsd:Invoice-2":NotAThing}'. One of '{"urn:oasis:names:specification:ubl:schema:xsd:CommonExtensionComponents-2":UBLExtensions, "urn:oasis:names:specification:ubl:schema:xsd:CommonBasicComponents-2":UBLVersionID, "urn:oasis:names:specification:ubl:schema:xsd:CommonBasicComponents-2":CustomizationID, "urn:oasis:names:specification:ubl:schema:xsd:CommonBasicComponents-2":ProfileID, "urn:oasis:names:specification:ubl:schema:xsd:CommonBasicComponents-2":ProfileExecutionID, "urn:oasis:names:specification:ubl:schema:xsd:CommonBasicComponents-2":ID}' is expected.</message>
+        <stackTrace>org.xml.sax.SAXParseException; cvc-complex-type.2.4.a: Invalid content was found starting with element '{"urn:oasis:names:specification:ubl:schema:xsd:Invoice-2":NotAThing}'. One of '{"urn:oasis:names:specification:ubl:schema:xsd:CommonExtensionComponents-2":UBLExtensions, "urn:oasis:names:specification:ubl:schema:xsd:CommonBasicComponents-2":UBLVersionID, "urn:oasis:names:specification:ubl:schema:xsd:CommonBasicComponents-2":CustomizationID, "urn:oasis:names:specification:ubl:schema:xsd:CommonBasicComponents-2":ProfileID, "urn:oasis:names:specification:ubl:schema:xsd:CommonBasicComponents-2":ProfileExecutionID, "urn:oasis:names:specification:ubl:schema:xsd:CommonBasicComponents-2":ID}' is expected.
+1.: java.xml/com.sun.org.apache.xerces.internal.util.ErrorHandlerWrapper.createSAXParseException(ErrorHandlerWrapper.java:204)
+2.: java.xml/com.sun.org.apache.xerces.internal.util.ErrorHandlerWrapper.error(ErrorHandlerWrapper.java:135)
+3.: java.xml/com.sun.org.apache.xerces.internal.impl.XMLErrorReporter.reportError(XMLErrorReporter.java:396)
+4.: java.xml/com.sun.org.apache.xerces.internal.impl.XMLErrorReporter.reportError(XMLErrorReporter.java:327)
+5.: java.xml/com.sun.org.apache.xerces.internal.impl.XMLErrorReporter.reportError(XMLErrorReporter.java:284)
+6.: java.xml/com.sun.org.apache.xerces.internal.impl.xs.XMLSchemaValidator$XSIErrorReporter.reportError(XMLSchemaValidator.java:512)
+7.: java.xml/com.sun.org.apache.xerces.internal.impl.xs.XMLSchemaValidator.reportSchemaError(XMLSchemaValidator.java:3596)
+8.: java.xml/com.sun.org.apache.xerces.internal.impl.xs.XMLSchemaValidator.handleStartElement(XMLSchemaValidator.java:1972)
+9.: java.xml/com.sun.org.apache.xerces.internal.impl.xs.XMLSchemaValidator.startElement(XMLSchemaValidator.java:830)
+10.: java.xml/com.sun.org.apache.xerces.internal.jaxp.validation.DOMValidatorHelper.beginNode(DOMValidatorHelper.java:277)
+11.: java.xml/com.sun.org.apache.xerces.internal.jaxp.validation.DOMValidatorHelper.validate(DOMValidatorHelper.java:244)
+12.: java.xml/com.sun.org.apache.xerces.internal.jaxp.validation.DOMValidatorHelper.validate(DOMValidatorHelper.java:190)
+13.: java.xml/com.sun.org.apache.xerces.internal.jaxp.validation.ValidatorImpl.validate(ValidatorImpl.java:108)
+14.: com.helger.xml.schema.XMLSchemaValidationHelper.validate(XMLSchemaValidationHelper.java:204)
+15.: com.helger.phive.xml.xsd.ValidationExecutorXSD.applyValidation(ValidationExecutorXSD.java:100)
+16.: com.helger.phive.xml.xsd.ValidationExecutorXSD.applyValidation(ValidationExecutorXSD.java:56)
+17.: com.helger.phive.api.execute.ValidationExecutionManager.executeValidation(ValidationExecutionManager.java:182)
+18.: com.helger.phive.api.execute.IValidationExecutionManager.executeValidation(IValidationExecutionManager.java:78)
+19.: com.helger.phorm.validation.AppValidator.validate(AppValidator.java:162)
+20.: com.helger.phorm.validation.AppValidator.validate(AppValidator.java:153)
+21.: com.helger.phorm.api.ApiPostValidate.lambda$invokeAPI$0(ApiPostValidate.java:148)
+22.: com.helger.phorm.api.CommonAPIInvoker.invoke(CommonAPIInvoker.java:66)
+23.: com.helger.phorm.api.ApiPostValidate.invokeAPI(ApiPostValidate.java:183)
+24.: com.helger.phorm.api.AbstractAPIInvoker.invokeAPI(AbstractAPIInvoker.java:61)
+25.: com.helger.photon.api.InvokableAPIDescriptor.invokeAPI(InvokableAPIDescriptor.java:197)
+26.: com.helger.photon.api.APIInvoker.invoke(APIInvoker.java:73)
+27.: com.helger.photon.api.servlet.APIXServletHandler.handleRequest(APIXServletHandler.java:132)
+28.: com.helger.xservlet.handler.simple.XServletHandlerToSimpleHandler.onRequest(XServletHandlerToSimpleHandler.java:239)
+29.: com.helger.xservlet.AbstractXServlet._invokeHandler(AbstractXServlet.java:347)
+30.: com.helger.xservlet.AbstractXServlet.service(AbstractXServlet.java:530)
+31.: jakarta.servlet.http.HttpServlet.service(HttpServlet.java:658)
+32.: com.helger.xservlet.AbstractXServlet.service(AbstractXServlet.java:586)
+  [22 elements omitted -- org.apache.catalina.core.ApplicationFilterChain.internalDoFilter(ApplicationFilterChain.java:193)]</stackTrace>
+      </exception>
+    </item>
+    <durationMS>21</durationMS>
+  </result>
+  <result>
+    <success>UNDEFINED</success>
+    <validity>skipped</validity>
+    <artifactType>schematron-xslt</artifactType>
+    <artifactPathType>classpath</artifactPathType>
+    <artifactPath>external/schematron/openpeppol/2026.5/xslt/CEN-EN16931-UBL.xslt</artifactPath>
+    <durationMS>0</durationMS>
+  </result>
+  <result>
+    <success>UNDEFINED</success>
+    <validity>skipped</validity>
+    <artifactType>schematron-xslt</artifactType>
+    <artifactPathType>classpath</artifactPathType>
+    <artifactPath>external/schematron/openpeppol/2026.5/xslt/PEPPOL-EN16931-UBL.xslt</artifactPath>
+    <durationMS>0</durationMS>
+  </result>
+  <durationMS>21</durationMS>
+</validationResults>

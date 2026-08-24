@@ -214,6 +214,8 @@ name = "en16931-phive"
 version = "0.1.0"
 dependencies = [
  "en16931-core",
+ "reqwest",
+ "roxmltree",
 ]
 
 [[package]]
