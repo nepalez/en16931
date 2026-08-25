@@ -237,6 +237,7 @@ name = "en16931-svrl"
 version = "0.1.0"
 dependencies = [
  "en16931-core",
+ "roxmltree",
 ]
 
 [[package]]

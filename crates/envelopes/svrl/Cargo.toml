@@ -9,3 +9,4 @@ description = "Wrapper extension for the plain SVRL envelope"
 
 [dependencies]
 en16931-core.workspace = true
+roxmltree.workspace = true

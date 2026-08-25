@@ -1,0 +1,39 @@
+<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<svrl:schematron-output xmlns:cac="urn:oasis:names:specification:ubl:schema:xsd:CommonAggregateComponents-2"
+                         xmlns:cbc="urn:oasis:names:specification:ubl:schema:xsd:CommonBasicComponents-2"
+                         xmlns:cn="urn:oasis:names:specification:ubl:schema:xsd:CreditNote-2"
+                         xmlns:ext="urn:oasis:names:specification:ubl:schema:xsd:CommonExtensionComponents-2"
+                         xmlns:iso="http://purl.oclc.org/dsdl/schematron"
+                         xmlns:qdt="urn:oasis:names:specification:ubl:schema:xsd:QualifiedDataTypes-2"
+                         xmlns:saxon="http://saxon.sf.net/"
+                         xmlns:schold="http://www.ascc.net/xml/schematron"
+                         xmlns:svrl="http://purl.oclc.org/dsdl/svrl"
+                         xmlns:ubl="urn:oasis:names:specification:ubl:schema:xsd:Invoice-2"
+                         xmlns:udt="urn:oasis:names:specification:ubl:schema:xsd:UnqualifiedDataTypes-2"
+                         xmlns:xhtml="http://www.w3.org/1999/xhtml"
+                         xmlns:xs="http://www.w3.org/2001/XMLSchema"
+                         xmlns:xsd="http://www.w3.org/2001/XMLSchema"
+                         title="EN16931  model bound to UBL"
+                         schemaVersion=""><!--   
+		   
+		   
+		 -->
+   <svrl:ns-prefix-in-attribute-values uri="urn:oasis:names:specification:ubl:schema:xsd:CommonExtensionComponents-2"
+                                        prefix="ext"/>
+   <svrl:ns-prefix-in-attribute-values uri="urn:oasis:names:specification:ubl:schema:xsd:CommonBasicComponents-2"
+                                        prefix="cbc"/>
+   <svrl:ns-prefix-in-attribute-values uri="urn:oasis:names:specification:ubl:schema:xsd:CommonAggregateComponents-2"
+                                        prefix="cac"/>
+   <svrl:ns-prefix-in-attribute-values uri="urn:oasis:names:specification:ubl:schema:xsd:QualifiedDataTypes-2"
+                                        prefix="qdt"/>
+   <svrl:ns-prefix-in-attribute-values uri="urn:oasis:names:specification:ubl:schema:xsd:UnqualifiedDataTypes-2"
+                                        prefix="udt"/>
+   <svrl:ns-prefix-in-attribute-values uri="urn:oasis:names:specification:ubl:schema:xsd:CreditNote-2"
+                                        prefix="cn"/>
+   <svrl:ns-prefix-in-attribute-values uri="urn:oasis:names:specification:ubl:schema:xsd:Invoice-2"
+                                        prefix="ubl"/>
+   <svrl:ns-prefix-in-attribute-values uri="http://www.w3.org/2001/XMLSchema" prefix="xs"/>
+   <svrl:active-pattern document="" id="UBL-model" name="UBL-model"/>
+   <svrl:active-pattern document="" id="UBL-syntax" name="UBL-syntax"/>
+   <svrl:active-pattern document="" id="Codesmodel" name="Codesmodel"/>
+</svrl:schematron-output>

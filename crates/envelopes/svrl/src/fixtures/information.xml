@@ -1,0 +1,64 @@
+<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<svrl:schematron-output xmlns:cac="urn:oasis:names:specification:ubl:schema:xsd:CommonAggregateComponents-2"
+                         xmlns:cbc="urn:oasis:names:specification:ubl:schema:xsd:CommonBasicComponents-2"
+                         xmlns:cn="urn:oasis:names:specification:ubl:schema:xsd:CreditNote-2"
+                         xmlns:ext="urn:oasis:names:specification:ubl:schema:xsd:CommonExtensionComponents-2"
+                         xmlns:iso="http://purl.oclc.org/dsdl/schematron"
+                         xmlns:saxon="http://saxon.sf.net/"
+                         xmlns:schold="http://www.ascc.net/xml/schematron"
+                         xmlns:svrl="http://purl.oclc.org/dsdl/svrl"
+                         xmlns:u="utils"
+                         xmlns:ubl="urn:oasis:names:specification:ubl:schema:xsd:Invoice-2"
+                         xmlns:ubl-creditnote="urn:oasis:names:specification:ubl:schema:xsd:CreditNote-2"
+                         xmlns:ubl-invoice="urn:oasis:names:specification:ubl:schema:xsd:Invoice-2"
+                         xmlns:xhtml="http://www.w3.org/1999/xhtml"
+                         xmlns:xs="http://www.w3.org/2001/XMLSchema"
+                         xmlns:xsd="http://www.w3.org/2001/XMLSchema"
+                         title="Schematron Version 2.4.0 - XRechnung 3.0.2 compatible - UBL - Invoice / Creditnote"
+                         schemaVersion=""><!--   
+		   
+		   
+		 -->
+   <svrl:ns-prefix-in-attribute-values uri="urn:oasis:names:specification:ubl:schema:xsd:CommonBasicComponents-2"
+                                        prefix="cbc"/>
+   <svrl:ns-prefix-in-attribute-values uri="urn:oasis:names:specification:ubl:schema:xsd:CommonAggregateComponents-2"
+                                        prefix="cac"/>
+   <svrl:ns-prefix-in-attribute-values uri="urn:oasis:names:specification:ubl:schema:xsd:CommonExtensionComponents-2"
+                                        prefix="ext"/>
+   <svrl:ns-prefix-in-attribute-values uri="urn:oasis:names:specification:ubl:schema:xsd:Invoice-2"
+                                        prefix="ubl"/>
+   <svrl:ns-prefix-in-attribute-values uri="urn:oasis:names:specification:ubl:schema:xsd:CreditNote-2"
+                                        prefix="cn"/>
+   <svrl:ns-prefix-in-attribute-values uri="urn:oasis:names:specification:ubl:schema:xsd:Invoice-2"
+                                        prefix="ubl-invoice"/>
+   <svrl:ns-prefix-in-attribute-values uri="urn:oasis:names:specification:ubl:schema:xsd:CreditNote-2"
+                                        prefix="ubl-creditnote"/>
+   <svrl:ns-prefix-in-attribute-values uri="http://www.w3.org/2001/XMLSchema" prefix="xs"/>
+   <svrl:ns-prefix-in-attribute-values uri="utils" prefix="u"/>
+   <svrl:active-pattern document="" id="variable-pattern" name="variable-pattern"/>
+   <svrl:active-pattern document="" id="peppol-ubl-pattern-1" name="peppol-ubl-pattern-1"/>
+   <svrl:active-pattern document="" id="peppol-ubl-pattern-2" name="peppol-ubl-pattern-2"/>
+   <svrl:fired-rule context="ubl-creditnote:CreditNote | ubl-invoice:Invoice"/>
+   <svrl:fired-rule context="cac:AccountingSupplierParty/cac:Party"/>
+   <svrl:fired-rule context="cac:AccountingCustomerParty/cac:Party"/>
+   <svrl:fired-rule context="cac:InvoiceLine | cac:CreditNoteLine"/>
+   <svrl:fired-rule context="cac:InvoiceLine | cac:CreditNoteLine"/>
+   <svrl:active-pattern document="" id="ubl-pattern" name="ubl-pattern"/>
+   <svrl:fired-rule context="/ubl:Invoice | /cn:CreditNote"/>
+   <svrl:failed-assert test="cac:Delivery/cbc:ActualDeliveryDate or cac:InvoicePeriod or (every $line in (cac:InvoiceLine | cac:CreditNoteLine) satisfies $line/cac:InvoicePeriod)"
+                        id="BR-DE-TMP-32"
+                        flag="information"
+                        location="/ubl:Invoice">
+      <svrl:text>
+        [BR-DE-TMP-32] Eine Rechnung sollte zur Angabe des Liefer-/Leistungsdatums entweder BT-72 "Actual delivery date", BG-14 "Invoicing period" oder in jeder Rechnungsposition BG-26 "Invoice line period" enthalten.
+      </svrl:text>
+   </svrl:failed-assert>
+   <svrl:fired-rule context="/ubl:Invoice/cac:AccountingSupplierParty | /cn:CreditNote/cac:AccountingSupplierParty"/>
+   <svrl:fired-rule context="/ubl:Invoice/cac:AccountingSupplierParty/cac:Party/cac:PostalAddress | /cn:CreditNote/cac:AccountingSupplierParty/cac:Party/cac:PostalAddress"/>
+   <svrl:fired-rule context="/ubl:Invoice/cac:AccountingSupplierParty/cac:Party/cac:Contact | /cn:CreditNote/cac:AccountingSupplierParty/cac:Party/cac:Contact"/>
+   <svrl:fired-rule context="/ubl:Invoice/cac:AccountingCustomerParty/cac:Party/cac:PostalAddress | /cn:CreditNote/cac:AccountingCustomerParty/cac:Party/cac:PostalAddress"/>
+   <svrl:fired-rule context="/ubl:Invoice/cac:PaymentMeans[normalize-space(cbc:PaymentMeansCode) = ('30','58')] | /cn:CreditNote/cac:PaymentMeans[normalize-space(cbc:PaymentMeansCode) = ('30','58')]"/>
+   <svrl:fired-rule context="/ubl:Invoice/cac:TaxTotal/cac:TaxSubtotal | /cn:CreditNote/cac:TaxTotal/cac:TaxSubtotal"/>
+   <svrl:active-pattern document="" id="ubl-extension-pattern" name="ubl-extension-pattern"/>
+   <svrl:active-pattern document="" id="ubl-cvd-pattern" name="ubl-cvd-pattern"/>
+</svrl:schematron-output>

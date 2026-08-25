@@ -1,6 +1,12 @@
 //! `Wrapper` for the plain SVRL envelope.
 //!
-//! Stub crate. The implementation lands in step 9, where this crate and
-//! `en16931-iso` form the first working pair on each extension axis.
+//! The crate covers a bare SVRL report of a Schematron processor,
+//! taken without any service envelope around it.
+//! It pairs with a normalizer of the dialect that processor writes.
 
-pub mod prelude;
+mod error;
+mod prelude;
+mod wrapper;
+
+pub use error::Error;
+pub use wrapper::Svrl;
