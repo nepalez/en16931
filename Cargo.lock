@@ -187,7 +187,6 @@ dependencies = [
  "num_enum",
  "parse-display",
  "quick-xml 0.41.0",
- "reqwest",
  "rust_decimal",
  "time",
  "url",
@@ -238,6 +237,21 @@ version = "0.1.0"
 dependencies = [
  "en16931-core",
  "roxmltree",
+]
+
+[[package]]
+name = "en16931-tests"
+version = "0.1.0"
+dependencies = [
+ "en16931-core",
+ "en16931-iso",
+ "en16931-kosit",
+ "en16931-phive",
+ "iso_currency",
+ "isocountry",
+ "reqwest",
+ "rust_decimal",
+ "time",
 ]
 
 [[package]]

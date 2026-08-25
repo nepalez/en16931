@@ -1,0 +1,20 @@
+[package]
+name = "en16931-tests"
+version = "0.1.0"
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+authors.workspace = true
+publish = false
+description = "End-to-end scenario tests across the core and the extensions"
+
+[dev-dependencies]
+en16931-core.workspace = true
+en16931-iso.workspace = true
+en16931-kosit.workspace = true
+en16931-phive.workspace = true
+iso_currency.workspace = true
+isocountry.workspace = true
+reqwest.workspace = true
+rust_decimal.workspace = true
+time.workspace = true

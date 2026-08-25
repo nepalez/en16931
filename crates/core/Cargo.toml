@@ -24,9 +24,6 @@ rust_decimal.workspace = true
 time.workspace = true
 url.workspace = true
 
-[dev-dependencies]
-reqwest.workspace = true
-
 [features]
 # Enables conversions between `MimeCode` and the `mime` crate's `Mime` type.
 mime = ["dep:mime"]

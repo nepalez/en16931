@@ -1,6 +1,6 @@
 [workspace]
 resolver = "3"
-members = ["crates/core", "crates/envelopes/*", "crates/xpath/*"]
+members = ["crates/core", "crates/envelopes/*", "crates/tests", "crates/xpath/*"]
 
 # Metadata shared by every crate in the workspace.
 # Per-crate versions are declared individually:
@@ -20,6 +20,9 @@ base64 = "0.22"
 cefact-units = "0.1"
 email_address = "0.2"
 en16931-core = { path = "crates/core", version = "0.1" }
+en16931-iso = { path = "crates/xpath/iso", version = "0.1" }
+en16931-kosit = { path = "crates/envelopes/kosit", version = "0.1" }
+en16931-phive = { path = "crates/envelopes/phive", version = "0.1" }
 iban_validate = "5"
 iso_currency = "0.5.3"
 isocountry = "0.3"
