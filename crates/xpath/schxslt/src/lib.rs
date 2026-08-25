@@ -1,5 +1,11 @@
 //! `Normalizer` for the SchXslt XPath dialect.
 //!
-//! Stub crate. The implementation lands in step 12.
+//! The crate covers the addresses the SchXslt location function writes.
+//! It pairs with a wrapper of the service that answered with them.
 
-pub mod prelude;
+mod error;
+mod normalizer;
+mod prelude;
+
+pub use error::Error;
+pub use normalizer::Schxslt;
