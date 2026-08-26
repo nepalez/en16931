@@ -1,16 +1,22 @@
+use crate::prelude::*;
 use crate::{Error, Location, Normalizer, Wrapper};
 
 /// The weight of a report entry.
 ///
 /// Only an error decides the outcome of a check.
 /// A document without a single error passes, whatever warnings and remarks it carries.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+///
+/// The variant renders as its lowercase name, such as `error`.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Display)]
 pub enum Severity {
     /// A breach that invalidates the document.
+    #[display("error")]
     Error,
     /// A breach the validator tolerates.
+    #[display("warning")]
     Warning,
     /// A remark that reports no breach.
+    #[display("information")]
     Information,
 }
 
@@ -67,7 +73,6 @@ impl RawReport {
 #[cfg(test)]
 mod test {
     use super::*;
-    use crate::prelude::*;
     use crate::{LocationStep, RawNamespace};
 
     // Reads one entry per line, and rejects an empty answer.

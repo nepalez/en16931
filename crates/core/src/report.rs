@@ -1,3 +1,4 @@
+use crate::prelude::*;
 use crate::{Context, Severity};
 
 /// A single problem a validator reported, bound to the node of the model it speaks of.
@@ -16,6 +17,18 @@ pub struct Problem {
     pub text: String,
     /// The node of the model the problem points at.
     pub context: Context,
+}
+
+/// Renders as `severity at path: message`, such as
+/// `error at lines[2].item.name: the name is too long`.
+impl Display for Problem {
+    fn fmt(&self, formatter: &mut Formatter<'_>) -> fmt::Result {
+        write!(
+            formatter,
+            "{} at {}: {}",
+            self.severity, self.context, self.text
+        )
+    }
 }
 
 /// The outcome of one validation pass: every problem bound to a node of the model.
