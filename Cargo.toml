@@ -1,6 +1,6 @@
 [workspace]
 resolver = "3"
-members = ["crates/core", "crates/envelopes/*", "crates/tests", "crates/xpath/*"]
+members = ["crates/core", "crates/envelopes/*", "crates/tests", "crates/xpath/*", "examples"]
 
 # Metadata shared by every crate in the workspace.
 # Per-crate versions are declared individually:

@@ -193,6 +193,21 @@ dependencies = [
 ]
 
 [[package]]
+name = "en16931-examples"
+version = "0.1.0"
+dependencies = [
+ "en16931-core",
+ "en16931-iso",
+ "en16931-kosit",
+ "en16931-phive",
+ "iso_currency",
+ "isocountry",
+ "reqwest",
+ "rust_decimal",
+ "time",
+]
+
+[[package]]
 name = "en16931-iso"
 version = "0.1.0"
 dependencies = [

@@ -1,4 +1,4 @@
-use crate::{Document, Invoice, Report};
+use crate::{Document, Invoice, Problem, Report};
 
 /// A document a validator rejected.
 ///
@@ -19,6 +19,11 @@ impl InvalidDocument {
     /// The report of the pass that rejected the document.
     pub fn report(&self) -> &Report {
         &self.report
+    }
+
+    /// The problems of the pass, at least one of them an error.
+    pub fn problems(&self) -> &[Problem] {
+        &self.report.problems
     }
 }
 
