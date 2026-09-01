@@ -2,9 +2,9 @@
 
 Each numbered directory is one self-describing validation case:
 
-* `body.xml` — the request body, sent verbatim. It holds the whole body, not just the invoice, so a service that wraps the document keeps its wrapper here.
-* `about.json` — the case: a human `title`, the `target` string the response must contain, and the request parameters apart from the body (`url` and a `headers` array). The `url` and header values may reference environment variables as `${VAR}`, which the caller provides (the `smoke` task ships defaults).
+* `body.xml` — the request body, sent verbatim. It holds the whole body, not just the invoice.
+* `about.json` — a human `title`, the `target` string the response must contain, and the request `url` and `headers`. The `url` and header values may reference environment variables as `${VAR}`.
 
-`smoke.sh` replays every case: it sends `body.xml` to `url` with `headers` and checks that the response contains `target`. Adding a case is just a new directory, and a new service is just different request parameters, so neither ever touches the script.
+`smoke.sh` sends `body.xml` to `url` with `headers` and checks that the response contains `target`. A new case is a new directory and never an edit of the script.
 
-The invalid cases are derived from a valid one by a single documented edit (recorded in the `title`) that breaks one calculation rule. They stay XSD-valid, so the failure comes from Schematron, not the schema, and the `target` is the tripped business-rule id.
+The invalid cases derive from a valid one by a single edit, recorded in the `title`. The edit breaks one calculation rule and keeps the document structurally valid. The failure therefore comes from the rules, and the `target` is the identifier of the tripped rule.
