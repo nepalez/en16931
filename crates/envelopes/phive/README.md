@@ -12,8 +12,9 @@ let rules = Phive.vendor_id(document.target())?;
 let report = RawReport::parse(&answer, &Phive, &Iso)?;
 ```
 
-Compatible with `en16931-core` 0.1. The full guide lives in the [en16931] repository.
+Compatible with `en16931-core` 0.1. The full guide lives at the [documentation site].
 
+[documentation site]: https://nepalez.gitbook.io/en-16931
 [en16931]: https://github.com/nepalez/en16931
 [phive]: https://github.com/phax/phive
 [phorm]: https://github.com/phax/phorm

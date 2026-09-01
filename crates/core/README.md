@@ -14,8 +14,9 @@ let document = Document::try_from(DocumentBuilder {
 let xml = document.xml();
 ```
 
-The crate follows semantic versioning. The full guide lives in the [en16931] repository.
+The crate follows semantic versioning. The full guide lives at the [documentation site].
 
 [CII]: https://en.wikipedia.org/wiki/UN/CEFACT
+[documentation site]: https://nepalez.gitbook.io/en-16931
 [en16931]: https://github.com/nepalez/en16931
 [UBL]: https://www.oasis-open.org/standard/ublv2-1/

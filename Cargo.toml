@@ -11,6 +11,8 @@ edition = "2024"
 rust-version = "1.85"
 license = "MIT"
 authors = ["Andrew Kozin"]
+homepage = "https://nepalez.gitbook.io/en-16931"
+repository = "https://github.com/nepalez/en16931"
 
 # Dependency versions shared by every crate in the workspace.
 # A crate refers to an entry with `workspace = true`,
