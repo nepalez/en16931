@@ -1,3 +1,4 @@
+use crate::prelude::*;
 use crate::{
     Decimal, Item, LineAdjustment, NonEmptyString, ObjectReference, Period, Price, Quantity,
     VatTreatment,
@@ -5,7 +6,7 @@ use crate::{
 
 /// An invoice line (`BG-25`): one charged position of the invoice.
 /// All amounts here are in the invoice currency (`BT-5`).
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, Builder)]
 pub struct InvoiceLine {
     /// Line identifier (`BT-126`).
     pub id: NonEmptyString,
@@ -22,6 +23,7 @@ pub struct InvoiceLine {
     /// Line period (`BG-26`).
     pub period: Option<Period>,
     /// Line allowances and charges (`BG-27`/`BG-28`).
+    #[builder(default)]
     pub adjustments: Vec<LineAdjustment>,
     /// Price details (`BG-29`).
     pub price: Price,

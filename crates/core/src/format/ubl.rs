@@ -24,7 +24,7 @@ fn prefix(namespace: Namespace) -> &'static str {
 #[cfg(test)]
 mod test {
     use super::*;
-    use crate::format::test_helpers::{builder, path, pretty, step, variant_builder};
+    use crate::format::test_helpers::{builder, card_builder, path, pretty, step, variant_builder};
     use crate::{Binding, Context, Profile, Segment};
     use std::num::NonZeroUsize;
 
@@ -132,6 +132,16 @@ mod test {
             deserialize(include_str!("ubl/fixtures/2.xml")).expect("a valid UBL document");
 
         assert_eq!(parsed, variant_builder(Binding::Ubl));
+    }
+
+    #[test]
+    fn round_trips_the_card_document_through_ubl() {
+        let source = card_builder(Binding::Ubl);
+        let (xml, _, _) = serialize(&source);
+
+        let (parsed, _, _) = deserialize(&xml).expect("a valid UBL document");
+
+        assert_eq!(parsed, source);
     }
 
     #[test]

@@ -1,3 +1,4 @@
+use crate::prelude::*;
 use crate::{IssuingAgency, NonEmptyString};
 
 /// A delivery location reference (`BT-71`):
@@ -5,7 +6,7 @@ use crate::{IssuingAgency, NonEmptyString};
 ///
 /// The issuer is optional. Without it the identifier is contextual,
 /// agreed between the parties rather than resolvable through a registry.
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, Builder)]
 pub struct LocationReference {
     /// The location identifier value.
     pub id: NonEmptyString,

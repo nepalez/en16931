@@ -1,3 +1,4 @@
+use crate::prelude::*;
 use crate::{IssuingAgency, NonEmptyString};
 
 /// A legal entity reference: a party as a registered legal entity or person
@@ -5,7 +6,7 @@ use crate::{IssuingAgency, NonEmptyString};
 ///
 /// The identifier comes from an official registrar (a company register).
 /// The issuer is optional. Without it the identifier is contextual.
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, Builder)]
 pub struct LegalEntity {
     /// The legal registration value.
     pub id: NonEmptyString,

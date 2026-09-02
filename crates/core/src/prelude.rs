@@ -1,3 +1,4 @@
+pub use bon::Builder;
 pub use cefact_units::UnitOfMeasure;
 pub use email_address::EmailAddress;
 pub use iban::{Iban, IbanLike};

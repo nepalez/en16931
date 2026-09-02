@@ -1,7 +1,8 @@
 use crate::NonEmptyString;
+use crate::prelude::*;
 
 /// Payment card information (`BG-18`): the card a payment is made with.
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, Builder)]
 pub struct PaymentCard {
     /// Payment card primary account number (`BT-87`), usually masked to the last digits.
     pub primary_account_number: NonEmptyString,

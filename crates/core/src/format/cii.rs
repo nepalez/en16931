@@ -28,7 +28,7 @@ fn prefix(namespace: Namespace) -> &'static str {
 mod test {
     use super::*;
     use crate::Binding;
-    use crate::format::test_helpers::{builder, pretty, variant_builder};
+    use crate::format::test_helpers::{builder, card_builder, pretty, variant_builder};
 
     #[test]
     fn detects_its_own_output_as_cii() {
@@ -114,5 +114,15 @@ mod test {
             deserialize(include_str!("cii/fixtures/2.xml")).expect("a valid CII document");
 
         assert_eq!(parsed, variant_builder(Binding::Cii));
+    }
+
+    #[test]
+    fn round_trips_the_card_document_through_cii() {
+        let source = card_builder(Binding::Cii);
+        let (xml, _, _) = serialize(&source);
+
+        let (parsed, _, _) = deserialize(&xml).expect("a valid CII document");
+
+        assert_eq!(parsed, source);
     }
 }

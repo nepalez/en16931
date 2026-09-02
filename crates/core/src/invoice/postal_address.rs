@@ -1,3 +1,4 @@
+use crate::prelude::*;
 use crate::{CountryCode, NonEmptyString};
 
 /// A postal address (`BG-5`/`BG-8`/`BG-15`): where a party is located or goods are delivered.
@@ -5,7 +6,7 @@ use crate::{CountryCode, NonEmptyString};
 /// Only the country is mandatory (`BR-09` and kin), every other line is optional.
 /// The model carries the superset of all profiles,
 /// so a profile may forbid some of these on serialization.
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, Builder)]
 pub struct PostalAddress {
     /// Address line 1 (`BT-35`).
     pub line1: Option<NonEmptyString>,

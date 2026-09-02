@@ -1,8 +1,9 @@
+use crate::prelude::*;
 use crate::{ItemClassification, NonEmptyString};
 
 /// An item classification (`BT-158`):
 /// a code that classifies the item under a registered scheme.
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, Builder)]
 pub struct Classification {
     /// Classification code (`BT-158`).
     pub id: NonEmptyString,

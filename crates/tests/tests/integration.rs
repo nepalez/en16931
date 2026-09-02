@@ -28,145 +28,97 @@ use time::{Date, Month};
 
 // The one invoice every profile of the scenario shares.
 fn invoice() -> Invoice {
-    Invoice {
-        number: "INV-1".parse().expect("a number"),
-        issue_date: Date::from_calendar_date(2026, Month::January, 15).expect("a date"),
-        type_code: "380".parse().expect("a type code"),
-        currency: Currency::EUR,
-        vat_accounting_total: None,
-        vat_point: None,
-        payment_due_date: Some(
-            Date::from_calendar_date(2026, Month::February, 15).expect("a date"),
-        ),
-        buyer_reference: Some("04011000-12345-03".parse().expect("a reference")),
-        project_reference: None,
-        contract_reference: None,
-        purchase_order_reference: None,
-        sales_order_reference: None,
-        receiving_advice_reference: None,
-        despatch_advice_reference: None,
-        tender_or_lot_reference: None,
-        object: None,
-        buyer_accounting_reference: None,
-        payment_terms: Some("Payable within 30 days".parse().expect("terms")),
-        notes: Vec::new(),
-        preceding_invoices: Vec::new(),
-        seller: seller(),
-        buyer: buyer(),
-        payee: None,
-        tax_representative: None,
-        delivery: None,
-        invoicing_period: Some(Period::Range {
+    Invoice::builder()
+        .number("INV-1".parse().expect("a number"))
+        .issue_date(Date::from_calendar_date(2026, Month::January, 15).expect("a date"))
+        .type_code("380".parse().expect("a type code"))
+        .currency(Currency::EUR)
+        .payment_due_date(Date::from_calendar_date(2026, Month::February, 15).expect("a date"))
+        .buyer_reference("04011000-12345-03".parse().expect("a reference"))
+        .payment_terms("Payable within 30 days".parse().expect("terms"))
+        .seller(seller())
+        .buyer(buyer())
+        .invoicing_period(Period::Range {
             start: Date::from_calendar_date(2026, Month::January, 1).expect("a date"),
             end: Date::from_calendar_date(2026, Month::January, 31).expect("a date"),
-        }),
-        adjustments: Vec::new(),
-        rounding: None,
-        payment: Some(payment()),
-        paid: None,
-        supporting_documents: Vec::new(),
-        lines: vec![line()],
-    }
+        })
+        .payment(payment())
+        .lines(vec![line()])
+        .build()
 }
 
 fn seller() -> Seller {
-    Seller {
-        name: "Seller Official Name".parse().expect("a name"),
-        trading_name: None,
-        identifiers: Vec::new(),
-        legal_entity: Some(LegalEntity {
-            id: "DE123456".parse().expect("an id"),
-            issuer: None,
-        }),
-        additional_legal_information: None,
-        vat: Some(VatIdentifier::build(country("DE"), "123456789").expect("a vat id")),
-        tax_registration: None,
-        electronic_address: Some(ElectronicAddress {
+    Seller::builder()
+        .name("Seller Official Name".parse().expect("a name"))
+        .legal_entity(
+            LegalEntity::builder()
+                .id("DE123456".parse().expect("an id"))
+                .build(),
+        )
+        .vat(VatIdentifier::build(country("DE"), "123456789").expect("a vat id"))
+        .electronic_address(ElectronicAddress {
             id: "4035811991007".parse().expect("an address"),
             scheme: ElectronicAddressScheme::EanLocationCode,
-        }),
-        address: address("DE"),
-        contact: Some(Contact {
-            name: Some("Anna Seller".parse().expect("a name")),
-            telephone: Some("+49 30 123456".parse().expect("a phone")),
-            email: Some("anna@example.de".parse().expect("an email")),
-        }),
-    }
+        })
+        .address(address("DE"))
+        .contact(
+            Contact::builder()
+                .name("Anna Seller".parse().expect("a name"))
+                .telephone("+49 30 123456".parse().expect("a phone"))
+                .email("anna@example.de".parse().expect("an email"))
+                .build(),
+        )
+        .build()
 }
 
 fn buyer() -> Buyer {
-    Buyer {
-        name: "Buyer Official Name".parse().expect("a name"),
-        trading_name: None,
-        identifiers: Vec::new(),
-        legal_entity: None,
-        vat: None,
-        electronic_address: Some(ElectronicAddress {
+    Buyer::builder()
+        .name("Buyer Official Name".parse().expect("a name"))
+        .electronic_address(ElectronicAddress {
             id: "4035812991006".parse().expect("an address"),
             scheme: ElectronicAddressScheme::EanLocationCode,
-        }),
-        address: address("DE"),
-        contact: None,
-    }
+        })
+        .address(address("DE"))
+        .build()
 }
 
 fn payment() -> PaymentInstructions {
-    PaymentInstructions {
-        means: PaymentMeans::CreditTransfer,
-        means_text: None,
-        remittance_information: None,
-        details: Some(PaymentDetails::CreditTransfers(vec![CreditTransfer {
-            account: "DE89370400440532013000".parse().expect("an account"),
-            account_name: None,
-            provider: None,
-        }])),
-    }
+    PaymentInstructions::builder()
+        .means(PaymentMeans::CreditTransfer)
+        .details(PaymentDetails::CreditTransfers(vec![
+            CreditTransfer::builder()
+                .account("DE89370400440532013000".parse().expect("an account"))
+                .build(),
+        ]))
+        .build()
 }
 
 fn line() -> InvoiceLine {
-    InvoiceLine {
-        id: "1".parse().expect("an id"),
-        note: None,
-        object: None,
-        quantity: Quantity {
+    InvoiceLine::builder()
+        .id("1".parse().expect("an id"))
+        .quantity(Quantity {
             unit: Unit::from_code("C62").expect("a unit"),
             value: Decimal::from(2),
-        },
-        order_line_reference: None,
-        buyer_accounting_reference: None,
-        period: None,
-        adjustments: Vec::new(),
-        price: Price {
-            gross: Decimal::new(10000, 2),
-            discount: None,
-            base_quantity: None,
-        },
-        vat: VatTreatment::Standard {
+        })
+        .price(Price::builder().gross(Decimal::new(10000, 2)).build())
+        .vat(VatTreatment::Standard {
             rate: Percentage::try_from(Decimal::from(19)).expect("a rate"),
-        },
-        item: Item {
-            name: "Item name".parse().expect("a name"),
-            description: None,
-            seller_id: None,
-            buyer_id: None,
-            standard_id: None,
-            classifications: Vec::new(),
-            country_of_origin: None,
-            attributes: Vec::new(),
-        },
-    }
+        })
+        .item(
+            Item::builder()
+                .name("Item name".parse().expect("a name"))
+                .build(),
+        )
+        .build()
 }
 
 fn address(code: &str) -> PostalAddress {
-    PostalAddress {
-        line1: Some("Main street 1".parse().expect("a line")),
-        line2: None,
-        line3: None,
-        city: Some("Berlin".parse().expect("a city")),
-        country: country(code),
-        country_subdivision: None,
-        postal_code: Some("10115".parse().expect("a code")),
-    }
+    PostalAddress::builder()
+        .line1("Main street 1".parse().expect("a line"))
+        .city("Berlin".parse().expect("a city"))
+        .country(country(code))
+        .postal_code("10115".parse().expect("a code"))
+        .build()
 }
 
 fn country(code: &str) -> CountryCode {
@@ -228,16 +180,18 @@ fn outcome<W: Wrapper>(
 #[test]
 #[ignore = "requires live validators (cargo make env-up)"]
 fn validates_the_nlcius_serialization_against_phive() {
-    let serialized = Document::try_from(DocumentBuilder {
-        invoice: invoice(),
-        profile: Profile::Nlcius10,
-        binding: Binding::Ubl,
-        business_process: Some(
-            "urn:fdc:peppol.eu:2017:poacc:billing:01:1.0"
-                .parse::<BusinessProcess>()
-                .expect("a business process"),
-        ),
-    })
+    let serialized = Document::try_from(
+        DocumentBuilder::builder()
+            .invoice(invoice())
+            .profile(Profile::Nlcius10)
+            .binding(Binding::Ubl)
+            .business_process(
+                "urn:fdc:peppol.eu:2017:poacc:billing:01:1.0"
+                    .parse::<BusinessProcess>()
+                    .expect("a business process"),
+            )
+            .build(),
+    )
     .expect("a document");
     let answer = phive_answer(&serialized);
 
@@ -253,16 +207,18 @@ fn validates_the_nlcius_serialization_against_phive() {
 #[test]
 #[ignore = "requires live validators (cargo make env-up)"]
 fn validates_the_peppol_serialization_against_phive() {
-    let serialized = Document::try_from(DocumentBuilder {
-        invoice: invoice(),
-        profile: Profile::PeppolBisBilling30,
-        binding: Binding::Ubl,
-        business_process: Some(
-            "urn:fdc:peppol.eu:2017:poacc:billing:01:1.0"
-                .parse::<BusinessProcess>()
-                .expect("a business process"),
-        ),
-    })
+    let serialized = Document::try_from(
+        DocumentBuilder::builder()
+            .invoice(invoice())
+            .profile(Profile::PeppolBisBilling30)
+            .binding(Binding::Ubl)
+            .business_process(
+                "urn:fdc:peppol.eu:2017:poacc:billing:01:1.0"
+                    .parse::<BusinessProcess>()
+                    .expect("a business process"),
+            )
+            .build(),
+    )
     .expect("a document");
     let answer = phive_answer(&serialized);
 
@@ -278,16 +234,18 @@ fn validates_the_peppol_serialization_against_phive() {
 #[test]
 #[ignore = "requires live validators (cargo make env-up)"]
 fn validates_the_xrechnung_cii_serialization_against_kosit() {
-    let serialized = Document::try_from(DocumentBuilder {
-        invoice: invoice(),
-        profile: Profile::XRechnung30,
-        binding: Binding::Cii,
-        business_process: Some(
-            "urn:fdc:peppol.eu:2017:poacc:billing:01:1.0"
-                .parse::<BusinessProcess>()
-                .expect("a business process"),
-        ),
-    })
+    let serialized = Document::try_from(
+        DocumentBuilder::builder()
+            .invoice(invoice())
+            .profile(Profile::XRechnung30)
+            .binding(Binding::Cii)
+            .business_process(
+                "urn:fdc:peppol.eu:2017:poacc:billing:01:1.0"
+                    .parse::<BusinessProcess>()
+                    .expect("a business process"),
+            )
+            .build(),
+    )
     .expect("a document");
     let answer = kosit_answer(&serialized);
 
@@ -303,16 +261,18 @@ fn validates_the_xrechnung_cii_serialization_against_kosit() {
 #[test]
 #[ignore = "requires live validators (cargo make env-up)"]
 fn validates_the_en16931_cii_serialization_against_phive() {
-    let serialized = Document::try_from(DocumentBuilder {
-        invoice: invoice(),
-        profile: Profile::En16931,
-        binding: Binding::Cii,
-        business_process: Some(
-            "urn:fdc:peppol.eu:2017:poacc:billing:01:1.0"
-                .parse::<BusinessProcess>()
-                .expect("a business process"),
-        ),
-    })
+    let serialized = Document::try_from(
+        DocumentBuilder::builder()
+            .invoice(invoice())
+            .profile(Profile::En16931)
+            .binding(Binding::Cii)
+            .business_process(
+                "urn:fdc:peppol.eu:2017:poacc:billing:01:1.0"
+                    .parse::<BusinessProcess>()
+                    .expect("a business process"),
+            )
+            .build(),
+    )
     .expect("a document");
     let answer = phive_answer(&serialized);
 
@@ -328,16 +288,18 @@ fn validates_the_en16931_cii_serialization_against_phive() {
 #[test]
 #[ignore = "requires live validators (cargo make env-up)"]
 fn validates_the_xrechnung_serialization_against_both_services() {
-    let serialized = Document::try_from(DocumentBuilder {
-        invoice: invoice(),
-        profile: Profile::XRechnung30,
-        binding: Binding::Ubl,
-        business_process: Some(
-            "urn:fdc:peppol.eu:2017:poacc:billing:01:1.0"
-                .parse::<BusinessProcess>()
-                .expect("a business process"),
-        ),
-    })
+    let serialized = Document::try_from(
+        DocumentBuilder::builder()
+            .invoice(invoice())
+            .profile(Profile::XRechnung30)
+            .binding(Binding::Ubl)
+            .business_process(
+                "urn:fdc:peppol.eu:2017:poacc:billing:01:1.0"
+                    .parse::<BusinessProcess>()
+                    .expect("a business process"),
+            )
+            .build(),
+    )
     .expect("a document");
     let from_kosit = kosit_answer(&serialized);
     let from_phive = phive_answer(&serialized);

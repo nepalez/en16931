@@ -1,16 +1,18 @@
+use crate::prelude::*;
 use crate::{
     Contact, ElectronicAddress, LegalEntity, NonEmptyString, OperationalEntity, PostalAddress,
     Seller, VatIdentifier,
 };
 
 /// The buyer (`BG-7`): the party that receives the invoice and the goods or services.
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, Builder)]
 pub struct Buyer {
     /// Buyer name (`BT-44`).
     pub name: NonEmptyString,
     /// Buyer trading name (`BT-45`).
     pub trading_name: Option<NonEmptyString>,
     /// Buyer identifiers (`BT-46`): alternative identifiers of the same party.
+    #[builder(default)]
     pub identifiers: Vec<OperationalEntity>,
     /// Buyer legal registration (`BT-47`).
     pub legal_entity: Option<LegalEntity>,

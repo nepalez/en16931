@@ -1,8 +1,9 @@
+use crate::prelude::*;
 use crate::{BinaryObject, NonEmptyString, Url};
 
 /// An additional supporting document (`BG-24`):
 /// a referenced, linked, or embedded document.
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, Builder)]
 pub struct SupportingDocument {
     /// Reference (`BT-122`).
     pub reference: NonEmptyString,

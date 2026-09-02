@@ -7,8 +7,8 @@ use crate::{
     ElectronicAddress, ElectronicAddressScheme, Invoice, InvoiceLine, IssuingAgency, Item,
     ItemAttribute, ItemClassification, ItemReference, LegalEntity, LineAdjustment,
     LocationReference, Namespace, Note, ObjectReference, OperationalEntity, Path, Payee,
-    PaymentDetails, PaymentInstructions, PaymentMeans, Percentage, Period, PostalAddress,
-    PrecedingInvoice, Price, Profile, Quantity, Seller, Step, SupportingDocument,
+    PaymentCard, PaymentDetails, PaymentInstructions, PaymentMeans, Percentage, Period,
+    PostalAddress, PrecedingInvoice, Price, Profile, Quantity, Seller, Step, SupportingDocument,
     TaxRepresentative, Unit, VatIdentifier, VatPoint, VatTreatment,
 };
 
@@ -38,12 +38,12 @@ fn rate(value: i64) -> Percentage {
 /// The `binding` is a parameter so each binding test compares against a coherent
 /// fixture, since a parsed document carries the binding of the XML it was read from.
 pub(crate) fn builder(binding: Binding) -> DocumentBuilder {
-    DocumentBuilder {
-        invoice: invoice(),
-        profile: Profile::En16931,
-        binding,
-        business_process: Some(BusinessProcess::PEPPOL_BILLING),
-    }
+    DocumentBuilder::builder()
+        .invoice(invoice())
+        .profile(Profile::En16931)
+        .binding(binding)
+        .business_process(BusinessProcess::PEPPOL_BILLING)
+        .build()
 }
 
 /// A `DocumentBuilder` exercising the alternative branches the rich fixture omits.
@@ -53,12 +53,29 @@ pub(crate) fn builder(binding: Binding) -> DocumentBuilder {
 /// object scheme, a price discount, and start-only or end-only periods. Every choice
 /// survives both bindings, so each codec parses the document back unchanged.
 pub(crate) fn variant_builder(binding: Binding) -> DocumentBuilder {
-    DocumentBuilder {
-        invoice: variant_invoice(),
-        profile: Profile::En16931,
-        binding,
-        business_process: Some(BusinessProcess::PEPPOL_BILLING),
-    }
+    DocumentBuilder::builder()
+        .invoice(variant_invoice())
+        .profile(Profile::En16931)
+        .binding(binding)
+        .business_process(BusinessProcess::PEPPOL_BILLING)
+        .build()
+}
+
+/// A `DocumentBuilder` whose invoice is paid with a payment card (`BG-18`).
+///
+/// It overrides the payment of the rich invoice, so the card details reach the
+/// branch neither `builder` (credit transfer) nor `variant_builder` (direct
+/// debit) exercises. The document round-trips through both bindings.
+pub(crate) fn card_builder(binding: Binding) -> DocumentBuilder {
+    DocumentBuilder::builder()
+        .invoice(Invoice {
+            payment: Some(card_payment()),
+            ..invoice()
+        })
+        .profile(Profile::En16931)
+        .binding(binding)
+        .business_process(BusinessProcess::PEPPOL_BILLING)
+        .build()
 }
 
 // The base invoice with its alternative-branch fields overridden.
@@ -66,10 +83,12 @@ fn variant_invoice() -> Invoice {
     Invoice {
         payment: Some(variant_payment()),
         vat_point: Some(VatPoint::try_from(35u16).expect("a vat point event")),
-        object: Some(ObjectReference {
-            id: text("OBJ-200"),
-            scheme: Some("AAA".parse().expect("an object type")),
-        }),
+        object: Some(
+            ObjectReference::builder()
+                .id(text("OBJ-200"))
+                .scheme("AAA".parse().expect("an object type"))
+                .build(),
+        ),
         adjustments: vec![variant_allowance(), variant_charge()],
         invoicing_period: Some(Period::Until(date(2026, Month::January, 31))),
         lines: vec![variant_line(), line("2", 1, 5000)],
@@ -79,16 +98,32 @@ fn variant_invoice() -> Invoice {
 
 // A direct-debit payment carrying a mandate, a creditor, and a debited account.
 fn variant_payment() -> PaymentInstructions {
-    PaymentInstructions {
-        means: PaymentMeans::SepaDirectDebit,
-        means_text: Some(text("Direct debit")),
-        remittance_information: Some(text("DD-REF-9")),
-        details: Some(PaymentDetails::DirectDebit(DirectDebit {
-            mandate_reference: Some(text("MANDATE-7")),
-            creditor_identifier: Some(text("DE98ZZZ09999999999")),
-            debited_account: Some("DE89370400440532013000".parse().expect("an account")),
-        })),
-    }
+    PaymentInstructions::builder()
+        .means(PaymentMeans::SepaDirectDebit)
+        .means_text(text("Direct debit"))
+        .remittance_information(text("DD-REF-9"))
+        .details(PaymentDetails::DirectDebit(
+            DirectDebit::builder()
+                .mandate_reference(text("MANDATE-7"))
+                .creditor_identifier(text("DE98ZZZ09999999999"))
+                .debited_account("DE89370400440532013000".parse().expect("an account"))
+                .build(),
+        ))
+        .build()
+}
+
+// A card payment carrying the masked number and the cardholder name.
+fn card_payment() -> PaymentInstructions {
+    PaymentInstructions::builder()
+        .means(PaymentMeans::CreditCard)
+        .means_text(text("Credit card"))
+        .details(PaymentDetails::Card(
+            PaymentCard::builder()
+                .primary_account_number(text("41234"))
+                .holder_name(text("Card Holder"))
+                .build(),
+        ))
+        .build()
 }
 
 // A relative document-level allowance, a percentage of a base.
@@ -121,21 +156,20 @@ fn variant_charge() -> Adjustment {
 // An exempt line carrying a price discount, a base quantity, a line object,
 // and both a relative allowance and a charge at the line level.
 fn variant_line() -> InvoiceLine {
-    InvoiceLine {
-        id: text("1"),
-        note: None,
-        object: Some(ObjectReference {
-            id: text("LINE-OBJ-1"),
-            scheme: Some("AAB".parse().expect("an object type")),
-        }),
-        quantity: Quantity {
+    InvoiceLine::builder()
+        .id(text("1"))
+        .object(
+            ObjectReference::builder()
+                .id(text("LINE-OBJ-1"))
+                .scheme("AAB".parse().expect("an object type"))
+                .build(),
+        )
+        .quantity(Quantity {
             unit: Unit::from_code("C62").expect("a unit"),
             value: Decimal::from(3),
-        },
-        order_line_reference: None,
-        buyer_accounting_reference: None,
-        period: Some(Period::From(date(2026, Month::January, 1))),
-        adjustments: vec![
+        })
+        .period(Period::From(date(2026, Month::January, 1)))
+        .adjustments(vec![
             LineAdjustment {
                 amount: AdjustmentAmount::Relative {
                     rate: rate(5),
@@ -153,148 +187,135 @@ fn variant_line() -> InvoiceLine {
                     text: Some(text("line handling")),
                 },
             },
-        ],
-        price: Price {
-            gross: Decimal::new(12000, 2),
-            discount: Some(Decimal::new(2000, 2)),
-            base_quantity: Some(Quantity {
-                unit: Unit::from_code("C62").expect("a unit"),
-                value: Decimal::from(1),
-            }),
-        },
-        vat: VatTreatment::Exempt {
+        ])
+        .price(
+            Price::builder()
+                .gross(Decimal::new(12000, 2))
+                .discount(Decimal::new(2000, 2))
+                .base_quantity(Quantity {
+                    unit: Unit::from_code("C62").expect("a unit"),
+                    value: Decimal::from(1),
+                })
+                .build(),
+        )
+        .vat(VatTreatment::Exempt {
             code: Some("VATEX-EU-132".parse().expect("an exemption reason")),
             text: Some(text("Exempt supply")),
-        },
-        item: Item {
-            name: text("Exempt item"),
-            description: None,
-            seller_id: None,
-            buyer_id: None,
-            standard_id: None,
-            classifications: Vec::new(),
-            country_of_origin: None,
-            attributes: Vec::new(),
-        },
-    }
+        })
+        .item(Item::builder().name(text("Exempt item")).build())
+        .build()
 }
 
 // The invoice the fixture carries.
 fn invoice() -> Invoice {
-    Invoice {
-        number: text("INV-2026-001"),
-        issue_date: date(2026, Month::January, 15),
-        type_code: "380".parse().expect("a type code"),
-        currency: Currency::EUR,
-        vat_accounting_total: None,
-        vat_point: None,
-        payment_due_date: Some(date(2026, Month::February, 15)),
-        buyer_reference: Some(text("BUYER-REF-01")),
-        project_reference: Some(text("PROJECT-42")),
-        contract_reference: Some(text("CONTRACT-7")),
-        purchase_order_reference: Some(text("PO-2026-9")),
-        sales_order_reference: Some(text("SO-2026-3")),
-        receiving_advice_reference: Some(text("RECADV-2")),
-        despatch_advice_reference: Some(text("DESADV-2")),
-        tender_or_lot_reference: Some(text("TENDER-1")),
-        object: Some(ObjectReference {
-            id: text("OBJ-100"),
-            scheme: None,
-        }),
-        buyer_accounting_reference: Some(text("ACCOUNT-500")),
-        payment_terms: Some(text("Net 30 days")),
-        notes: vec![Note {
-            subject_code: Some(text("AAB")),
-            text: text("General note text"),
-        }],
-        preceding_invoices: vec![PrecedingInvoice {
-            number: text("INV-2025-900"),
-            issue_date: Some(date(2025, Month::December, 1)),
-        }],
-        seller: seller(),
-        buyer: buyer(),
-        payee: Some(payee()),
-        tax_representative: Some(tax_representative()),
-        delivery: Some(delivery()),
-        invoicing_period: Some(Period::Range {
+    Invoice::builder()
+        .number(text("INV-2026-001"))
+        .issue_date(date(2026, Month::January, 15))
+        .type_code("380".parse().expect("a type code"))
+        .currency(Currency::EUR)
+        .payment_due_date(date(2026, Month::February, 15))
+        .buyer_reference(text("BUYER-REF-01"))
+        .project_reference(text("PROJECT-42"))
+        .contract_reference(text("CONTRACT-7"))
+        .purchase_order_reference(text("PO-2026-9"))
+        .sales_order_reference(text("SO-2026-3"))
+        .receiving_advice_reference(text("RECADV-2"))
+        .despatch_advice_reference(text("DESADV-2"))
+        .tender_or_lot_reference(text("TENDER-1"))
+        .object(ObjectReference::builder().id(text("OBJ-100")).build())
+        .buyer_accounting_reference(text("ACCOUNT-500"))
+        .payment_terms(text("Net 30 days"))
+        .notes(vec![
+            Note::builder()
+                .subject_code(text("AAB"))
+                .text(text("General note text"))
+                .build(),
+        ])
+        .preceding_invoices(vec![
+            PrecedingInvoice::builder()
+                .number(text("INV-2025-900"))
+                .issue_date(date(2025, Month::December, 1))
+                .build(),
+        ])
+        .seller(seller())
+        .buyer(buyer())
+        .payee(payee())
+        .tax_representative(tax_representative())
+        .delivery(delivery())
+        .invoicing_period(Period::Range {
             start: date(2026, Month::January, 1),
             end: date(2026, Month::January, 31),
-        }),
-        adjustments: vec![allowance()],
-        rounding: Some(Decimal::new(-3, 2)),
-        payment: Some(payment()),
-        paid: Some(Decimal::new(5000, 2)),
-        supporting_documents: vec![supporting_document()],
-        lines: vec![line("1", 2, 10000), line("2", 1, 5000)],
-    }
+        })
+        .adjustments(vec![allowance()])
+        .rounding(Decimal::new(-3, 2))
+        .payment(payment())
+        .paid(Decimal::new(5000, 2))
+        .supporting_documents(vec![supporting_document()])
+        .lines(vec![line("1", 2, 10000), line("2", 1, 5000)])
+        .build()
 }
 
 fn seller() -> Seller {
-    Seller {
-        name: text("Seller Official Name Ltd"),
-        trading_name: Some(text("SellerTrading")),
-        identifiers: vec![OperationalEntity {
-            id: text("SELLER-ID-1"),
-            issuer: Some("0088".parse::<IssuingAgency>().expect("an agency")),
-        }],
-        legal_entity: Some(LegalEntity {
-            id: text("DE12345"),
-            issuer: None,
-        }),
-        additional_legal_information: Some(text("Registered in Berlin")),
-        vat: Some(VatIdentifier::build(country("DE"), "123456789").expect("a vat id")),
-        tax_registration: Some(text("TAX-REG-9")),
-        electronic_address: Some(ElectronicAddress {
+    Seller::builder()
+        .name(text("Seller Official Name Ltd"))
+        .trading_name(text("SellerTrading"))
+        .identifiers(vec![
+            OperationalEntity::builder()
+                .id(text("SELLER-ID-1"))
+                .issuer("0088".parse::<IssuingAgency>().expect("an agency"))
+                .build(),
+        ])
+        .legal_entity(LegalEntity::builder().id(text("DE12345")).build())
+        .additional_legal_information(text("Registered in Berlin"))
+        .vat(VatIdentifier::build(country("DE"), "123456789").expect("a vat id"))
+        .tax_registration(text("TAX-REG-9"))
+        .electronic_address(ElectronicAddress {
             id: text("seller@example.de"),
             scheme: ElectronicAddressScheme::Email,
-        }),
-        address: address("DE", "Main street 1"),
-        contact: Some(Contact {
-            name: Some(text("Anna Seller")),
-            telephone: Some(text("+49 30 1234")),
-            email: Some("anna@example.de".parse().expect("an email")),
-        }),
-    }
+        })
+        .address(address("DE", "Main street 1"))
+        .contact(
+            Contact::builder()
+                .name(text("Anna Seller"))
+                .telephone(text("+49 30 1234"))
+                .email("anna@example.de".parse().expect("an email"))
+                .build(),
+        )
+        .build()
 }
 
 fn buyer() -> Buyer {
-    Buyer {
-        name: text("Buyer Official Name"),
-        trading_name: Some(text("BuyerTrading")),
-        identifiers: vec![OperationalEntity {
-            id: text("BUYER-ID-1"),
-            issuer: None,
-        }],
-        legal_entity: Some(LegalEntity {
-            id: text("FR98765"),
-            issuer: None,
-        }),
-        vat: Some(VatIdentifier::build(country("FR"), "12345678901").expect("a vat id")),
-        electronic_address: Some(ElectronicAddress {
+    Buyer::builder()
+        .name(text("Buyer Official Name"))
+        .trading_name(text("BuyerTrading"))
+        .identifiers(vec![
+            OperationalEntity::builder().id(text("BUYER-ID-1")).build(),
+        ])
+        .legal_entity(LegalEntity::builder().id(text("FR98765")).build())
+        .vat(VatIdentifier::build(country("FR"), "12345678901").expect("a vat id"))
+        .electronic_address(ElectronicAddress {
             id: text("buyer@example.fr"),
             scheme: ElectronicAddressScheme::Email,
-        }),
-        address: address("FR", "Rue centrale 2"),
-        contact: Some(Contact {
-            name: Some(text("Bob Buyer")),
-            telephone: Some(text("+33 1 9876")),
-            email: Some("bob@example.fr".parse().expect("an email")),
-        }),
-    }
+        })
+        .address(address("FR", "Rue centrale 2"))
+        .contact(
+            Contact::builder()
+                .name(text("Bob Buyer"))
+                .telephone(text("+33 1 9876"))
+                .email("bob@example.fr".parse().expect("an email"))
+                .build(),
+        )
+        .build()
 }
 
 fn payee() -> Payee {
-    Payee {
-        name: text("Payee Name"),
-        identifiers: vec![OperationalEntity {
-            id: text("PAYEE-ID"),
-            issuer: None,
-        }],
-        legal_entity: Some(LegalEntity {
-            id: text("PAYEE-LE"),
-            issuer: None,
-        }),
-    }
+    Payee::builder()
+        .name(text("Payee Name"))
+        .identifiers(vec![
+            OperationalEntity::builder().id(text("PAYEE-ID")).build(),
+        ])
+        .legal_entity(LegalEntity::builder().id(text("PAYEE-LE")).build())
+        .build()
 }
 
 fn tax_representative() -> TaxRepresentative {
@@ -306,28 +327,27 @@ fn tax_representative() -> TaxRepresentative {
 }
 
 fn delivery() -> Delivery {
-    Delivery {
-        name: Some(text("Delivery Party")),
-        location: Some(LocationReference {
-            id: text("LOC-1"),
-            issuer: None,
-        }),
-        date: Some(date(2026, Month::January, 20)),
-        address: Some(address("DE", "Delivery street 4")),
-    }
+    Delivery::builder()
+        .name(text("Delivery Party"))
+        .location(LocationReference::builder().id(text("LOC-1")).build())
+        .date(date(2026, Month::January, 20))
+        .address(address("DE", "Delivery street 4"))
+        .build()
 }
 
 fn payment() -> PaymentInstructions {
-    PaymentInstructions {
-        means: PaymentMeans::CreditTransfer,
-        means_text: Some(text("Credit transfer")),
-        remittance_information: Some(text("PAY-REF-1")),
-        details: Some(PaymentDetails::CreditTransfers(vec![CreditTransfer {
-            account: "DE89370400440532013000".parse().expect("an account"),
-            account_name: Some(text("Seller Account")),
-            provider: Some("DEUTDEFF".parse().expect("a bic")),
-        }])),
-    }
+    PaymentInstructions::builder()
+        .means(PaymentMeans::CreditTransfer)
+        .means_text(text("Credit transfer"))
+        .remittance_information(text("PAY-REF-1"))
+        .details(PaymentDetails::CreditTransfers(vec![
+            CreditTransfer::builder()
+                .account("DE89370400440532013000".parse().expect("an account"))
+                .account_name(text("Seller Account"))
+                .provider("DEUTDEFF".parse().expect("a bic"))
+                .build(),
+        ]))
+        .build()
 }
 
 fn allowance() -> Adjustment {
@@ -342,76 +362,73 @@ fn allowance() -> Adjustment {
 }
 
 fn supporting_document() -> SupportingDocument {
-    SupportingDocument {
-        reference: text("DOC-REF-1"),
-        description: Some(text("Supporting document")),
-        external_location: Some("https://example.com/doc.pdf".parse().expect("a url")),
-        attachment: None,
-    }
+    SupportingDocument::builder()
+        .reference(text("DOC-REF-1"))
+        .description(text("Supporting document"))
+        .external_location("https://example.com/doc.pdf".parse().expect("a url"))
+        .build()
 }
 
 // A standard-rated line of `quantity` units at `price` cents each, identified by `id`.
 fn line(id: &str, quantity: i64, price: i64) -> InvoiceLine {
-    InvoiceLine {
-        id: text(id),
-        note: Some(text("line note")),
-        object: None,
-        quantity: Quantity {
+    InvoiceLine::builder()
+        .id(text(id))
+        .note(text("line note"))
+        .quantity(Quantity {
             unit: Unit::from_code("C62").expect("a unit"),
             value: Decimal::from(quantity),
-        },
-        order_line_reference: Some(text("OL-1")),
-        buyer_accounting_reference: Some(text("LINE-ACC-1")),
-        period: Some(Period::Range {
+        })
+        .order_line_reference(text("OL-1"))
+        .buyer_accounting_reference(text("LINE-ACC-1"))
+        .period(Period::Range {
             start: date(2026, Month::January, 1),
             end: date(2026, Month::January, 31),
-        }),
-        adjustments: vec![LineAdjustment {
+        })
+        .adjustments(vec![LineAdjustment {
             amount: AdjustmentAmount::Absolute(Decimal::new(200, 2)),
             reason: AdjustmentReason::Allowance {
                 code: None,
                 text: Some(text("line discount")),
             },
-        }],
-        price: Price {
-            gross: Decimal::new(price, 2),
-            discount: None,
-            base_quantity: None,
-        },
-        vat: VatTreatment::Standard { rate: rate(19) },
-        item: Item {
-            name: text("Item name"),
-            description: Some(text("Item description")),
-            seller_id: Some(text("SELLER-ITEM-1")),
-            buyer_id: Some(text("BUYER-ITEM-1")),
-            standard_id: Some(ItemReference {
-                id: text("1234567890128"),
-                issuer: "0088".parse::<IssuingAgency>().expect("an agency"),
-            }),
-            classifications: vec![Classification {
-                id: text("65434"),
-                scheme: ItemClassification::MutuallyDefined,
-                version: None,
-            }],
-            country_of_origin: Some(country("DE")),
-            attributes: vec![ItemAttribute {
-                name: text("Color"),
-                value: text("Blue"),
-            }],
-        },
-    }
+        }])
+        .price(Price::builder().gross(Decimal::new(price, 2)).build())
+        .vat(VatTreatment::Standard { rate: rate(19) })
+        .item(
+            Item::builder()
+                .name(text("Item name"))
+                .description(text("Item description"))
+                .seller_id(text("SELLER-ITEM-1"))
+                .buyer_id(text("BUYER-ITEM-1"))
+                .standard_id(ItemReference {
+                    id: text("1234567890128"),
+                    issuer: "0088".parse::<IssuingAgency>().expect("an agency"),
+                })
+                .classifications(vec![
+                    Classification::builder()
+                        .id(text("65434"))
+                        .scheme(ItemClassification::MutuallyDefined)
+                        .build(),
+                ])
+                .country_of_origin(country("DE"))
+                .attributes(vec![ItemAttribute {
+                    name: text("Color"),
+                    value: text("Blue"),
+                }])
+                .build(),
+        )
+        .build()
 }
 
 fn address(code: &str, street: &str) -> PostalAddress {
-    PostalAddress {
-        line1: Some(text(street)),
-        line2: Some(text("Building A")),
-        line3: Some(text("Floor 2")),
-        city: Some(text("Berlin")),
-        country: country(code),
-        country_subdivision: Some(text("Berlin region")),
-        postal_code: Some(text("10115")),
-    }
+    PostalAddress::builder()
+        .line1(text(street))
+        .line2(text("Building A"))
+        .line3(text("Floor 2"))
+        .city(text("Berlin"))
+        .country(country(code))
+        .country_subdivision(text("Berlin region"))
+        .postal_code(text("10115"))
+        .build()
 }
 
 /// A record-form step with a 1-based positional index, for path assertions.

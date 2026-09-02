@@ -1,3 +1,4 @@
+use crate::prelude::*;
 use crate::{Decimal, Quantity};
 
 /// Price details (`BG-29`): the item price and the quantity it applies to.
@@ -6,7 +7,7 @@ use crate::{Decimal, Quantity};
 /// The price is stated per base quantity, not per single unit,
 /// so a price of `5.00` over a base quantity of `1000` means `0.005` per unit.
 /// The net price (`BT-146`) is `gross - discount`. The binding derives it.
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, Builder)]
 pub struct Price {
     /// Gross price (`BT-148`): the price before the discount, always present.
     pub gross: Decimal,

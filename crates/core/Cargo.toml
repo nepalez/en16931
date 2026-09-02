@@ -13,6 +13,7 @@ categories = ["parsing", "finance"]
 
 [dependencies]
 base64.workspace = true
+bon.workspace = true
 cefact-units.workspace = true
 email_address.workspace = true
 iban_validate.workspace = true

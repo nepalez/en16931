@@ -1,7 +1,8 @@
+use crate::prelude::*;
 use crate::{CreditTransfer, DirectDebit, NonEmptyString, PaymentCard, PaymentMeans};
 
 /// Payment instructions (`BG-16`): how the invoice is to be paid.
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, Builder)]
 pub struct PaymentInstructions {
     /// Payment means type code (`BT-81`).
     pub means: PaymentMeans,

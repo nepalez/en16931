@@ -1,3 +1,4 @@
+use crate::prelude::*;
 use crate::{InvoicedObjectType, NonEmptyString};
 
 /// An invoiced object reference (`BT-18` document, `BT-128` line):
@@ -5,7 +6,7 @@ use crate::{InvoicedObjectType, NonEmptyString};
 /// such as a contract, a subscription, or a meter.
 ///
 /// The scheme is optional; without it the identifier is contextual.
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, Builder)]
 pub struct ObjectReference {
     /// Object identifier (`BT-18` / `BT-128`).
     pub id: NonEmptyString,

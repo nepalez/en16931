@@ -69,7 +69,7 @@ pub(crate) fn rounded(value: Decimal) -> Decimal {
 /// Non-core fields are optional, and a profile decides on serialization which to require or forbid.
 /// All amounts are in the invoice currency (`BT-5`).
 /// Regulatory-flow fields (`BT-23`, `BT-24`) do not live here but belong to the transport layer.
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, Builder)]
 pub struct Invoice {
     /// Invoice number (`BT-1`).
     pub number: NonEmptyString,
@@ -108,8 +108,10 @@ pub struct Invoice {
     /// Payment terms (`BT-20`).
     pub payment_terms: Option<NonEmptyString>,
     /// Notes (`BG-1`).
+    #[builder(default)]
     pub notes: Vec<Note>,
     /// Preceding invoice references (`BG-3`).
+    #[builder(default)]
     pub preceding_invoices: Vec<PrecedingInvoice>,
     /// Seller (`BG-4`).
     pub seller: Seller,
@@ -124,6 +126,7 @@ pub struct Invoice {
     /// Invoicing period (`BG-14`).
     pub invoicing_period: Option<Period>,
     /// Document-level allowances and charges (`BG-20`/`BG-21`).
+    #[builder(default)]
     pub adjustments: Vec<Adjustment>,
     /// Rounding amount (`BT-114`).
     pub rounding: Option<Decimal>,
@@ -132,8 +135,10 @@ pub struct Invoice {
     /// Paid amount (`BT-113`).
     pub paid: Option<Decimal>,
     /// Additional supporting documents (`BG-24`).
+    #[builder(default)]
     pub supporting_documents: Vec<SupportingDocument>,
     /// Invoice lines (`BG-25`).
+    #[builder(default)]
     pub lines: Vec<InvoiceLine>,
 }
 

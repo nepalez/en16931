@@ -19,6 +19,7 @@ repository = "https://github.com/nepalez/en16931"
 # and adds the features or the `optional` flag it needs on top.
 [workspace.dependencies]
 base64 = "0.22"
+bon = "3"
 cefact-units = "0.1"
 email_address = "0.2"
 en16931-core = { path = "crates/core", version = "0.1" }
