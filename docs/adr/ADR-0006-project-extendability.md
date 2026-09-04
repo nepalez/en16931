@@ -6,11 +6,14 @@ The library extends along several axes. Mature validators differ both in envelop
 
 The core holds the semantic model and the [UBL] and [CII] (de)serializers (ADR-0005). Several extension concerns surround it, each revised upstream on its own schedule:
 * per-format validator-output parsers,
+* profiles of countries and sectors,
 * further extensions (mentioned in ADR-0001).
 
 ## Problem
 
 How is the system decomposed into crates and what versioning policy should be followed to provide extendability?
+
+Which contract binds the core to an extension, and which concerns grow along it?
 
 ## Decision
 
@@ -19,24 +22,36 @@ A virtual manifest at the root holds the workspace. Every crate lives under `cra
 ```text
 en16931/
 └── crates/
-    ├── core/                  — en16931-core: model, bindings, profiles, two extension traits
+    ├── core/                  — en16931-core: model, bindings, profiles, extension traits
     ├── envelopes/{svrl, ...}  — en16931-{svrl, ...}: validator-output wrappers
     └── xpath/{iso, ...}       — en16931-{iso, ...}: dialect xpath normalizers
 ```
 
-> The semantic model, the two bindings, and the profiles are not extension axes. 
+> The semantic model and the two bindings are not extension axes. A profile is one.
 
-They live in the core (ADR-0005), unified across standards. A `Profile` only stamps `BT-24` and forbids terms of the core superset model (ADR-0003). So it supplies no vocabulary the core lacks. A profile that needs a new term grows the core model first. Its volatile rules are [Schematron], owned by the validator or its proxy (ADR-0002). So a profile belongs to the core, like a binding.
+The model and the bindings live in the core (ADR-0005), unified across standards. A [CIUS] profile stamps `BT-24` and forbids terms of the core superset model (ADR-0003). A profile of an extension also brings terms the core model lacks. The volatile rules of a profile are [Schematron], owned by the validator or its proxy (ADR-0002). So a new profile needs no core release, and the core declares `Profile` as a trait.
 
-The core defines the `Binding` and `Profile` enums, and ships their variants. `Binding` carries [UBL] and [CII] (ADR-0005). `Profile` enumerates the per-standard profiles. Both are closed, core-only sets, so neither is a trait. The core also defines two extension traits:
-* `Wrapper` unwraps the validator-specific envelope, and optionally derives the vendor id of a rule set,
+A profile type names its binding, its namespace set, and its invoice type. It stamps `BT-24` per document kind, as a credit note may differ there. A binding is a marker type of a sealed trait. The sealing keeps the binding set closed to the core (ADR-0005).
+
+The core defines four extension traits, and each of them is open:
+* `Serializable` writes an invoice type into a binding over a namespace set,
+* `Deserializable` parses it back,
+* `Wrapper` unwraps the validator-specific envelope,
 * `Normalizer` rewrites a processor dialect into the record form (ADR-0004).
+
+Sealing any of them would admit growth inside the core alone, which defeats the axis.
+
+A validator service declares a trait of its own. It derives the vendor id of a rule set from a profile type and a document kind (ADR-0002).
 
 Extensions are plain Cargo dependencies, not feature flags. The consumer composes them at the call site, pairing a `Wrapper` with a `Normalizer`. Together they turn a validator artifact into the record form (ADR-0004).
 
 Core follows semver. Each extension crate carries its own version. It declares a compatibility range of core in `Cargo.toml`. A breaking change in a trait, or a newly supported standard, bumps the core. Extensions update their range and re-release.
 
 ## Alternatives Considered
+
+* **Typed edges over an erased middle.** A profile type appears at the entry and the exit only. The artifact in between holds the core invoice. Rationale: the type parameter then stays out of the middle types. Rejection: the parse must restore the content of an extension. The erased middle cannot hold it.
+
+* **Dispatch on the `BT-24` string.** A registry maps the identifier of a document onto a profile. Rationale: the parse then recognizes the profile on its own. Rejection: an open set of types needs an external registry. Its entries are checked at runtime, not by the compiler.
 
 * **Conversion-driven extension contract.** Each extension exports a newtype and a `TryFrom` into a single report type. Rejected because envelope and [XPath] dialect conflate inside one type. Switching dialect within one service requires a new extension crate instead of recombining two existing ones.
 
@@ -50,6 +65,8 @@ Core follows semver. Each extension crate carries its own version. It declares a
 
 ### Pros
 
+* A parsed document keeps the content of its extension.
+* A new profile ships in any crate, and the compiler checks its bindings.
 * Both dialect and envelope recombine without new extension crates.
 * Each axis releases on its own track.
 * Consumers see exact compatibility windows.
@@ -58,10 +75,12 @@ Core follows semver. Each extension crate carries its own version. It declares a
 ### Cons
 
 * A consumer combines two extension crates instead of one.
+* The parse needs the profile in advance, since no registry recognizes it.
 
 ## References
 
 [CII]: https://en.wikipedia.org/wiki/UN/CEFACT
+[CIUS]: https://ec.europa.eu/digital-building-blocks/sites/spaces/DIGITAL/pages/467108937/CIUS+and+Extension+-+What+is+allowed
 [Schematron]: https://schematron.com/
 [UBL]: https://www.oasis-open.org/standard/ublv2-1/
 [XPath]: https://www.w3.org/TR/xpath-31/

@@ -25,7 +25,7 @@ A failed assertion in [SVRL] carries one location:
 * a document-wide rule yields the `Document` root;
 * a node with no assigned term yields the root.
 
-A structural binding element nests around terms, yet [EN-16931] assigns it no `BT` or `BG`. The [CII] `SupplyChainTradeTransaction` is one example. The `Binding` alone knows it, owning the binding-to-term correspondence (ADR-0009). It records each term-less node, structural or met on parse, with the root `Context`. Resolution reads the stored target and inspects no node.
+A structural binding element nests around terms, yet [EN-16931] assigns it no `BT` or `BG`. The [CII] `SupplyChainTradeTransaction` is one example. The serialization alone knows it, owning the binding-to-term correspondence (ADR-0009). It records each term-less node, structural or met on parse, with the root `Context`. Resolution reads the stored target and inspects no node.
 
 This keeps a node with no term apart from an unbound location. Such a node is a dictionary hit bound to the root, a finding. An unbound location is a dictionary miss from a binding or dialect mismatch. So it is a library error (ADR-0007), never a finding.
 

@@ -4,7 +4,7 @@
 
 A validator reports findings against an invoice. The library binds each report location to a model node (ADR-0004).
 
-The `Binding` fills the dictionary as it (de)serializes, one key per node. So the dictionary covers every node of the document, on either path.
+The serialization fills the dictionary as it writes or parses, one key per node. So the dictionary covers every node of the document, on either path.
 
 ## Problem
 
