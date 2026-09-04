@@ -1,3 +1,4 @@
+pub use base64::Engine;
 pub use bon::Builder;
 pub use cefact_units::UnitOfMeasure;
 pub use email_address::EmailAddress;

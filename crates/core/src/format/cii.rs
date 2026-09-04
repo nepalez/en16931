@@ -1,19 +1,31 @@
 mod deserialize;
 mod serialize;
 
-use crate::Namespace;
+use crate::format::Sealed;
+use crate::{Format, Namespace};
 pub(crate) use deserialize::deserialize;
 pub(crate) use serialize::serialize;
 
 // The CII record-form namespaces, shared by both halves.
-const RSM: Namespace = Namespace::CrossIndustryInvoice;
-const RAM: Namespace = Namespace::ReusableAggregateBusinessInformationEntity;
+const RSM: <Cii as Format>::Namespace = <Cii as Format>::Namespace::CrossIndustryInvoice;
+const RAM: <Cii as Format>::Namespace =
+    <Cii as Format>::Namespace::ReusableAggregateBusinessInformationEntity;
 
 // The datatype-carrier namespaces, present in the XML but absent from the record form.
 const UDT_PREFIX: &str = "udt";
 const QDT_PREFIX: &str = "qdt";
 const UDT_URI: &str = "urn:un:unece:uncefact:data:standard:UnqualifiedDataType:100";
 const QDT_URI: &str = "urn:un:unece:uncefact:data:standard:QualifiedDataType:100";
+
+/// The marker of the UN/CEFACT Cross Industry Invoice binding.
+/// It carries the CII namespace set, reached as `<Cii as Format>::Namespace`.
+pub struct Cii;
+
+impl Sealed for Cii {}
+
+impl Format for Cii {
+    type Namespace = Namespace;
+}
 
 // The XML prefix a CII document binds to a record-form namespace.
 fn prefix(namespace: Namespace) -> &'static str {
