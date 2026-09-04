@@ -1,14 +1,25 @@
 mod deserialize;
 mod serialize;
 
-use crate::Namespace;
+use crate::format::Sealed;
+use crate::{Format, Namespace};
 pub(crate) use deserialize::deserialize;
 pub(crate) use serialize::serialize;
 
 // The UBL namespaces, shared by both halves.
-const INV: Namespace = Namespace::Invoice;
-const CAC: Namespace = Namespace::CommonAggregateComponents;
-const CBC: Namespace = Namespace::CommonBasicComponents;
+const INV: <Ubl as Format>::Namespace = <Ubl as Format>::Namespace::Invoice;
+const CAC: <Ubl as Format>::Namespace = <Ubl as Format>::Namespace::CommonAggregateComponents;
+const CBC: <Ubl as Format>::Namespace = <Ubl as Format>::Namespace::CommonBasicComponents;
+
+/// The marker of the OASIS Universal Business Language binding.
+/// It carries the UBL namespace set, reached as `<Ubl as Format>::Namespace`.
+pub struct Ubl;
+
+impl Sealed for Ubl {}
+
+impl Format for Ubl {
+    type Namespace = Namespace;
+}
 
 // The XML prefix a UBL document binds to a record-form namespace. The root
 // carries the default namespace, so it needs no prefix.
@@ -25,8 +36,8 @@ fn prefix(namespace: Namespace) -> &'static str {
 mod test {
     use super::*;
     use crate::format::test_helpers::{builder, card_builder, path, pretty, step, variant_builder};
+    use crate::prelude::*;
     use crate::{Binding, Context, Profile, Segment};
-    use std::num::NonZeroUsize;
 
     // A context of the given model segments.
     fn context(segments: Vec<Segment>) -> Context {

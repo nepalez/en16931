@@ -30,7 +30,7 @@ pub use context::{Context, Segment};
 pub use document::Document;
 pub use document_builder::DocumentBuilder;
 pub use error::Error;
-pub use format::Dictionary;
+pub use format::{Cii, Dictionary, Format, Ubl};
 pub use invalid_document::InvalidDocument;
 pub use invoice::*;
 pub use location::{Location, LocationStep, RawNamespace};

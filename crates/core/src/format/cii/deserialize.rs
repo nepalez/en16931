@@ -2,12 +2,12 @@ use crate::format::cii::{RAM, RSM};
 use crate::format::trace::Trace;
 use crate::prelude::*;
 use crate::{
-    Abbreviations, Adjustment, AdjustmentAmount, AdjustmentReason, Amount, Buyer, Classification,
-    Contact, CreditTransfer, Delivery, Dictionary, DirectDebit, DocumentBuilder, ElectronicAddress,
-    Error, ExemptionReason, Invoice, InvoiceLine, Item, ItemAttribute, ItemReference, LegalEntity,
-    LineAdjustment, LocationReference, Namespace, NonEmptyString, Note, ObjectReference,
-    OperationalEntity, Payee, PaymentCard, PaymentDetails, PaymentInstructions, Period,
-    PostalAddress, PrecedingInvoice, Price, Quantity, Seller, SupportingDocument,
+    Abbreviations, Adjustment, AdjustmentAmount, AdjustmentReason, Amount, Buyer, Cii,
+    Classification, Contact, CreditTransfer, Delivery, Dictionary, DirectDebit, DocumentBuilder,
+    ElectronicAddress, Error, ExemptionReason, Format, Invoice, InvoiceLine, Item, ItemAttribute,
+    ItemReference, LegalEntity, LineAdjustment, LocationReference, Namespace, NonEmptyString, Note,
+    ObjectReference, OperationalEntity, Payee, PaymentCard, PaymentDetails, PaymentInstructions,
+    Period, PostalAddress, PrecedingInvoice, Price, Quantity, Seller, SupportingDocument,
     TaxRepresentative, Unit, VatCategory, VatPoint, VatTreatment,
 };
 
@@ -77,7 +77,7 @@ fn open_token(
         return Err(Error::malformed_xml("an element has no namespace"));
     };
     let uri = String::from_utf8_lossy(uri.into_inner());
-    let namespace = Namespace::from_uri(&uri);
+    let namespace = <Cii as Format>::Namespace::from_uri(&uri);
     let name = String::from_utf8_lossy(start.local_name().as_ref()).into_owned();
     let mut attributes = Vec::new();
     for attribute in start.attributes() {
@@ -86,7 +86,7 @@ fn open_token(
         if key == b"xmlns" || key.starts_with(b"xmlns:") {
             let abbreviation = String::from_utf8_lossy(key.strip_prefix(b"xmlns:").unwrap_or(b""));
             let uri = String::from_utf8_lossy(&attribute.value);
-            if let Some(namespace) = Namespace::from_uri(&uri) {
+            if let Some(namespace) = <Cii as Format>::Namespace::from_uri(&uri) {
                 abbreviations.declare(&abbreviation, namespace)?;
             }
             continue;

@@ -1,6 +1,6 @@
 use crate::format::{cii, ubl};
 use crate::prelude::*;
-use crate::{Abbreviations, Dictionary, DocumentBuilder, Error, Namespace};
+use crate::{Abbreviations, Cii, Dictionary, DocumentBuilder, Error, Format, Ubl};
 
 /// A serialization binding: one of the two EN-16931 XML syntaxes.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -58,9 +58,13 @@ impl Binding {
             return Err(Error::malformed_xml("the root element has no namespace"));
         };
         let uri = uri.into_inner();
-        if uri == Namespace::Invoice.uri().as_bytes() {
+        if uri == <Ubl as Format>::Namespace::Invoice.uri().as_bytes() {
             Ok(Self::Ubl)
-        } else if uri == Namespace::CrossIndustryInvoice.uri().as_bytes() {
+        } else if uri
+            == <Cii as Format>::Namespace::CrossIndustryInvoice
+                .uri()
+                .as_bytes()
+        {
             Ok(Self::Cii)
         } else {
             Err(Error::malformed_xml(format!(
