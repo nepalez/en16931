@@ -16,7 +16,11 @@ A constraint with no existing crate becomes a newtype around the primitive. The 
 
 A supported profile version may loosen a constraint. The newtype then accepts the loosest value across versions. A stricter version rejects it at the validator (ADR-0001).
 
+Serialization computes the derived totals from the model (ADR-0008). A value that enters those calculations keeps a closed type. The VAT category is one such value, since the core groups the totals by it. A value that only reaches the XML keeps a looser type, which checks the format alone. A media type and an exemption code are such values.
+
 A constraint already modeled by a mature crate reuses that crate's type. An [ISO 4217] currency code is one example.
+
+A folded type, like the VAT treatment, holds several terms. It checks their joint presence on parse, so an incomplete group is a parse error.
 
 ## Alternatives Considered
 

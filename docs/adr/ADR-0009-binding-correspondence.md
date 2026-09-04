@@ -16,13 +16,15 @@ What if a location matches no node?
 
 ## Decision
 
-> The `Binding` builds the dictionary, one entry per node it handles.
+> The serialization contract builds the dictionary, one entry per node it handles.
 
-It enters every node, even one that carries no model term. Serialization of a `DocumentBuilder` drives it, and `Document::parse` drives the inverse path. The key is the node's path in record form (ADR-0004). The value is a `Context`. Knowledge of the binding enters only here, through `Binding`.
+It enters every node, even one that carries no model term. Serialization of a `DocumentBuilder` drives it, and the parse drives the inverse path. The key is the node's path in record form (ADR-0004). The value is a `Context`. Knowledge of the binding enters only here, through that contract.
 
-The same pass yields the abbreviation table of the document (ADR-0004). The keys keep the namespace itself, so a path stays comparable across documents.
+The same pass yields the abbreviation table of the document (ADR-0004). The keys keep the namespace itself, so a path stays comparable across documents. The keys and the table take the namespace set as a type parameter. The profile fixes that set, so the compiler knows it.
 
-The dictionary serves one purpose. It matches a rule violation to a model field following the location where the rule fired. So the dictionary needs only those entries that the rules can refer to. The [CII] datatype namespaces `udt` and `qdt` carry values, like `udt:DateTimeString`, but no rules ever reference them. The `Binding` writes such a wrapper into the XML, yet stores no entry in the dictionary.
+Following the [syntax binding methodology][Registry of CIUS and Extensions], the set of a profile must contain the base set of its binding, which the compiler checks.
+
+The dictionary serves one purpose. It matches a rule violation to a model field following the location where the rule fired. So the dictionary needs only those entries that the rules can refer to. The [CII] datatype namespaces `udt` and `qdt` carry values, like `udt:DateTimeString`, but no rules ever reference them. The serialization writes such a wrapper into the XML, yet stores no entry in the dictionary.
 
 `Document::check` resolves each location against the dictionary by a bounded lookup. It never evaluates [XPath]. The location and the keys share the positional record form. So each positional predicate matches the stored index. An incompatible location stays unresolved, which is a library error, not a finding (ADR-0007).
 
@@ -32,7 +34,7 @@ The dictionary serves one purpose. It matches a rule violation to a model field 
 
 * **XML evaluation.** Evaluate each location against the document's stored XML to find the node. Rejected because positional locations need no engine. It would reintroduce an [XPath] interpreter the project avoids (ADR-0001).
 
-* **Static pattern registry.** A declarative manifest of [XPath] templates with index variables maps onto `Context`. Rejected because the manifest needs maintenance alongside every binding and schema update. The dictionary instead derives from the `Binding` pass.
+* **Static pattern registry.** A declarative manifest of [XPath] templates with index variables maps onto `Context`. Rejected because the manifest needs maintenance alongside every binding and schema update. The dictionary instead derives from the serialization pass.
 
 * **Opaque [XPath] string in `Report`.** Each entry keeps the raw location and offers no model-side path. Rejected because it drops the typed-path promise of ADR-0008. It pushes the resolution problem onto every consumer.
 
@@ -40,12 +42,15 @@ The dictionary serves one purpose. It matches a rule violation to a model field 
 
 * **Local names and indexes as the keys.** The namespace would be dropped, and a lookup would compare names alone. Rejected because a location of the wrong binding would then match a node of the right name.
 
+* **An erased namespace in the keys.** A key would hold a `Box<dyn Namespace>`, so one key type would serve every set. Rejected because it costs an allocation per step. The keys would also lose cheap comparison.
+
 ## Consequences
 
 ### Pros
 
-* The dictionary derives from the `Binding` pass, with no external manifest to maintain.
+* The dictionary derives from the serialization pass, with no external manifest to maintain.
 * Each entry yields a typed `Context`, so the consumer never parses a raw location.
+* The keys stay `Copy`, since the compiler knows the namespace set.
 
 ### Cons
 

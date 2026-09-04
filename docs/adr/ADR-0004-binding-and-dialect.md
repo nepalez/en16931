@@ -18,7 +18,7 @@ An [XPath] location has two independent variables:
 * the **binding** is its element vocabulary, fixed by the document;
 * the **dialect** is its surface syntax, fixed by the validator's processor.
 
-The library records every path in one form. It is namespace-resolved, dialect-free, and carries the positional index of every step. The names stay as URIs, so the vocabulary remains the binding's.
+The library records every path in one form. It is namespace-resolved, dialect-free, and carries the positional index of every step. The names stay as URIs, so the vocabulary remains the binding's. A document may use a namespace of an extension. So the form fixes no closed set of namespaces. Each binding has a namespace set of its own type, and the profile names the set of a document.
 
 > A [UBL] path and a [CII] path never unify. The record form is binding-specific, not a cross-binding canonical [XPath]. Only the dialect is normalized away.
 
@@ -26,7 +26,7 @@ A per-dialect step rewrites a processor's location into a dialect-free address. 
 
 A dialect names the namespace of a step in one of two ways. It writes the full URI, or it writes a short abbreviation. The address keeps the form the dialect used.
 
-Such an abbreviation has two origins. One processor copies the abbreviation of the checked document. Another writes the abbreviation of its own rule set. So the binding builds one table per document, holding both origins.
+Such an abbreviation has two origins. One processor copies the abbreviation of the checked document. Another writes the abbreviation of its own rule set. So each document carries one table, holding both origins. The side that writes a document supplies both.
 
 The match against a document turns the address into the record form. It resolves a URI on its own, and an abbreviation through that table. Then it walks the dictionary and drops the tail no node answers, an attribute step among them.
 

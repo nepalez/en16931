@@ -6,19 +6,17 @@ The core must (de)serialize a `DocumentBuilder` to both XML bindings, [UBL] and 
 
 ## Problem
 
-The core ships no XML library yet. That choice shapes the whole `Binding` implementation. So the library must be chosen before `Binding` is written.
+The core ships no XML library yet. That choice shapes the whole serializer. So the library must be chosen before the serializer is written.
 
-Which XML library should back the `Binding` (de)serializer?
+Which XML library should back the (de)serializer?
 
 ## Decision
 
-The `Binding` (de)serializer uses [quick-xml] through its event reader and writer.
+The (de)serializer uses [quick-xml] through its event reader and writer.
 
-The event API reads and writes XML and resolves namespaces. It exposes every node during a traversal. So `Binding` tracks each node's namespace, local name, and sibling index in one pass. That pass fills the record-form dictionary as it goes.
+The event API reads and writes XML and resolves namespaces. It exposes every node during a traversal. So the serializer tracks each node's namespace, local name, and sibling index in one pass. That pass fills the record-form dictionary as it goes.
 
 A [CII] datatype carrier from the `udt` or `qdt` namespace holds a value only. The writer emits it as a raw event without a dictionary entry (ADR-0009).
-
-`Document::parse` reads the root element namespace to detect the binding (ADR-0005).
 
 ## Alternatives Considered
 
@@ -36,7 +34,7 @@ Alternative 2: a [xot] tree.
 
 ### Pros
 
-* `Binding` fills the dictionary in the pass that reads or writes the XML.
+* The serializer fills the dictionary in the pass that reads or writes the XML.
 * Namespace handling stays explicit and matches each binding exactly.
 * The dependency is mature and widely adopted.
 
