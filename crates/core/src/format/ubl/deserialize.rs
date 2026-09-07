@@ -2,20 +2,27 @@ use crate::format::trace::Trace;
 use crate::format::ubl::{CAC, CBC, INV};
 use crate::prelude::*;
 use crate::{
-    Abbreviations, Adjustment, AdjustmentAmount, AdjustmentReason, Amount, BinaryObject, Buyer,
-    Classification, Contact, CreditTransfer, Delivery, Dictionary, DirectDebit, DocumentBuilder,
-    ElectronicAddress, Error, ExemptionReason, Format, Invoice, InvoiceLine, Item, ItemAttribute,
-    LegalEntity, LineAdjustment, LocationReference, MimeCode, Namespace, NonEmptyString, Note,
-    ObjectReference, OperationalEntity, Payee, PaymentCard, PaymentDetails, PaymentInstructions,
-    Period, PostalAddress, PrecedingInvoice, Price, Quantity, Seller, SupportingDocument,
-    TaxRepresentative, Ubl, Unit, VatCategory, VatPoint, VatTreatment,
+    Abbreviations, Adjustment, AdjustmentAmount, AdjustmentReason, Amount, BaseNamespace,
+    BinaryObject, Buyer, Classification, Contact, CreditTransfer, Delivery, Dictionary,
+    DirectDebit, DocumentBuilder, ElectronicAddress, Error, ExemptionReason, Format, Invoice,
+    InvoiceLine, Item, ItemAttribute, LegalEntity, LineAdjustment, LocationReference, MimeCode,
+    Namespace, NonEmptyString, Note, ObjectReference, OperationalEntity, Payee, PaymentCard,
+    PaymentDetails, PaymentInstructions, Period, PostalAddress, PrecedingInvoice, Price, Quantity,
+    Seller, SupportingDocument, TaxRepresentative, Ubl, Unit, VatCategory, VatPoint, VatTreatment,
 };
 
 /// Parses a UBL document from XML,
 /// rebuilding the dictionary and the abbreviations on the inverse path.
 pub(crate) fn deserialize(
     xml: &str,
-) -> Result<(DocumentBuilder, Dictionary, Abbreviations), Error> {
+) -> Result<
+    (
+        DocumentBuilder,
+        Dictionary<BaseNamespace>,
+        Abbreviations<BaseNamespace>,
+    ),
+    Error,
+> {
     let (tokens, abbreviations) = tokenize(xml)?;
     let mut parser = Parser {
         tokens,
@@ -30,7 +37,7 @@ pub(crate) fn deserialize(
 
 enum Token {
     Open {
-        namespace: Namespace,
+        namespace: BaseNamespace,
         name: String,
         attributes: Vec<(String, String)>,
     },
@@ -40,7 +47,7 @@ enum Token {
 
 // Reads the document into resolved, owned tokens, collecting the abbreviations it
 // declares and dropping insignificant whitespace.
-fn tokenize(xml: &str) -> Result<(Vec<Token>, Abbreviations), Error> {
+fn tokenize(xml: &str) -> Result<(Vec<Token>, Abbreviations<BaseNamespace>), Error> {
     let mut reader = NsReader::from_str(xml);
     let mut tokens = Vec::new();
     let mut abbreviations = Abbreviations::default();
@@ -73,7 +80,7 @@ fn tokenize(xml: &str) -> Result<(Vec<Token>, Abbreviations), Error> {
 fn open_token(
     resolved: ResolveResult<'_>,
     start: &BytesStart<'_>,
-    abbreviations: &mut Abbreviations,
+    abbreviations: &mut Abbreviations<BaseNamespace>,
 ) -> Result<Token, Error> {
     let ResolveResult::Bound(uri) = resolved else {
         return Err(Error::malformed_xml("an element has no namespace"));
@@ -1145,7 +1152,7 @@ impl Parser {
 
     fn parse_address(
         &mut self,
-        namespace: Namespace,
+        namespace: BaseNamespace,
         element: &str,
     ) -> Result<PostalAddress, Error> {
         self.enter_group(namespace, element, "address")?;
@@ -1180,7 +1187,7 @@ impl Parser {
 
     fn optional_identifier(
         &mut self,
-        namespace: Namespace,
+        namespace: BaseNamespace,
         element: &str,
         field: &'static str,
     ) -> Result<Option<NonEmptyString>, Error> {
@@ -1198,7 +1205,7 @@ impl Parser {
     // Reads a leaf mapped to a model field, returning its text.
     fn leaf(
         &mut self,
-        namespace: Namespace,
+        namespace: BaseNamespace,
         name: &str,
         field: &'static str,
     ) -> Result<String, Error> {
@@ -1208,7 +1215,7 @@ impl Parser {
     // Reads a leaf mapped to a model field, returning its attributes and text.
     fn leaf_attr(
         &mut self,
-        namespace: Namespace,
+        namespace: BaseNamespace,
         name: &str,
         field: &'static str,
     ) -> Result<(Vec<(String, String)>, String), Error> {
@@ -1226,7 +1233,7 @@ impl Parser {
     // Reads a leaf that maps to a model field when present, ignoring the value otherwise.
     fn field_or_leaf(
         &mut self,
-        namespace: Namespace,
+        namespace: BaseNamespace,
         name: &str,
         field: &'static str,
     ) -> Result<String, Error> {
@@ -1236,7 +1243,7 @@ impl Parser {
     // Reads an optional leaf mapped to a model field.
     fn optional_leaf(
         &mut self,
-        namespace: Namespace,
+        namespace: BaseNamespace,
         name: &str,
         field: &'static str,
     ) -> Result<Option<NonEmptyString>, Error> {
@@ -1250,7 +1257,7 @@ impl Parser {
     // Reads an optional date leaf mapped to a model field.
     fn optional_date(
         &mut self,
-        namespace: Namespace,
+        namespace: BaseNamespace,
         name: &str,
         field: &'static str,
     ) -> Result<Option<Date>, Error> {
@@ -1264,7 +1271,7 @@ impl Parser {
     // Reads a single-identifier reference group when present.
     fn optional_reference(
         &mut self,
-        namespace: Namespace,
+        namespace: BaseNamespace,
         element: &str,
         field: &'static str,
     ) -> Result<Option<NonEmptyString>, Error> {
@@ -1280,7 +1287,7 @@ impl Parser {
     // Reads a repeatable single-value element.
     fn repeatable_leaf(
         &mut self,
-        namespace: Namespace,
+        namespace: BaseNamespace,
         name: &str,
         field: &'static str,
         instance: NonZeroUsize,
@@ -1297,7 +1304,7 @@ impl Parser {
     }
 
     // Reads a regulatory leaf recorded at the root context.
-    fn rooted(&mut self, namespace: Namespace, name: &str) -> Result<String, Error> {
+    fn rooted(&mut self, namespace: BaseNamespace, name: &str) -> Result<String, Error> {
         self.take_open(namespace, name)?;
         self.trace.enter(namespace, name);
         self.trace.record_root();
@@ -1310,7 +1317,7 @@ impl Parser {
     // Reads a derived leaf with no model field, returning its attributes and text.
     fn derived(
         &mut self,
-        namespace: Namespace,
+        namespace: BaseNamespace,
         name: &str,
     ) -> Result<(Vec<(String, String)>, String), Error> {
         let attributes = self.take_open(namespace, name)?;
@@ -1322,7 +1329,7 @@ impl Parser {
         Ok((attributes, text))
     }
 
-    fn enter_structural(&mut self, namespace: Namespace, name: &str) -> Result<(), Error> {
+    fn enter_structural(&mut self, namespace: BaseNamespace, name: &str) -> Result<(), Error> {
         self.take_open(namespace, name)?;
         self.trace.enter(namespace, name);
         self.trace.record_root();
@@ -1335,7 +1342,7 @@ impl Parser {
         Ok(())
     }
 
-    fn enter_nested(&mut self, namespace: Namespace, name: &str) -> Result<(), Error> {
+    fn enter_nested(&mut self, namespace: BaseNamespace, name: &str) -> Result<(), Error> {
         self.take_open(namespace, name)?;
         self.trace.enter(namespace, name);
         self.trace.record_context();
@@ -1350,7 +1357,7 @@ impl Parser {
 
     fn enter_group(
         &mut self,
-        namespace: Namespace,
+        namespace: BaseNamespace,
         name: &str,
         field: &'static str,
     ) -> Result<(), Error> {
@@ -1370,7 +1377,7 @@ impl Parser {
 
     fn enter_repeatable(
         &mut self,
-        namespace: Namespace,
+        namespace: BaseNamespace,
         name: &str,
         field: &'static str,
         instance: NonZeroUsize,
@@ -1423,7 +1430,7 @@ impl Parser {
         false
     }
 
-    fn head(&self) -> Result<(Namespace, String), Error> {
+    fn head(&self) -> Result<(BaseNamespace, String), Error> {
         match self.tokens.get(self.cursor) {
             Some(Token::Open {
                 namespace, name, ..
@@ -1432,14 +1439,14 @@ impl Parser {
         }
     }
 
-    fn is_open(&self, namespace: Namespace, name: &str) -> bool {
+    fn is_open(&self, namespace: BaseNamespace, name: &str) -> bool {
         matches!(
             self.tokens.get(self.cursor),
             Some(Token::Open { namespace: found, name: local, .. }) if *found == namespace && local == name
         )
     }
 
-    fn is_open_namespace(&self, namespace: Namespace) -> bool {
+    fn is_open_namespace(&self, namespace: BaseNamespace) -> bool {
         matches!(
             self.tokens.get(self.cursor),
             Some(Token::Open { namespace: found, .. }) if *found == namespace
@@ -1448,7 +1455,7 @@ impl Parser {
 
     fn take_open(
         &mut self,
-        namespace: Namespace,
+        namespace: BaseNamespace,
         name: &str,
     ) -> Result<Vec<(String, String)>, Error> {
         match self.tokens.get(self.cursor) {

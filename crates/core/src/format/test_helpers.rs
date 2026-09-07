@@ -2,11 +2,11 @@
 
 use crate::prelude::*;
 use crate::{
-    Adjustment, AdjustmentAmount, AdjustmentReason, AllowanceReason, Binding, BusinessProcess,
-    Buyer, Classification, Contact, CreditTransfer, Delivery, DirectDebit, DocumentBuilder,
-    ElectronicAddress, ElectronicAddressScheme, Invoice, InvoiceLine, IssuingAgency, Item,
-    ItemAttribute, ItemClassification, ItemReference, LegalEntity, LineAdjustment,
-    LocationReference, Namespace, Note, ObjectReference, OperationalEntity, Path, Payee,
+    Adjustment, AdjustmentAmount, AdjustmentReason, AllowanceReason, BaseNamespace, Binding,
+    BusinessProcess, Buyer, Classification, Contact, CreditTransfer, Delivery, DirectDebit,
+    DocumentBuilder, ElectronicAddress, ElectronicAddressScheme, Invoice, InvoiceLine,
+    IssuingAgency, Item, ItemAttribute, ItemClassification, ItemReference, LegalEntity,
+    LineAdjustment, LocationReference, Note, ObjectReference, OperationalEntity, Path, Payee,
     PaymentCard, PaymentDetails, PaymentInstructions, PaymentMeans, Percentage, Period,
     PostalAddress, PrecedingInvoice, Price, Profile, Quantity, Seller, Step, SupportingDocument,
     TaxRepresentative, Unit, VatIdentifier, VatPoint, VatTreatment,
@@ -432,7 +432,7 @@ fn address(code: &str, street: &str) -> PostalAddress {
 }
 
 /// A record-form step with a 1-based positional index, for path assertions.
-pub(crate) fn step(namespace: Namespace, name: &str, index: usize) -> Step {
+pub(crate) fn step(namespace: BaseNamespace, name: &str, index: usize) -> Step<BaseNamespace> {
     Step {
         namespace,
         name: name.to_owned(),
@@ -441,7 +441,7 @@ pub(crate) fn step(namespace: Namespace, name: &str, index: usize) -> Step {
 }
 
 /// A record-form path from its steps, for dictionary lookups in tests.
-pub(crate) fn path(steps: Vec<Step>) -> Path {
+pub(crate) fn path(steps: Vec<Step<BaseNamespace>>) -> Path<BaseNamespace> {
     Path { steps }
 }
 

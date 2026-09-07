@@ -2,20 +2,27 @@ use crate::format::cii::{RAM, RSM};
 use crate::format::trace::Trace;
 use crate::prelude::*;
 use crate::{
-    Abbreviations, Adjustment, AdjustmentAmount, AdjustmentReason, Amount, Buyer, Cii,
-    Classification, Contact, CreditTransfer, Delivery, Dictionary, DirectDebit, DocumentBuilder,
-    ElectronicAddress, Error, ExemptionReason, Format, Invoice, InvoiceLine, Item, ItemAttribute,
-    ItemReference, LegalEntity, LineAdjustment, LocationReference, Namespace, NonEmptyString, Note,
-    ObjectReference, OperationalEntity, Payee, PaymentCard, PaymentDetails, PaymentInstructions,
-    Period, PostalAddress, PrecedingInvoice, Price, Quantity, Seller, SupportingDocument,
-    TaxRepresentative, Unit, VatCategory, VatPoint, VatTreatment,
+    Abbreviations, Adjustment, AdjustmentAmount, AdjustmentReason, Amount, BaseNamespace, Buyer,
+    Cii, Classification, Contact, CreditTransfer, Delivery, Dictionary, DirectDebit,
+    DocumentBuilder, ElectronicAddress, Error, ExemptionReason, Format, Invoice, InvoiceLine, Item,
+    ItemAttribute, ItemReference, LegalEntity, LineAdjustment, LocationReference, Namespace,
+    NonEmptyString, Note, ObjectReference, OperationalEntity, Payee, PaymentCard, PaymentDetails,
+    PaymentInstructions, Period, PostalAddress, PrecedingInvoice, Price, Quantity, Seller,
+    SupportingDocument, TaxRepresentative, Unit, VatCategory, VatPoint, VatTreatment,
 };
 
 /// Parses a CII document from XML,
 /// rebuilding the dictionary and the abbreviations on the inverse path.
 pub(crate) fn deserialize(
     xml: &str,
-) -> Result<(DocumentBuilder, Dictionary, Abbreviations), Error> {
+) -> Result<
+    (
+        DocumentBuilder,
+        Dictionary<BaseNamespace>,
+        Abbreviations<BaseNamespace>,
+    ),
+    Error,
+> {
     let (tokens, abbreviations) = tokenize(xml)?;
     let mut parser = Parser {
         tokens,
@@ -32,7 +39,7 @@ enum Token {
     // A record-form namespace element (`namespace: Some`) or a datatype carrier
     // from `udt`/`qdt` (`namespace: None`), which is never recorded.
     Open {
-        namespace: Option<Namespace>,
+        namespace: Option<BaseNamespace>,
         name: String,
         attributes: Vec<(String, String)>,
     },
@@ -40,7 +47,7 @@ enum Token {
     Close,
 }
 
-fn tokenize(xml: &str) -> Result<(Vec<Token>, Abbreviations), Error> {
+fn tokenize(xml: &str) -> Result<(Vec<Token>, Abbreviations<BaseNamespace>), Error> {
     let mut reader = NsReader::from_str(xml);
     let mut tokens = Vec::new();
     let mut abbreviations = Abbreviations::default();
@@ -71,7 +78,7 @@ fn tokenize(xml: &str) -> Result<(Vec<Token>, Abbreviations), Error> {
 fn open_token(
     resolved: ResolveResult<'_>,
     start: &BytesStart<'_>,
-    abbreviations: &mut Abbreviations,
+    abbreviations: &mut Abbreviations<BaseNamespace>,
 ) -> Result<Token, Error> {
     let ResolveResult::Bound(uri) = resolved else {
         return Err(Error::malformed_xml("an element has no namespace"));
@@ -1263,7 +1270,7 @@ impl Parser {
     // Reads a single-identifier reference document when present.
     fn optional_reference(
         &mut self,
-        namespace: Namespace,
+        namespace: BaseNamespace,
         element: &str,
         field: &'static str,
     ) -> Result<Option<NonEmptyString>, Error> {
@@ -1326,7 +1333,7 @@ impl Parser {
 
     fn leaf(
         &mut self,
-        namespace: Namespace,
+        namespace: BaseNamespace,
         name: &str,
         field: &'static str,
     ) -> Result<String, Error> {
@@ -1335,7 +1342,7 @@ impl Parser {
 
     fn leaf_attr(
         &mut self,
-        namespace: Namespace,
+        namespace: BaseNamespace,
         name: &str,
         field: &'static str,
     ) -> Result<(Vec<(String, String)>, String), Error> {
@@ -1352,7 +1359,7 @@ impl Parser {
 
     fn optional_leaf(
         &mut self,
-        namespace: Namespace,
+        namespace: BaseNamespace,
         name: &str,
         field: &'static str,
     ) -> Result<Option<NonEmptyString>, Error> {
@@ -1363,7 +1370,7 @@ impl Parser {
         }
     }
 
-    fn rooted(&mut self, namespace: Namespace, name: &str) -> Result<String, Error> {
+    fn rooted(&mut self, namespace: BaseNamespace, name: &str) -> Result<String, Error> {
         self.take_open(namespace, name)?;
         self.trace.enter(namespace, name);
         self.trace.record_root();
@@ -1375,7 +1382,7 @@ impl Parser {
 
     fn derived(
         &mut self,
-        namespace: Namespace,
+        namespace: BaseNamespace,
         name: &str,
     ) -> Result<(Vec<(String, String)>, String), Error> {
         let attributes = self.take_open(namespace, name)?;
@@ -1387,7 +1394,7 @@ impl Parser {
         Ok((attributes, text))
     }
 
-    fn enter_structural(&mut self, namespace: Namespace, name: &str) -> Result<(), Error> {
+    fn enter_structural(&mut self, namespace: BaseNamespace, name: &str) -> Result<(), Error> {
         self.take_open(namespace, name)?;
         self.trace.enter(namespace, name);
         self.trace.record_root();
@@ -1400,7 +1407,7 @@ impl Parser {
         Ok(())
     }
 
-    fn enter_nested(&mut self, namespace: Namespace, name: &str) -> Result<(), Error> {
+    fn enter_nested(&mut self, namespace: BaseNamespace, name: &str) -> Result<(), Error> {
         self.take_open(namespace, name)?;
         self.trace.enter(namespace, name);
         self.trace.record_context();
@@ -1415,7 +1422,7 @@ impl Parser {
 
     fn enter_group(
         &mut self,
-        namespace: Namespace,
+        namespace: BaseNamespace,
         name: &str,
         field: &'static str,
     ) -> Result<(), Error> {
@@ -1435,7 +1442,7 @@ impl Parser {
 
     fn enter_repeatable(
         &mut self,
-        namespace: Namespace,
+        namespace: BaseNamespace,
         name: &str,
         field: &'static str,
         instance: NonZeroUsize,
@@ -1495,7 +1502,7 @@ impl Parser {
         String::new()
     }
 
-    fn head(&self) -> Result<(Namespace, String), Error> {
+    fn head(&self) -> Result<(BaseNamespace, String), Error> {
         match self.tokens.get(self.cursor) {
             Some(Token::Open {
                 namespace: Some(namespace),
@@ -1506,14 +1513,14 @@ impl Parser {
         }
     }
 
-    fn is_open(&self, namespace: Namespace, name: &str) -> bool {
+    fn is_open(&self, namespace: BaseNamespace, name: &str) -> bool {
         matches!(
             self.tokens.get(self.cursor),
             Some(Token::Open { namespace: Some(found), name: local, .. }) if *found == namespace && local == name
         )
     }
 
-    fn is_open_namespace(&self, namespace: Namespace) -> bool {
+    fn is_open_namespace(&self, namespace: BaseNamespace) -> bool {
         matches!(
             self.tokens.get(self.cursor),
             Some(Token::Open { namespace: Some(found), .. }) if *found == namespace
@@ -1522,7 +1529,7 @@ impl Parser {
 
     fn take_open(
         &mut self,
-        namespace: Namespace,
+        namespace: BaseNamespace,
         name: &str,
     ) -> Result<Vec<(String, String)>, Error> {
         match self.tokens.get(self.cursor) {

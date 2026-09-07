@@ -1,16 +1,16 @@
 use crate::prelude::*;
-use crate::{Context, Dictionary, Namespace, Path, Segment, Step};
+use crate::{BaseNamespace, Context, Dictionary, Path, Segment, Step};
 
 /// The walk state that turns a sequence of node visits into a dictionary.
 pub(crate) struct Trace {
     // One frame per open element, counting its same-named children to index them.
-    frames: Vec<HashMap<(Namespace, String), usize>>,
+    frames: Vec<HashMap<(BaseNamespace, String), usize>>,
     // The record-form steps from the root down to the current node.
-    path: Vec<Step>,
+    path: Vec<Step<BaseNamespace>>,
     // The model-side segments from the root down to the current node.
     context: Vec<Segment>,
     // The accumulated path-to-context dictionary.
-    dictionary: Dictionary,
+    dictionary: Dictionary<BaseNamespace>,
 }
 
 impl Trace {
@@ -25,7 +25,7 @@ impl Trace {
     }
 
     /// Descends into a child element, extending the record-form path.
-    pub(crate) fn enter(&mut self, namespace: Namespace, name: &str) {
+    pub(crate) fn enter(&mut self, namespace: BaseNamespace, name: &str) {
         let index = self.next_index(namespace, name);
         self.path.push(Step {
             namespace,
@@ -75,7 +75,7 @@ impl Trace {
     }
 
     /// Consumes the trace, yielding the dictionary it has built.
-    pub(crate) fn into_dictionary(self) -> Dictionary {
+    pub(crate) fn into_dictionary(self) -> Dictionary<BaseNamespace> {
         self.dictionary
     }
 
@@ -88,7 +88,7 @@ impl Trace {
         );
     }
 
-    fn next_index(&mut self, namespace: Namespace, name: &str) -> NonZeroUsize {
+    fn next_index(&mut self, namespace: BaseNamespace, name: &str) -> NonZeroUsize {
         let frame = self.frames.last_mut().expect("an open frame");
         let count = frame.entry((namespace, name.to_owned())).or_insert(0);
         *count += 1;

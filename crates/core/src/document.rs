@@ -1,7 +1,7 @@
 use crate::{
-    Abbreviations, Binding, Context, Dictionary, DocumentBuilder, Error, InvalidDocument, Invoice,
-    Location, Namespace, Path, Problem, RawNamespace, RawReport, Report, Step, Target,
-    ValidDocument,
+    Abbreviations, BaseNamespace, Binding, Context, Dictionary, DocumentBuilder, Error,
+    InvalidDocument, Invoice, Location, Namespace, Path, Problem, RawNamespace, RawReport, Report,
+    Step, Target, ValidDocument,
 };
 
 /// The public reporting artifact of the library.
@@ -12,9 +12,9 @@ pub struct Document {
     // The serialized XML of this document.
     xml: String,
     // One entry per node the binding handled: record-form path to `Context`.
-    dictionary: Dictionary,
+    dictionary: Dictionary<BaseNamespace>,
     // The abbreviations a report location of this document may name.
-    abbreviations: Abbreviations,
+    abbreviations: Abbreviations<BaseNamespace>,
 }
 
 impl Document {
@@ -49,7 +49,7 @@ impl Document {
     }
 
     /// The abbreviations a normalizer resolves a report location against.
-    pub fn abbreviations(&self) -> &Abbreviations {
+    pub fn abbreviations(&self) -> &Abbreviations<BaseNamespace> {
         &self.abbreviations
     }
 
@@ -92,7 +92,7 @@ impl Document {
         let mut bound = None;
         for step in &location.steps {
             let Some(namespace) = (match step.namespace.as_ref() {
-                Some(RawNamespace::Uri(uri)) => Namespace::from_uri(uri),
+                Some(RawNamespace::Uri(uri)) => BaseNamespace::from_uri(uri),
                 Some(RawNamespace::Abbreviation(name)) => self.abbreviations.resolve(name),
                 None => None,
             }) else {
@@ -301,8 +301,8 @@ mod test {
     fn resolves_a_namespace_the_dialect_wrote_in_full() {
         let location = Location {
             steps: vec![
-                written(Namespace::Invoice.uri(), "Invoice", 1),
-                written(Namespace::CommonBasicComponents.uri(), "ID", 1),
+                written(BaseNamespace::Invoice.uri(), "Invoice", 1),
+                written(BaseNamespace::CommonBasicComponents.uri(), "ID", 1),
             ],
         };
 
