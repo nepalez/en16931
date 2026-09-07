@@ -2,7 +2,7 @@ mod deserialize;
 mod serialize;
 
 use crate::format::Sealed;
-use crate::{Format, Namespace};
+use crate::{BaseNamespace, Format};
 pub(crate) use deserialize::deserialize;
 pub(crate) use serialize::serialize;
 
@@ -18,12 +18,12 @@ pub struct Ubl;
 impl Sealed for Ubl {}
 
 impl Format for Ubl {
-    type Namespace = Namespace;
+    type Namespace = BaseNamespace;
 }
 
 // The XML prefix a UBL document binds to a record-form namespace. The root
 // carries the default namespace, so it needs no prefix.
-fn prefix(namespace: Namespace) -> &'static str {
+fn prefix(namespace: BaseNamespace) -> &'static str {
     match namespace {
         CAC => "cac",
         CBC => "cbc",

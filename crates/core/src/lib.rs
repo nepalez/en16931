@@ -35,7 +35,7 @@ pub use invalid_document::InvalidDocument;
 pub use invoice::*;
 pub use location::{Location, LocationStep, RawNamespace};
 pub use normalizer::Normalizer;
-pub use path::{Abbreviations, Namespace, Path, Step};
+pub use path::{Abbreviations, BaseNamespace, Namespace, Path, Step};
 pub use profile::Profile;
 pub use raw_report::{Entry, RawReport, Severity};
 pub use report::{Problem, Report};

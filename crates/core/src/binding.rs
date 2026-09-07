@@ -1,6 +1,8 @@
 use crate::format::{cii, ubl};
 use crate::prelude::*;
-use crate::{Abbreviations, Cii, Dictionary, DocumentBuilder, Error, Format, Ubl};
+use crate::{
+    Abbreviations, BaseNamespace, Cii, Dictionary, DocumentBuilder, Error, Format, Namespace, Ubl,
+};
 
 /// A serialization binding: one of the two EN-16931 XML syntaxes.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -29,7 +31,14 @@ impl Binding {
     /// Serializes a `DocumentBuilder` to this binding's XML.
     /// Returns the XML along with the dictionary binding its nodes to the document's,
     /// and the abbreviations its own namespace declarations bind.
-    pub fn serialize(self, builder: &DocumentBuilder) -> (String, Dictionary, Abbreviations) {
+    pub fn serialize(
+        self,
+        builder: &DocumentBuilder,
+    ) -> (
+        String,
+        Dictionary<BaseNamespace>,
+        Abbreviations<BaseNamespace>,
+    ) {
         match self {
             Self::Ubl => ubl::serialize(builder),
             Self::Cii => cii::serialize(builder),
@@ -46,7 +55,14 @@ impl Binding {
     pub fn deserialize(
         self,
         xml: &str,
-    ) -> Result<(DocumentBuilder, Dictionary, Abbreviations), Error> {
+    ) -> Result<
+        (
+            DocumentBuilder,
+            Dictionary<BaseNamespace>,
+            Abbreviations<BaseNamespace>,
+        ),
+        Error,
+    > {
         match self {
             Self::Ubl => ubl::deserialize(xml),
             Self::Cii => cii::deserialize(xml),

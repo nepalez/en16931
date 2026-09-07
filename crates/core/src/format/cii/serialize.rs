@@ -2,16 +2,22 @@ use crate::format::cii::{QDT_PREFIX, QDT_URI, RAM, RSM, UDT_PREFIX, UDT_URI, pre
 use crate::format::trace::Trace;
 use crate::prelude::*;
 use crate::{
-    Abbreviations, Adjustment, AdjustmentAmount, AdjustmentReason, Buyer, Contact, Delivery,
-    Dictionary, DocumentBuilder, ElectronicAddress, Invoice, InvoiceLine, Item, LegalEntity,
-    LineAdjustment, Namespace, NonEmptyString, OperationalEntity, Payee, PaymentDetails,
-    PaymentInstructions, Period, PostalAddress, PrecedingInvoice, Seller, TaxRepresentative, Term,
-    VatPoint, VatTreatment,
+    Abbreviations, Adjustment, AdjustmentAmount, AdjustmentReason, BaseNamespace, Buyer, Contact,
+    Delivery, Dictionary, DocumentBuilder, ElectronicAddress, Invoice, InvoiceLine, Item,
+    LegalEntity, LineAdjustment, Namespace, NonEmptyString, OperationalEntity, Payee,
+    PaymentDetails, PaymentInstructions, Period, PostalAddress, PrecedingInvoice, Seller,
+    TaxRepresentative, Term, VatPoint, VatTreatment,
 };
 
 /// Serializes a `DocumentBuilder` to CII XML,
 /// returning the document, its dictionary, and its abbreviations.
-pub(crate) fn serialize(builder: &DocumentBuilder) -> (String, Dictionary, Abbreviations) {
+pub(crate) fn serialize(
+    builder: &DocumentBuilder,
+) -> (
+    String,
+    Dictionary<BaseNamespace>,
+    Abbreviations<BaseNamespace>,
+) {
     let mut serializer = Serializer::new(builder);
     serializer.document(builder);
     serializer.finish()
@@ -41,7 +47,7 @@ fn plain(value: Decimal) -> String {
 struct Serializer {
     inner: Writer<Vec<u8>>,
     trace: Trace,
-    abbreviations: Abbreviations,
+    abbreviations: Abbreviations<BaseNamespace>,
     forbidden: &'static [Term],
     currency: &'static str,
 }
@@ -57,7 +63,13 @@ impl Serializer {
         }
     }
 
-    fn finish(self) -> (String, Dictionary, Abbreviations) {
+    fn finish(
+        self,
+    ) -> (
+        String,
+        Dictionary<BaseNamespace>,
+        Abbreviations<BaseNamespace>,
+    ) {
         let xml = String::from_utf8(self.inner.into_inner()).expect("quick-xml emits valid UTF-8");
         (xml, self.trace.into_dictionary(), self.abbreviations)
     }
@@ -1138,7 +1150,7 @@ impl Serializer {
     // Serializes a single-identifier reference document.
     fn reference(
         &mut self,
-        namespace: Namespace,
+        namespace: BaseNamespace,
         element: &str,
         term: Term,
         field: &'static str,
@@ -1201,7 +1213,7 @@ impl Serializer {
 
     fn leaf(
         &mut self,
-        namespace: Namespace,
+        namespace: BaseNamespace,
         name: &str,
         field: &'static str,
         term: Term,
@@ -1215,7 +1227,7 @@ impl Serializer {
 
     fn leaf_attr(
         &mut self,
-        namespace: Namespace,
+        namespace: BaseNamespace,
         name: &str,
         field: &'static str,
         term: Term,
@@ -1228,13 +1240,19 @@ impl Serializer {
         self.write_field_leaf(namespace, name, field, attributes, value);
     }
 
-    fn field_leaf(&mut self, namespace: Namespace, name: &str, field: &'static str, value: &str) {
+    fn field_leaf(
+        &mut self,
+        namespace: BaseNamespace,
+        name: &str,
+        field: &'static str,
+        value: &str,
+    ) {
         self.write_field_leaf(namespace, name, field, &[], value);
     }
 
     fn field_leaf_attr(
         &mut self,
-        namespace: Namespace,
+        namespace: BaseNamespace,
         name: &str,
         field: &'static str,
         attributes: &[(&str, &str)],
@@ -1245,7 +1263,7 @@ impl Serializer {
 
     fn write_field_leaf(
         &mut self,
-        namespace: Namespace,
+        namespace: BaseNamespace,
         name: &str,
         field: &'static str,
         attributes: &[(&str, &str)],
@@ -1261,7 +1279,7 @@ impl Serializer {
 
     fn rooted(
         &mut self,
-        namespace: Namespace,
+        namespace: BaseNamespace,
         name: &str,
         attributes: &[(&str, &str)],
         value: &str,
@@ -1274,7 +1292,7 @@ impl Serializer {
 
     fn derived(
         &mut self,
-        namespace: Namespace,
+        namespace: BaseNamespace,
         name: &str,
         attributes: &[(&str, &str)],
         value: &str,
@@ -1287,7 +1305,7 @@ impl Serializer {
 
     fn group(
         &mut self,
-        namespace: Namespace,
+        namespace: BaseNamespace,
         name: &str,
         field: &'static str,
         term: Term,
@@ -1309,7 +1327,7 @@ impl Serializer {
     // Writes a group mapped to a model field, never filtered (its term is never forbidden).
     fn field_group(
         &mut self,
-        namespace: Namespace,
+        namespace: BaseNamespace,
         name: &str,
         field: &'static str,
         body: impl FnOnce(&mut Self),
@@ -1326,7 +1344,7 @@ impl Serializer {
 
     fn repeatable(
         &mut self,
-        namespace: Namespace,
+        namespace: BaseNamespace,
         name: &str,
         field: &'static str,
         term: Term,
@@ -1346,7 +1364,7 @@ impl Serializer {
         self.trace.leave();
     }
 
-    fn structural(&mut self, namespace: Namespace, name: &str, body: impl FnOnce(&mut Self)) {
+    fn structural(&mut self, namespace: BaseNamespace, name: &str, body: impl FnOnce(&mut Self)) {
         self.trace.enter(namespace, name);
         self.trace.record_root();
         self.write_start(namespace, name);
@@ -1355,7 +1373,7 @@ impl Serializer {
         self.trace.leave();
     }
 
-    fn nested(&mut self, namespace: Namespace, name: &str, body: impl FnOnce(&mut Self)) {
+    fn nested(&mut self, namespace: BaseNamespace, name: &str, body: impl FnOnce(&mut Self)) {
         self.trace.enter(namespace, name);
         self.trace.record_context();
         self.write_start(namespace, name);
@@ -1366,7 +1384,7 @@ impl Serializer {
 
     fn write_element(
         &mut self,
-        namespace: Namespace,
+        namespace: BaseNamespace,
         name: &str,
         attributes: &[(&str, &str)],
         value: &str,
@@ -1381,11 +1399,11 @@ impl Serializer {
         self.write(Event::End(BytesEnd::new(tag)));
     }
 
-    fn write_start(&mut self, namespace: Namespace, name: &str) {
+    fn write_start(&mut self, namespace: BaseNamespace, name: &str) {
         self.write(Event::Start(BytesStart::new(qname(namespace, name))));
     }
 
-    fn write_end(&mut self, namespace: Namespace, name: &str) {
+    fn write_end(&mut self, namespace: BaseNamespace, name: &str) {
         self.write(Event::End(BytesEnd::new(qname(namespace, name))));
     }
 
@@ -1397,7 +1415,7 @@ impl Serializer {
 }
 
 // The record-form qualified name of an element, prefixed for its namespace.
-fn qname(namespace: Namespace, name: &str) -> String {
+fn qname(namespace: BaseNamespace, name: &str) -> String {
     format!("{}:{}", prefix(namespace), name)
 }
 

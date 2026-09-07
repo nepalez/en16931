@@ -2,7 +2,7 @@ mod deserialize;
 mod serialize;
 
 use crate::format::Sealed;
-use crate::{Format, Namespace};
+use crate::{BaseNamespace, Format};
 pub(crate) use deserialize::deserialize;
 pub(crate) use serialize::serialize;
 
@@ -24,11 +24,11 @@ pub struct Cii;
 impl Sealed for Cii {}
 
 impl Format for Cii {
-    type Namespace = Namespace;
+    type Namespace = BaseNamespace;
 }
 
 // The XML prefix a CII document binds to a record-form namespace.
-fn prefix(namespace: Namespace) -> &'static str {
+fn prefix(namespace: BaseNamespace) -> &'static str {
     match namespace {
         RSM => "rsm",
         RAM => "ram",
