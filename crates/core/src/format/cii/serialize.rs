@@ -1,11 +1,11 @@
-use crate::format::cii::{QDT_PREFIX, QDT_URI, RAM, RSM, UDT_PREFIX, UDT_URI, prefix};
+use crate::format::cii::{QDT, RAM, RSM, UDT, prefix};
 use crate::format::trace::Trace;
 use crate::prelude::*;
 use crate::{
-    Abbreviations, Adjustment, AdjustmentAmount, AdjustmentReason, BaseNamespace, Buyer, Contact,
-    Delivery, Dictionary, DocumentBuilder, ElectronicAddress, Invoice, InvoiceLine, Item,
-    LegalEntity, LineAdjustment, Namespace, NonEmptyString, OperationalEntity, Payee,
-    PaymentDetails, PaymentInstructions, Period, PostalAddress, PrecedingInvoice, Seller,
+    Abbreviations, Adjustment, AdjustmentAmount, AdjustmentReason, BaseNamespace, Buyer, Cii,
+    Contact, Delivery, Dictionary, DocumentBuilder, ElectronicAddress, Format, Invoice,
+    InvoiceLine, Item, LegalEntity, LineAdjustment, Namespace, NonEmptyString, OperationalEntity,
+    Payee, PaymentDetails, PaymentInstructions, Period, PostalAddress, PrecedingInvoice, Seller,
     TaxRepresentative, Term, VatPoint, VatTreatment,
 };
 
@@ -57,7 +57,7 @@ impl Serializer {
         Self {
             inner: Writer::new(Vec::new()),
             trace: Trace::new(),
-            abbreviations: Abbreviations::default(),
+            abbreviations: <Cii as Format>::Namespace::default_abbreviations(),
             forbidden: builder.profile.forbidden_terms(),
             currency: builder.invoice.currency.code(),
         }
@@ -84,12 +84,11 @@ impl Serializer {
         let root = BytesStart::new("rsm:CrossIndustryInvoice").with_attributes([
             ("xmlns:rsm", RSM.uri()),
             ("xmlns:ram", RAM.uri()),
-            ("xmlns:udt", UDT_URI),
-            ("xmlns:qdt", QDT_URI),
+            ("xmlns:udt", UDT.uri()),
+            ("xmlns:qdt", QDT.uri()),
         ]);
         self.write(Event::Start(root));
-        // The datatype carriers stay out: no record-form path names them.
-        for namespace in [RSM, RAM] {
+        for namespace in [RSM, RAM, UDT, QDT] {
             self.abbreviations
                 .declare(prefix(namespace), namespace)
                 .expect("the writer binds each abbreviation to one namespace");
@@ -1139,7 +1138,7 @@ impl Serializer {
                     serializer.derived(RAM, "IssuerAssignedID", &[], invoice.number.as_ref());
                     if let Some(issued) = invoice.issue_date {
                         serializer.nested(RAM, "FormattedIssueDateTime", |serializer| {
-                            serializer.write_raw_datetime(QDT_PREFIX, issued);
+                            serializer.write_raw_datetime(QDT, issued);
                         });
                     }
                 },
@@ -1172,7 +1171,7 @@ impl Serializer {
         self.trace.push_field(field);
         self.trace.record_context();
         self.write_start(RAM, element);
-        self.write_raw_datetime(UDT_PREFIX, value);
+        self.write_raw_datetime(UDT, value);
         self.write_end(RAM, element);
         self.trace.pop_context();
         self.trace.leave();
@@ -1183,18 +1182,14 @@ impl Serializer {
         self.trace.enter(RAM, "ChargeIndicator");
         self.trace.record_context();
         self.write_start(RAM, "ChargeIndicator");
-        self.write_raw(
-            UDT_PREFIX,
-            "Indicator",
-            if charge { "true" } else { "false" },
-        );
+        self.write_raw(UDT, "Indicator", if charge { "true" } else { "false" });
         self.write_end(RAM, "ChargeIndicator");
         self.trace.leave();
     }
 
     // Writes a `DateTimeString` value carrier in the given datatype namespace.
-    fn write_raw_datetime(&mut self, prefix: &str, value: Date) {
-        let tag = format!("{prefix}:DateTimeString");
+    fn write_raw_datetime(&mut self, namespace: BaseNamespace, value: Date) {
+        let tag = qname(namespace, "DateTimeString");
         let start = BytesStart::new(tag.clone()).with_attributes([("format", "102")]);
         self.write(Event::Start(start));
         self.write(Event::Text(BytesText::new(&date(value))));
@@ -1202,8 +1197,8 @@ impl Serializer {
     }
 
     // Writes a value-carrier element from a datatype namespace, never recorded.
-    fn write_raw(&mut self, prefix: &str, name: &str, value: &str) {
-        let tag = format!("{prefix}:{name}");
+    fn write_raw(&mut self, namespace: BaseNamespace, name: &str, value: &str) {
+        let tag = qname(namespace, name);
         self.write(Event::Start(BytesStart::new(tag.clone())));
         self.write(Event::Text(BytesText::new(value)));
         self.write(Event::End(BytesEnd::new(tag)));

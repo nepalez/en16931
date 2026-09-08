@@ -50,7 +50,7 @@ enum Token {
 fn tokenize(xml: &str) -> Result<(Vec<Token>, Abbreviations<BaseNamespace>), Error> {
     let mut reader = NsReader::from_str(xml);
     let mut tokens = Vec::new();
-    let mut abbreviations = Abbreviations::default();
+    let mut abbreviations = <Ubl as Format>::Namespace::default_abbreviations();
     loop {
         let (resolved, event) = reader.read_resolved_event()?;
         match event {

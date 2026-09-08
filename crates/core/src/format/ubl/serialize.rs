@@ -5,10 +5,11 @@ use crate::format::ubl::{CAC, CBC, INV, prefix};
 use crate::prelude::*;
 use crate::{
     Abbreviations, Adjustment, AdjustmentAmount, AdjustmentReason, BaseNamespace, BinaryObject,
-    Buyer, Contact, Delivery, Dictionary, DocumentBuilder, ElectronicAddress, Invoice, InvoiceLine,
-    Item, LegalEntity, LineAdjustment, Namespace, Note, ObjectReference, OperationalEntity, Payee,
-    PaymentDetails, PaymentInstructions, Period, PostalAddress, PrecedingInvoice, Seller,
-    SupportingDocument, TaxRepresentative, Term, VatPoint, VatTreatment,
+    Buyer, Contact, Delivery, Dictionary, DocumentBuilder, ElectronicAddress, Format, Invoice,
+    InvoiceLine, Item, LegalEntity, LineAdjustment, Namespace, Note, ObjectReference,
+    OperationalEntity, Payee, PaymentDetails, PaymentInstructions, Period, PostalAddress,
+    PrecedingInvoice, Seller, SupportingDocument, TaxRepresentative, Term, Ubl, VatPoint,
+    VatTreatment,
 };
 
 /// Serializes a `DocumentBuilder` to UBL XML,
@@ -67,7 +68,7 @@ impl Serializer {
         Self {
             inner: Writer::new(Vec::new()),
             trace: Trace::new(),
-            abbreviations: Abbreviations::default(),
+            abbreviations: <Ubl as Format>::Namespace::default_abbreviations(),
             forbidden: builder.profile.forbidden_terms(),
             currency: builder.invoice.currency.code(),
         }

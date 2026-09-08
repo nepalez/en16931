@@ -1,4 +1,4 @@
-use crate::format::cii::{RAM, RSM};
+use crate::format::cii::{QDT, RAM, RSM, UDT};
 use crate::format::trace::Trace;
 use crate::prelude::*;
 use crate::{
@@ -36,10 +36,8 @@ pub(crate) fn deserialize(
 // ---- tokens --------------------------------------------------------------
 
 enum Token {
-    // A record-form namespace element (`namespace: Some`) or a datatype carrier
-    // from `udt`/`qdt` (`namespace: None`), which is never recorded.
     Open {
-        namespace: Option<BaseNamespace>,
+        namespace: BaseNamespace,
         name: String,
         attributes: Vec<(String, String)>,
     },
@@ -50,7 +48,7 @@ enum Token {
 fn tokenize(xml: &str) -> Result<(Vec<Token>, Abbreviations<BaseNamespace>), Error> {
     let mut reader = NsReader::from_str(xml);
     let mut tokens = Vec::new();
-    let mut abbreviations = Abbreviations::default();
+    let mut abbreviations = <Cii as Format>::Namespace::default_abbreviations();
     loop {
         let (resolved, event) = reader.read_resolved_event()?;
         match event {
@@ -84,7 +82,8 @@ fn open_token(
         return Err(Error::malformed_xml("an element has no namespace"));
     };
     let uri = String::from_utf8_lossy(uri.into_inner());
-    let namespace = <Cii as Format>::Namespace::from_uri(&uri);
+    let namespace = <Cii as Format>::Namespace::from_uri(&uri)
+        .ok_or_else(|| Error::malformed_xml(format!("unknown namespace: {uri}")))?;
     let name = String::from_utf8_lossy(start.local_name().as_ref()).into_owned();
     let mut attributes = Vec::new();
     for attribute in start.attributes() {
@@ -1240,7 +1239,9 @@ impl Parser {
         let number = self.derived(RAM, "IssuerAssignedID")?.1.parse()?;
         let issue_date = if self.is_open(RAM, "FormattedIssueDateTime") {
             self.enter_nested(RAM, "FormattedIssueDateTime")?;
-            let date = self.take_foreign_datetime()?;
+            self.take_open(QDT, "DateTimeString")?;
+            let date = self.take_text();
+            self.take_close()?;
             self.leave_nested()?;
             Some(parse_date(&date)?)
         } else {
@@ -1285,13 +1286,15 @@ impl Parser {
 
     // ---- datatype carriers ----------------------------------------------
 
-    // Reads a date wrapper whose value carrier is a `udt`/`qdt` DateTimeString.
+    // Reads a date wrapper whose value carrier is a `udt:DateTimeString`.
     fn datetime(&mut self, element: &str, field: &'static str) -> Result<Date, Error> {
         self.take_open(RAM, element)?;
         self.trace.enter(RAM, element);
         self.trace.push_field(field);
         self.trace.record_context();
-        let text = self.take_foreign_datetime()?;
+        self.take_open(UDT, "DateTimeString")?;
+        let text = self.take_text();
+        self.take_close()?;
         self.take_close()?;
         self.trace.pop_context();
         self.trace.leave();
@@ -1303,30 +1306,12 @@ impl Parser {
         self.take_open(RAM, "ChargeIndicator")?;
         self.trace.enter(RAM, "ChargeIndicator");
         self.trace.record_context();
-        let text = self.take_foreign()?;
+        self.take_open(UDT, "Indicator")?;
+        let text = self.take_text();
+        self.take_close()?;
         self.take_close()?;
         self.trace.leave();
         Ok(text.trim() == "true")
-    }
-
-    // Reads a `DateTimeString` value carrier from a datatype namespace, not recorded.
-    fn take_foreign_datetime(&mut self) -> Result<String, Error> {
-        self.take_foreign()
-    }
-
-    // Reads the text of a foreign datatype-carrier element, without a trace entry.
-    fn take_foreign(&mut self) -> Result<String, Error> {
-        match self.tokens.get(self.cursor) {
-            Some(Token::Open {
-                namespace: None, ..
-            }) => {
-                self.cursor += 1;
-                let text = self.take_text();
-                self.take_close()?;
-                Ok(text)
-            }
-            _ => Err(bad("expected a datatype carrier element")),
-        }
     }
 
     // ---- mirror primitives ----------------------------------------------
@@ -1505,9 +1490,7 @@ impl Parser {
     fn head(&self) -> Result<(BaseNamespace, String), Error> {
         match self.tokens.get(self.cursor) {
             Some(Token::Open {
-                namespace: Some(namespace),
-                name,
-                ..
+                namespace, name, ..
             }) => Ok((*namespace, name.clone())),
             _ => Err(bad("expected an element")),
         }
@@ -1516,14 +1499,14 @@ impl Parser {
     fn is_open(&self, namespace: BaseNamespace, name: &str) -> bool {
         matches!(
             self.tokens.get(self.cursor),
-            Some(Token::Open { namespace: Some(found), name: local, .. }) if *found == namespace && local == name
+            Some(Token::Open { namespace: found, name: local, .. }) if *found == namespace && local == name
         )
     }
 
     fn is_open_namespace(&self, namespace: BaseNamespace) -> bool {
         matches!(
             self.tokens.get(self.cursor),
-            Some(Token::Open { namespace: Some(found), .. }) if *found == namespace
+            Some(Token::Open { namespace: found, .. }) if *found == namespace
         )
     }
 
@@ -1534,7 +1517,7 @@ impl Parser {
     ) -> Result<Vec<(String, String)>, Error> {
         match self.tokens.get(self.cursor) {
             Some(Token::Open {
-                namespace: Some(found),
+                namespace: found,
                 name: local,
                 attributes,
             }) if *found == namespace && local == name => {

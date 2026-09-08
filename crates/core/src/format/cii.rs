@@ -10,12 +10,8 @@ pub(crate) use serialize::serialize;
 const RSM: <Cii as Format>::Namespace = <Cii as Format>::Namespace::CrossIndustryInvoice;
 const RAM: <Cii as Format>::Namespace =
     <Cii as Format>::Namespace::ReusableAggregateBusinessInformationEntity;
-
-// The datatype-carrier namespaces, present in the XML but absent from the record form.
-const UDT_PREFIX: &str = "udt";
-const QDT_PREFIX: &str = "qdt";
-const UDT_URI: &str = "urn:un:unece:uncefact:data:standard:UnqualifiedDataType:100";
-const QDT_URI: &str = "urn:un:unece:uncefact:data:standard:QualifiedDataType:100";
+const UDT: <Cii as Format>::Namespace = <Cii as Format>::Namespace::UnqualifiedDataType;
+const QDT: <Cii as Format>::Namespace = <Cii as Format>::Namespace::QualifiedDataType;
 
 /// The marker of the UN/CEFACT Cross Industry Invoice binding.
 /// It carries the CII namespace set, reached as `<Cii as Format>::Namespace`.
@@ -32,6 +28,8 @@ fn prefix(namespace: BaseNamespace) -> &'static str {
     match namespace {
         RSM => "rsm",
         RAM => "ram",
+        UDT => "udt",
+        QDT => "qdt",
         _other => unreachable!("a CII document never carries the {_other} namespace"),
     }
 }
@@ -39,8 +37,8 @@ fn prefix(namespace: BaseNamespace) -> &'static str {
 #[cfg(test)]
 mod test {
     use super::*;
-    use crate::Binding;
     use crate::format::test_helpers::{builder, card_builder, pretty, variant_builder};
+    use crate::{Binding, Error};
 
     #[test]
     fn detects_its_own_output_as_cii() {
@@ -64,9 +62,8 @@ mod test {
 
         assert_eq!(abbreviations.resolve("rsm"), Some(RSM));
         assert_eq!(abbreviations.resolve("ram"), Some(RAM));
-        // The datatype carriers name no record-form namespace.
-        assert_eq!(abbreviations.resolve(UDT_PREFIX), None);
-        assert_eq!(abbreviations.resolve(QDT_PREFIX), None);
+        assert_eq!(abbreviations.resolve("udt"), Some(UDT));
+        assert_eq!(abbreviations.resolve("qdt"), Some(QDT));
     }
 
     #[test]
@@ -136,5 +133,17 @@ mod test {
         let (parsed, _, _) = deserialize(&xml).expect("a valid CII document");
 
         assert_eq!(parsed, source);
+    }
+
+    #[test]
+    fn rejects_an_element_of_an_unknown_namespace() {
+        let xml = r#"<rsm:CrossIndustryInvoice xmlns:rsm="urn:un:unece:uncefact:data:standard:CrossIndustryInvoice:100" xmlns:foo="urn:example:unknown"><foo:Bar/></rsm:CrossIndustryInvoice>"#;
+
+        let outcome = deserialize(xml);
+
+        assert!(matches!(
+            outcome,
+            Err(Error::MalformedXml { message, .. }) if message.starts_with("unknown namespace")
+        ));
     }
 }

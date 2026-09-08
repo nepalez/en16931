@@ -24,6 +24,8 @@ The same pass yields the abbreviation table of the document (ADR-0004). The keys
 
 Following the [syntax binding methodology][Registry of CIUS and Extensions], the set of a profile must contain the base set of its binding, which the compiler checks.
 
+Following the [syntax binding methodology][Registry of CIUS and Extensions], every extension's namespace must contain the core base set, which will be checked by the compiler.
+
 The dictionary serves one purpose. It matches a rule violation to a model field following the location where the rule fired. So the dictionary needs only those entries that the rules can refer to. The [CII] datatype namespaces `udt` and `qdt` carry values, like `udt:DateTimeString`, but no rules ever reference them. The serialization writes such a wrapper into the XML, yet stores no entry in the dictionary.
 
 `Document::check` resolves each location against the dictionary by a bounded lookup. It never evaluates [XPath]. The location and the keys share the positional record form. So each positional predicate matches the stored index. An incompatible location stays unresolved, which is a library error, not a finding (ADR-0007).
@@ -51,6 +53,7 @@ The dictionary serves one purpose. It matches a rule violation to a model field 
 * The dictionary derives from the serialization pass, with no external manifest to maintain.
 * Each entry yields a typed `Context`, so the consumer never parses a raw location.
 * The keys stay `Copy`, since the compiler knows the namespace set.
+* The compiler rejects a namespace set of an extension that lacks a base namespace.
 
 ### Cons
 
@@ -61,6 +64,7 @@ The dictionary serves one purpose. It matches a rule violation to a model field 
 ## References
 
 [CII]: https://en.wikipedia.org/wiki/UN/CEFACT
+[Registry of CIUS and Extensions]: https://ec.europa.eu/digital-building-blocks/sites/spaces/EINVCOMMUNITY/pages/48763623/Registry+of+CIUS+Core+Invoice+Usage+Specifications+and+Extensions
 [Schematron]: https://schematron.com/
 [Schematron skeleton]: https://github.com/Schematron/schematron/blob/master/trunk/schematron/code/iso_schematron_skeleton_for_saxon.xsl
 [SVRL]: https://schematron.com/document/3427.html
