@@ -21,9 +21,13 @@ pub trait Namespace: Copy + Eq + Hash + fmt::Debug + Display {
     /// It is the inverse of `uri`, used by a `Binding` parser
     /// to resolve an element's namespace back into its record-form abbreviation.
     fn from_uri(uri: &str) -> Option<Self>;
+
+    /// The abbreviations the rule sets of the validators write into a location,
+    /// bound before the document declares its own.
+    fn default_abbreviations() -> Abbreviations<Self>;
 }
 
-/// The base set of record-form namespaces: the five the two bindings write.
+/// The base set of record-form namespaces: the seven the two bindings write.
 ///
 /// It is the first implementation of `Namespace`, the set `Ubl` and `Cii` carry.
 /// The variants cover the two bindings and never mix.
@@ -50,6 +54,13 @@ pub enum BaseNamespace {
     /// holding the business groups and fields.
     #[display("RAM")]
     ReusableAggregateBusinessInformationEntity,
+    /// The CII Unqualified Data Type namespace,
+    /// holding the value carriers such as `udt:DateTimeString`.
+    #[display("UDT")]
+    UnqualifiedDataType,
+    /// The CII Qualified Data Type namespace, holding the formatted value carriers.
+    #[display("QDT")]
+    QualifiedDataType,
 }
 
 impl BaseNamespace {
@@ -73,6 +84,14 @@ impl BaseNamespace {
         "ram",
         "urn:un:unece:uncefact:data:standard:ReusableAggregateBusinessInformationEntity:100",
     );
+    const UDT: (&str, &str) = (
+        "udt",
+        "urn:un:unece:uncefact:data:standard:UnqualifiedDataType:100",
+    );
+    const QDT: (&str, &str) = (
+        "qdt",
+        "urn:un:unece:uncefact:data:standard:QualifiedDataType:100",
+    );
 }
 
 impl Namespace for BaseNamespace {
@@ -83,6 +102,8 @@ impl Namespace for BaseNamespace {
             Self::CommonBasicComponents => Self::CBC.1,
             Self::CrossIndustryInvoice => Self::CII.1,
             Self::ReusableAggregateBusinessInformationEntity => Self::RAM.1,
+            Self::UnqualifiedDataType => Self::UDT.1,
+            Self::QualifiedDataType => Self::QDT.1,
         }
     }
 
@@ -93,8 +114,30 @@ impl Namespace for BaseNamespace {
             _ if uri == Self::CBC.1 => Some(Self::CommonBasicComponents),
             _ if uri == Self::CII.1 => Some(Self::CrossIndustryInvoice),
             _ if uri == Self::RAM.1 => Some(Self::ReusableAggregateBusinessInformationEntity),
+            _ if uri == Self::UDT.1 => Some(Self::UnqualifiedDataType),
+            _ if uri == Self::QDT.1 => Some(Self::QualifiedDataType),
             _ => None,
         }
+    }
+
+    fn default_abbreviations() -> Abbreviations<Self> {
+        Abbreviations(
+            [
+                (Self::INV.0, Self::Invoice),
+                (Self::CAC.0, Self::CommonAggregateComponents),
+                (Self::CBC.0, Self::CommonBasicComponents),
+                (Self::CII.0, Self::CrossIndustryInvoice),
+                (
+                    Self::RAM.0,
+                    Self::ReusableAggregateBusinessInformationEntity,
+                ),
+                (Self::UDT.0, Self::UnqualifiedDataType),
+                (Self::QDT.0, Self::QualifiedDataType),
+            ]
+            .into_iter()
+            .map(|(abbreviation, namespace)| (abbreviation.to_owned(), namespace))
+            .collect(),
+        )
     }
 }
 
@@ -127,30 +170,6 @@ impl<N: Namespace> Abbreviations<N> {
     /// The namespace an abbreviation stands for, or `None` when neither origin binds it.
     pub fn resolve(&self, abbreviation: &str) -> Option<N> {
         self.0.get(abbreviation).copied()
-    }
-}
-
-impl Default for Abbreviations<BaseNamespace> {
-    /// A table of the rule-set abbreviations alone, before a document declares its own.
-    fn default() -> Self {
-        Self(
-            [
-                (BaseNamespace::INV.0, BaseNamespace::Invoice),
-                (
-                    BaseNamespace::CAC.0,
-                    BaseNamespace::CommonAggregateComponents,
-                ),
-                (BaseNamespace::CBC.0, BaseNamespace::CommonBasicComponents),
-                (BaseNamespace::CII.0, BaseNamespace::CrossIndustryInvoice),
-                (
-                    BaseNamespace::RAM.0,
-                    BaseNamespace::ReusableAggregateBusinessInformationEntity,
-                ),
-            ]
-            .into_iter()
-            .map(|(abbreviation, namespace)| (abbreviation.to_owned(), namespace))
-            .collect(),
-        )
     }
 }
 
@@ -298,7 +317,7 @@ mod test {
 
     #[test]
     fn resolves_an_abbreviation_of_a_rule_set() {
-        let abbreviations = Abbreviations::default();
+        let abbreviations = BaseNamespace::default_abbreviations();
 
         assert_eq!(abbreviations.resolve("ubl"), Some(BaseNamespace::Invoice));
         assert_eq!(
@@ -313,7 +332,7 @@ mod test {
 
     #[test]
     fn resolves_an_abbreviation_of_the_document() {
-        let mut abbreviations = Abbreviations::default();
+        let mut abbreviations = BaseNamespace::default_abbreviations();
 
         abbreviations
             .declare("", BaseNamespace::Invoice)
@@ -331,7 +350,7 @@ mod test {
 
     #[test]
     fn keeps_an_abbreviation_the_document_repeats() {
-        let mut abbreviations = Abbreviations::default();
+        let mut abbreviations = BaseNamespace::default_abbreviations();
 
         abbreviations
             .declare("cbc", BaseNamespace::CommonBasicComponents)
@@ -345,7 +364,7 @@ mod test {
 
     #[test]
     fn rejects_an_abbreviation_of_two_namespaces() {
-        let mut abbreviations = Abbreviations::default();
+        let mut abbreviations = BaseNamespace::default_abbreviations();
 
         let outcome = abbreviations.declare("cbc", BaseNamespace::CommonAggregateComponents);
 
@@ -354,6 +373,6 @@ mod test {
 
     #[test]
     fn resolves_no_abbreviation_of_an_unknown_name() {
-        assert_eq!(Abbreviations::default().resolve("xsi"), None);
+        assert_eq!(BaseNamespace::default_abbreviations().resolve("xsi"), None);
     }
 }

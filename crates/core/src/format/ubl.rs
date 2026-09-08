@@ -37,7 +37,7 @@ mod test {
     use super::*;
     use crate::format::test_helpers::{builder, card_builder, path, pretty, step, variant_builder};
     use crate::prelude::*;
-    use crate::{Binding, Context, Profile, Segment};
+    use crate::{Binding, Context, Error, Profile, Segment};
 
     // A context of the given model segments.
     fn context(segments: Vec<Segment>) -> Context {
@@ -200,5 +200,17 @@ mod test {
         assert!(xml.contains("<cbc:CustomizationID>urn:cen.eu:en16931:2017#compliant"));
         assert!(xml.contains("<cbc:Note>General note text</cbc:Note>"));
         assert!(!xml.contains("#AAB#"));
+    }
+
+    #[test]
+    fn rejects_an_element_of_an_unknown_namespace() {
+        let xml = r#"<Invoice xmlns="urn:oasis:names:specification:ubl:schema:xsd:Invoice-2" xmlns:foo="urn:example:unknown"><foo:Bar/></Invoice>"#;
+
+        let outcome = deserialize(xml);
+
+        assert!(matches!(
+            outcome,
+            Err(Error::MalformedXml { message, .. }) if message.starts_with("unknown namespace")
+        ));
     }
 }
