@@ -27,120 +27,6 @@ pub trait Namespace: Copy + Eq + Hash + fmt::Debug + Display {
     fn default_abbreviations() -> Abbreviations<Self>;
 }
 
-/// The base set of record-form namespaces: the seven the two bindings write.
-///
-/// It is the first implementation of `Namespace`, the set `Ubl` and `Cii` carry.
-/// The variants cover the two bindings and never mix.
-/// The abbreviation stands in for the full namespace in a rendered path,
-/// so a UBL path and a CII path never compare equal.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Display)]
-pub enum BaseNamespace {
-    /// The UBL namespace of the root `Invoice` document
-    /// (`urn:oasis:names:specification:ubl:schema:xsd:Invoice-2`).
-    #[display("INV")]
-    Invoice,
-    /// The UBL Common Aggregate Components namespace,
-    /// holding the nested business groups.
-    #[display("CAC")]
-    CommonAggregateComponents,
-    /// The UBL Common Basic Components namespace, holding the leaf fields.
-    #[display("CBC")]
-    CommonBasicComponents,
-    /// The CII namespace of the root `CrossIndustryInvoice` document
-    /// and its top-level structural elements.
-    #[display("RSM")]
-    CrossIndustryInvoice,
-    /// The CII Reusable Aggregate Business Information Entity namespace,
-    /// holding the business groups and fields.
-    #[display("RAM")]
-    ReusableAggregateBusinessInformationEntity,
-    /// The CII Unqualified Data Type namespace,
-    /// holding the value carriers such as `udt:DateTimeString`.
-    #[display("UDT")]
-    UnqualifiedDataType,
-    /// The CII Qualified Data Type namespace, holding the formatted value carriers.
-    #[display("QDT")]
-    QualifiedDataType,
-}
-
-impl BaseNamespace {
-    const INV: (&str, &str) = (
-        "ubl",
-        "urn:oasis:names:specification:ubl:schema:xsd:Invoice-2",
-    );
-    const CAC: (&str, &str) = (
-        "cac",
-        "urn:oasis:names:specification:ubl:schema:xsd:CommonAggregateComponents-2",
-    );
-    const CBC: (&str, &str) = (
-        "cbc",
-        "urn:oasis:names:specification:ubl:schema:xsd:CommonBasicComponents-2",
-    );
-    const CII: (&str, &str) = (
-        "rsm",
-        "urn:un:unece:uncefact:data:standard:CrossIndustryInvoice:100",
-    );
-    const RAM: (&str, &str) = (
-        "ram",
-        "urn:un:unece:uncefact:data:standard:ReusableAggregateBusinessInformationEntity:100",
-    );
-    const UDT: (&str, &str) = (
-        "udt",
-        "urn:un:unece:uncefact:data:standard:UnqualifiedDataType:100",
-    );
-    const QDT: (&str, &str) = (
-        "qdt",
-        "urn:un:unece:uncefact:data:standard:QualifiedDataType:100",
-    );
-}
-
-impl Namespace for BaseNamespace {
-    fn uri(self) -> &'static str {
-        match self {
-            Self::Invoice => Self::INV.1,
-            Self::CommonAggregateComponents => Self::CAC.1,
-            Self::CommonBasicComponents => Self::CBC.1,
-            Self::CrossIndustryInvoice => Self::CII.1,
-            Self::ReusableAggregateBusinessInformationEntity => Self::RAM.1,
-            Self::UnqualifiedDataType => Self::UDT.1,
-            Self::QualifiedDataType => Self::QDT.1,
-        }
-    }
-
-    fn from_uri(uri: &str) -> Option<Self> {
-        match uri {
-            _ if uri == Self::INV.1 => Some(Self::Invoice),
-            _ if uri == Self::CAC.1 => Some(Self::CommonAggregateComponents),
-            _ if uri == Self::CBC.1 => Some(Self::CommonBasicComponents),
-            _ if uri == Self::CII.1 => Some(Self::CrossIndustryInvoice),
-            _ if uri == Self::RAM.1 => Some(Self::ReusableAggregateBusinessInformationEntity),
-            _ if uri == Self::UDT.1 => Some(Self::UnqualifiedDataType),
-            _ if uri == Self::QDT.1 => Some(Self::QualifiedDataType),
-            _ => None,
-        }
-    }
-
-    fn default_abbreviations() -> Abbreviations<Self> {
-        Abbreviations(
-            [
-                (Self::INV.0, Self::Invoice),
-                (Self::CAC.0, Self::CommonAggregateComponents),
-                (Self::CBC.0, Self::CommonBasicComponents),
-                (Self::CII.0, Self::CrossIndustryInvoice),
-                (
-                    Self::RAM.0,
-                    Self::ReusableAggregateBusinessInformationEntity,
-                ),
-                (Self::UDT.0, Self::UnqualifiedDataType),
-                (Self::QDT.0, Self::QualifiedDataType),
-            ]
-            .into_iter()
-            .map(|(abbreviation, namespace)| (abbreviation.to_owned(), namespace))
-            .collect(),
-        )
-    }
-}
-
 /// Resolves an abbreviated namespace of a report location.
 ///
 /// A validator may abbreviate the namespace of every step of a location.
@@ -170,6 +56,18 @@ impl<N: Namespace> Abbreviations<N> {
     /// The namespace an abbreviation stands for, or `None` when neither origin binds it.
     pub fn resolve(&self, abbreviation: &str) -> Option<N> {
         self.0.get(abbreviation).copied()
+    }
+}
+
+impl<'a, N: Namespace> FromIterator<(&'a str, N)> for Abbreviations<N> {
+    /// Builds the table a namespace set seeds with the abbreviations of the rule sets.
+    fn from_iter<I: IntoIterator<Item = (&'a str, N)>>(pairs: I) -> Self {
+        Self(
+            pairs
+                .into_iter()
+                .map(|(abbreviation, namespace)| (abbreviation.to_owned(), namespace))
+                .collect(),
+        )
     }
 }
 
@@ -230,7 +128,9 @@ impl<N: Namespace> Display for Path<N> {
 mod test {
     use super::*;
 
-    fn step(namespace: BaseNamespace, name: &str, index: usize) -> Step<BaseNamespace> {
+    use crate::{cii, ubl};
+
+    fn step<N: Namespace>(namespace: N, name: &str, index: usize) -> Step<N> {
         Step {
             namespace,
             name: name.to_owned(),
@@ -239,45 +139,25 @@ mod test {
     }
 
     // The identifier of the second invoice line (`BT-126`) in a UBL document.
-    fn ubl_line_id() -> Path<BaseNamespace> {
+    fn ubl_line_id() -> Path<ubl::Namespace> {
         Path {
             steps: vec![
-                step(BaseNamespace::Invoice, "Invoice", 1),
-                step(BaseNamespace::CommonAggregateComponents, "InvoiceLine", 2),
-                step(BaseNamespace::CommonBasicComponents, "ID", 1),
+                step(ubl::Namespace::Inv, "Invoice", 1),
+                step(ubl::Namespace::Cac, "InvoiceLine", 2),
+                step(ubl::Namespace::Cbc, "ID", 1),
             ],
         }
     }
 
     // The same business term in a CII document, with its own binding vocabulary.
-    fn cii_line_id() -> Path<BaseNamespace> {
+    fn cii_line_id() -> Path<cii::Namespace> {
         Path {
             steps: vec![
-                step(
-                    BaseNamespace::CrossIndustryInvoice,
-                    "CrossIndustryInvoice",
-                    1,
-                ),
-                step(
-                    BaseNamespace::CrossIndustryInvoice,
-                    "SupplyChainTradeTransaction",
-                    1,
-                ),
-                step(
-                    BaseNamespace::ReusableAggregateBusinessInformationEntity,
-                    "IncludedSupplyChainTradeLineItem",
-                    2,
-                ),
-                step(
-                    BaseNamespace::ReusableAggregateBusinessInformationEntity,
-                    "AssociatedDocumentLineDocument",
-                    1,
-                ),
-                step(
-                    BaseNamespace::ReusableAggregateBusinessInformationEntity,
-                    "LineID",
-                    1,
-                ),
+                step(cii::Namespace::Rsm, "CrossIndustryInvoice", 1),
+                step(cii::Namespace::Rsm, "SupplyChainTradeTransaction", 1),
+                step(cii::Namespace::Ram, "IncludedSupplyChainTradeLineItem", 2),
+                step(cii::Namespace::Ram, "AssociatedDocumentLineDocument", 1),
+                step(cii::Namespace::Ram, "LineID", 1),
             ],
         }
     }
@@ -299,80 +179,42 @@ mod test {
     }
 
     #[test]
-    fn keeps_ubl_and_cii_paths_distinct() {
-        assert_ne!(ubl_line_id(), cii_line_id());
-    }
-
-    #[test]
-    fn abbreviates_each_namespace() {
-        assert_eq!(BaseNamespace::Invoice.to_string(), "INV");
-        assert_eq!(BaseNamespace::CommonAggregateComponents.to_string(), "CAC");
-        assert_eq!(BaseNamespace::CommonBasicComponents.to_string(), "CBC");
-        assert_eq!(BaseNamespace::CrossIndustryInvoice.to_string(), "RSM");
-        assert_eq!(
-            BaseNamespace::ReusableAggregateBusinessInformationEntity.to_string(),
-            "RAM"
-        );
-    }
-
-    #[test]
-    fn resolves_an_abbreviation_of_a_rule_set() {
-        let abbreviations = BaseNamespace::default_abbreviations();
-
-        assert_eq!(abbreviations.resolve("ubl"), Some(BaseNamespace::Invoice));
-        assert_eq!(
-            abbreviations.resolve("cac"),
-            Some(BaseNamespace::CommonAggregateComponents)
-        );
-        assert_eq!(
-            abbreviations.resolve("ram"),
-            Some(BaseNamespace::ReusableAggregateBusinessInformationEntity)
-        );
-    }
-
-    #[test]
     fn resolves_an_abbreviation_of_the_document() {
-        let mut abbreviations = BaseNamespace::default_abbreviations();
+        let mut abbreviations = ubl::Namespace::default_abbreviations();
 
         abbreviations
-            .declare("", BaseNamespace::Invoice)
+            .declare("", ubl::Namespace::Inv)
             .expect("a free abbreviation");
         abbreviations
-            .declare("basic", BaseNamespace::CommonBasicComponents)
+            .declare("basic", ubl::Namespace::Cbc)
             .expect("a free abbreviation");
 
-        assert_eq!(abbreviations.resolve(""), Some(BaseNamespace::Invoice));
-        assert_eq!(
-            abbreviations.resolve("basic"),
-            Some(BaseNamespace::CommonBasicComponents)
-        );
+        assert_eq!(abbreviations.resolve(""), Some(ubl::Namespace::Inv));
+        assert_eq!(abbreviations.resolve("basic"), Some(ubl::Namespace::Cbc));
     }
 
     #[test]
     fn keeps_an_abbreviation_the_document_repeats() {
-        let mut abbreviations = BaseNamespace::default_abbreviations();
+        let mut abbreviations = ubl::Namespace::default_abbreviations();
 
         abbreviations
-            .declare("cbc", BaseNamespace::CommonBasicComponents)
+            .declare("cbc", ubl::Namespace::Cbc)
             .expect("the namespace the rule sets bind");
 
-        assert_eq!(
-            abbreviations.resolve("cbc"),
-            Some(BaseNamespace::CommonBasicComponents)
-        );
+        assert_eq!(abbreviations.resolve("cbc"), Some(ubl::Namespace::Cbc));
     }
 
     #[test]
     fn rejects_an_abbreviation_of_two_namespaces() {
-        let mut abbreviations = BaseNamespace::default_abbreviations();
+        let mut abbreviations = ubl::Namespace::default_abbreviations();
 
-        let outcome = abbreviations.declare("cbc", BaseNamespace::CommonAggregateComponents);
+        let outcome = abbreviations.declare("cbc", ubl::Namespace::Cac);
 
         assert!(matches!(outcome, Err(Error::AmbiguousAbbreviation(_))));
     }
 
     #[test]
     fn resolves_no_abbreviation_of_an_unknown_name() {
-        assert_eq!(BaseNamespace::default_abbreviations().resolve("xsi"), None);
+        assert_eq!(ubl::Namespace::default_abbreviations().resolve("xsi"), None);
     }
 }

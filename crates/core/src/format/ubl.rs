@@ -2,14 +2,10 @@ mod deserialize;
 mod serialize;
 
 use crate::format::Sealed;
-use crate::{BaseNamespace, Format};
+use crate::prelude::*;
+use crate::{Abbreviations, Format};
 pub(crate) use deserialize::deserialize;
 pub(crate) use serialize::serialize;
-
-// The UBL namespaces, shared by both halves.
-const INV: <Ubl as Format>::Namespace = <Ubl as Format>::Namespace::Invoice;
-const CAC: <Ubl as Format>::Namespace = <Ubl as Format>::Namespace::CommonAggregateComponents;
-const CBC: <Ubl as Format>::Namespace = <Ubl as Format>::Namespace::CommonBasicComponents;
 
 /// The marker of the OASIS Universal Business Language binding.
 /// It carries the UBL namespace set, reached as `<Ubl as Format>::Namespace`.
@@ -18,17 +14,59 @@ pub struct Ubl;
 impl Sealed for Ubl {}
 
 impl Format for Ubl {
-    type Namespace = BaseNamespace;
+    type Namespace = Namespace;
+
+    fn root_namespace() -> Namespace {
+        Namespace::Inv
+    }
+}
+
+/// The record-form namespace set of the UBL binding.
+///
+/// A member renders as the abbreviation of its namespace URI,
+/// so a UBL path reads as `/Q{INV}Invoice[1]/Q{CAC}InvoiceLine[2]/Q{CBC}ID[1]`.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Display)]
+pub enum Namespace {
+    /// The namespace of the root `Invoice` document.
+    #[display("INV")]
+    Inv,
+    /// The Common Aggregate Components namespace, holding the nested business groups.
+    #[display("CAC")]
+    Cac,
+    /// The Common Basic Components namespace, holding the leaf fields.
+    #[display("CBC")]
+    Cbc,
+}
+
+impl crate::Namespace for Namespace {
+    fn uri(self) -> &'static str {
+        match self {
+            Self::Inv => "urn:oasis:names:specification:ubl:schema:xsd:Invoice-2",
+            Self::Cac => "urn:oasis:names:specification:ubl:schema:xsd:CommonAggregateComponents-2",
+            Self::Cbc => "urn:oasis:names:specification:ubl:schema:xsd:CommonBasicComponents-2",
+        }
+    }
+
+    fn from_uri(uri: &str) -> Option<Self> {
+        [Self::Inv, Self::Cac, Self::Cbc]
+            .into_iter()
+            .find(|member| <Self as crate::Namespace>::uri(*member) == uri)
+    }
+
+    fn default_abbreviations() -> Abbreviations<Self> {
+        [("ubl", Self::Inv), ("cac", Self::Cac), ("cbc", Self::Cbc)]
+            .into_iter()
+            .collect()
+    }
 }
 
 // The XML prefix a UBL document binds to a record-form namespace. The root
 // carries the default namespace, so it needs no prefix.
-fn prefix(namespace: BaseNamespace) -> &'static str {
+fn prefix(namespace: Namespace) -> &'static str {
     match namespace {
-        CAC => "cac",
-        CBC => "cbc",
-        INV => "",
-        _other => unreachable!("a UBL document never carries the {_other} namespace"),
+        Namespace::Cac => "cac",
+        Namespace::Cbc => "cbc",
+        Namespace::Inv => "",
     }
 }
 
@@ -36,7 +74,6 @@ fn prefix(namespace: BaseNamespace) -> &'static str {
 mod test {
     use super::*;
     use crate::format::test_helpers::{builder, card_builder, path, pretty, step, variant_builder};
-    use crate::prelude::*;
     use crate::{Binding, Context, Error, Profile, Segment};
 
     // A context of the given model segments.
@@ -61,6 +98,28 @@ mod test {
     }
 
     #[test]
+    fn names_its_root_namespace() {
+        assert_eq!(Ubl::root_namespace(), Namespace::Inv);
+    }
+
+    #[test]
+    fn abbreviates_each_namespace() {
+        assert_eq!(Namespace::Inv.to_string(), "INV");
+        assert_eq!(Namespace::Cac.to_string(), "CAC");
+        assert_eq!(Namespace::Cbc.to_string(), "CBC");
+    }
+
+    #[test]
+    fn resolves_an_abbreviation_of_a_rule_set() {
+        let abbreviations = <Namespace as crate::Namespace>::default_abbreviations();
+
+        assert_eq!(abbreviations.resolve("ubl"), Some(Namespace::Inv));
+        assert_eq!(abbreviations.resolve("cac"), Some(Namespace::Cac));
+        assert_eq!(abbreviations.resolve("cbc"), Some(Namespace::Cbc));
+        assert_eq!(abbreviations.resolve("rsm"), None);
+    }
+
+    #[test]
     fn detects_its_own_output_as_ubl() {
         let (xml, _, _) = serialize(&builder(Binding::Ubl));
 
@@ -81,9 +140,9 @@ mod test {
         let (_, _, abbreviations) = serialize(&builder(Binding::Ubl));
 
         // The root carries the default namespace, so its abbreviation is empty.
-        assert_eq!(abbreviations.resolve(""), Some(INV));
-        assert_eq!(abbreviations.resolve("cac"), Some(CAC));
-        assert_eq!(abbreviations.resolve("cbc"), Some(CBC));
+        assert_eq!(abbreviations.resolve(""), Some(Namespace::Inv));
+        assert_eq!(abbreviations.resolve("cac"), Some(Namespace::Cac));
+        assert_eq!(abbreviations.resolve("cbc"), Some(Namespace::Cbc));
     }
 
     #[test]
@@ -102,8 +161,8 @@ mod test {
             deserialize(include_str!("ubl/fixtures/3.xml")).expect("a valid UBL document");
 
         // The document's own abbreviation joins the ones the rule sets bind.
-        assert_eq!(abbreviations.resolve("foo"), Some(CBC));
-        assert_eq!(abbreviations.resolve("cbc"), Some(CBC));
+        assert_eq!(abbreviations.resolve("foo"), Some(Namespace::Cbc));
+        assert_eq!(abbreviations.resolve("cbc"), Some(Namespace::Cbc));
     }
 
     #[test]
@@ -159,19 +218,22 @@ mod test {
     fn maps_nodes_to_their_contexts() {
         let (_, dictionary, _) = serialize(&builder(Binding::Ubl));
 
-        let root = path(vec![step(INV, "Invoice", 1)]);
+        let root = path(vec![step(Namespace::Inv, "Invoice", 1)]);
         let seller_name = path(vec![
-            step(INV, "Invoice", 1),
-            step(CAC, "AccountingSupplierParty", 1),
-            step(CAC, "Party", 1),
-            step(CAC, "PartyLegalEntity", 1),
-            step(CBC, "RegistrationName", 1),
+            step(Namespace::Inv, "Invoice", 1),
+            step(Namespace::Cac, "AccountingSupplierParty", 1),
+            step(Namespace::Cac, "Party", 1),
+            step(Namespace::Cac, "PartyLegalEntity", 1),
+            step(Namespace::Cbc, "RegistrationName", 1),
         ]);
-        let second_line = path(vec![step(INV, "Invoice", 1), step(CAC, "InvoiceLine", 2)]);
+        let second_line = path(vec![
+            step(Namespace::Inv, "Invoice", 1),
+            step(Namespace::Cac, "InvoiceLine", 2),
+        ]);
         let payable = path(vec![
-            step(INV, "Invoice", 1),
-            step(CAC, "LegalMonetaryTotal", 1),
-            step(CBC, "PayableAmount", 1),
+            step(Namespace::Inv, "Invoice", 1),
+            step(Namespace::Cac, "LegalMonetaryTotal", 1),
+            step(Namespace::Cbc, "PayableAmount", 1),
         ]);
 
         // The root, a term-less node, resolves to the root context.

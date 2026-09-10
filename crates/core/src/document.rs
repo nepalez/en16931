@@ -1,7 +1,8 @@
+use crate::binding::Bound;
 use crate::{
-    Abbreviations, BaseNamespace, Binding, Context, Dictionary, DocumentBuilder, Error,
-    InvalidDocument, Invoice, Location, Namespace, Path, Problem, RawNamespace, RawReport, Report,
-    Step, Target, ValidDocument,
+    Abbreviations, Binding, Context, Dictionary, DocumentBuilder, Error, InvalidDocument, Invoice,
+    Location, Namespace, Path, Problem, RawNamespace, RawReport, Report, Step, Target,
+    ValidDocument,
 };
 
 /// The public reporting artifact of the library.
@@ -11,10 +12,9 @@ pub struct Document {
     builder: DocumentBuilder,
     // The serialized XML of this document.
     xml: String,
-    // One entry per node the binding handled: record-form path to `Context`.
-    dictionary: Dictionary<BaseNamespace>,
-    // The abbreviations a report location of this document may name.
-    abbreviations: Abbreviations<BaseNamespace>,
+    // The dictionary (record-form path to `Context`, one entry per node the binding handled)
+    // and the abbreviations a report location of this document may name.
+    bound: Bound,
 }
 
 impl Document {
@@ -25,12 +25,11 @@ impl Document {
     /// one with an unrecognized binding, yields `Error::MalformedXml`.
     pub fn parse(xml: &str) -> Result<Self, Error> {
         let binding = Binding::detect(xml)?;
-        let (builder, dictionary, abbreviations) = binding.deserialize(xml)?;
+        let (builder, bound) = binding.deserialize(xml)?;
         Ok(Self {
             builder,
             xml: xml.to_owned(),
-            dictionary,
-            abbreviations,
+            bound,
         })
     }
 
@@ -46,11 +45,6 @@ impl Document {
             binding: self.builder.binding,
             kind: self.builder.invoice.type_code.kind(),
         }
-    }
-
-    /// The abbreviations a normalizer resolves a report location against.
-    pub fn abbreviations(&self) -> &Abbreviations<BaseNamespace> {
-        &self.abbreviations
     }
 
     /// Binds the answer of a validator to the nodes of this document.
@@ -88,30 +82,42 @@ impl Document {
 
     // Binds a normalized address to the node of this document it points at.
     fn resolve(&self, location: &Location) -> Option<Context> {
-        let mut path = Path { steps: Vec::new() };
-        let mut bound = None;
-        for step in &location.steps {
-            let Some(namespace) = (match step.namespace.as_ref() {
-                Some(RawNamespace::Uri(uri)) => BaseNamespace::from_uri(uri),
-                Some(RawNamespace::Abbreviation(name)) => self.abbreviations.resolve(name),
-                None => None,
-            }) else {
-                break;
-            };
-
-            path.steps.push(Step {
-                namespace,
-                name: step.name.clone(),
-                index: step.index,
-            });
-            let Some(context) = self.dictionary.get(&path) else {
-                break;
-            };
-
-            bound = Some(context.clone());
+        match &self.bound {
+            Bound::Ubl(dictionary, abbreviations) => resolve(dictionary, abbreviations, location),
+            Bound::Cii(dictionary, abbreviations) => resolve(dictionary, abbreviations, location),
         }
-        bound
     }
+}
+
+// Binds a normalized address to the node of a dictionary it points at.
+fn resolve<N: Namespace>(
+    dictionary: &Dictionary<N>,
+    abbreviations: &Abbreviations<N>,
+    location: &Location,
+) -> Option<Context> {
+    let mut path = Path { steps: Vec::new() };
+    let mut bound = None;
+    for step in &location.steps {
+        let Some(namespace) = (match step.namespace.as_ref() {
+            Some(RawNamespace::Uri(uri)) => N::from_uri(uri),
+            Some(RawNamespace::Abbreviation(name)) => abbreviations.resolve(name),
+            None => None,
+        }) else {
+            break;
+        };
+
+        path.steps.push(Step {
+            namespace,
+            name: step.name.clone(),
+            index: step.index,
+        });
+        let Some(context) = dictionary.get(&path) else {
+            break;
+        };
+
+        bound = Some(context.clone());
+    }
+    bound
 }
 
 impl TryFrom<DocumentBuilder> for Document {
@@ -121,12 +127,11 @@ impl TryFrom<DocumentBuilder> for Document {
     ///
     /// The pass renders the XML and fills the dictionary in lockstep.
     fn try_from(builder: DocumentBuilder) -> Result<Self, Self::Error> {
-        let (xml, dictionary, abbreviations) = builder.binding.serialize(&builder);
+        let (xml, bound) = builder.binding.serialize(&builder);
         Ok(Self {
             builder,
             xml,
-            dictionary,
-            abbreviations,
+            bound,
         })
     }
 }
@@ -144,7 +149,9 @@ mod test {
     use super::*;
     use crate::format::test_helpers::builder;
     use crate::prelude::*;
-    use crate::{Context, Entry, Location, LocationStep, Profile, RawNamespace, Segment, Severity};
+    use crate::{
+        Context, Entry, Location, LocationStep, Profile, RawNamespace, Segment, Severity, ubl,
+    };
 
     // A serialized document of the rich UBL fixture.
     fn document() -> Document {
@@ -301,8 +308,8 @@ mod test {
     fn resolves_a_namespace_the_dialect_wrote_in_full() {
         let location = Location {
             steps: vec![
-                written(BaseNamespace::Invoice.uri(), "Invoice", 1),
-                written(BaseNamespace::CommonBasicComponents.uri(), "ID", 1),
+                written(ubl::Namespace::Inv.uri(), "Invoice", 1),
+                written(ubl::Namespace::Cbc.uri(), "ID", 1),
             ],
         };
 
@@ -444,14 +451,14 @@ mod test {
 
             let parsed = Document::parse(&document.xml).expect("a parsed document");
 
-            assert_eq!(parsed.dictionary, document.dictionary);
+            assert_eq!(parsed.bound, document.bound);
         }
     }
 
     #[test]
     fn yields_the_request_parts() {
         let source = builder(Binding::Ubl);
-        let (xml, _, _) = source.binding.serialize(&source);
+        let (xml, _) = source.binding.serialize(&source);
         let document = Document::try_from(source.clone()).expect("a serialized document");
 
         let target = Target {
