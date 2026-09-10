@@ -1,12 +1,13 @@
 use crate::prelude::*;
 use crate::{Context, Namespace, Path};
 
-pub(crate) mod cii;
 pub(crate) mod trace;
-pub(crate) mod ubl;
 
 #[cfg(test)]
 pub(crate) mod test_helpers;
+
+pub mod cii;
+pub mod ubl;
 
 pub use cii::Cii;
 pub use ubl::Ubl;
@@ -16,6 +17,9 @@ pub use ubl::Ubl;
 pub trait Format: Sealed {
     /// The base set of record-form namespaces this binding writes.
     type Namespace: Namespace;
+
+    /// The namespace of the root element of a document in this binding.
+    fn root_namespace() -> Self::Namespace;
 }
 
 pub(crate) trait Sealed {}
