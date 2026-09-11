@@ -1,11 +1,10 @@
-use crate::prelude::*;
 use crate::{Binding, BusinessProcess, Invoice, Profile};
 
 /// The builder of the document to be sent.
 ///
 /// It includes both the business terms (the corresponding `invoice`)
 /// and the information needed for the document exchange only.
-#[derive(Debug, Clone, PartialEq, Eq, Builder)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct DocumentBuilder {
     /// The business document with every fact it carries.
     pub invoice: Invoice,

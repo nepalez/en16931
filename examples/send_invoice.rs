@@ -26,14 +26,12 @@ use time::{Date, Month};
 fn main() -> Result<(), Box<dyn std::error::Error>> {
     // Stage the invoice for one profile and one binding.
     // The XML is rendered under the hood as part of the document.
-    let document = Document::try_from(
-        DocumentBuilder::builder()
-            .invoice(prepare_invoice()?)
-            .profile(Profile::XRechnung30)
-            .binding(Binding::Ubl)
-            .business_process(BusinessProcess::PEPPOL_BILLING)
-            .build(),
-    )?;
+    let document = Document::try_from(DocumentBuilder {
+        invoice: prepare_invoice()?,
+        profile: Profile::XRechnung30,
+        binding: Binding::Ubl,
+        business_process: Some(BusinessProcess::PEPPOL_BILLING),
+    })?;
     let target = document.target();
     println!(
         "Sending a {:?} {:?} document under {}",
@@ -82,84 +80,84 @@ fn post(xml: &str) -> Result<String, Box<dyn std::error::Error>> {
 
 // The business facts of the invoice.
 fn prepare_invoice() -> Result<Invoice, Box<dyn std::error::Error>> {
-    Ok(Invoice::builder()
-        .number("INV-2026-001".parse()?)
-        .issue_date(Date::from_calendar_date(2026, Month::January, 15)?)
-        .type_code("380".parse()?)
-        .currency(Currency::EUR)
-        .payment_due_date(Date::from_calendar_date(2026, Month::February, 15)?)
-        .buyer_reference("04011000-12345-03".parse()?)
-        .payment_terms("Payable within 30 days".parse()?)
-        .seller(
-            Seller::builder()
-                .name("Seller Official Name".parse()?)
-                .legal_entity(LegalEntity::builder().id("DE123456".parse()?).build())
-                .vat("DE123456789".parse()?)
-                .electronic_address(ElectronicAddress {
-                    id: "4035811991007".parse()?,
-                    scheme: ElectronicAddressScheme::EanLocationCode,
-                })
-                .address(
-                    PostalAddress::builder()
-                        .line1("Main street 1".parse()?)
-                        .city("Berlin".parse()?)
-                        .country(CountryCode::for_alpha2("DE")?)
-                        .postal_code("10115".parse()?)
-                        .build(),
-                )
-                .contact(
-                    Contact::builder()
-                        .name("Anna Seller".parse()?)
-                        .telephone("+49 30 123456".parse()?)
-                        .email("anna@example.de".parse()?)
-                        .build(),
-                )
-                .build(),
-        )
-        .buyer(
-            Buyer::builder()
-                .name("Buyer Official Name".parse()?)
-                .electronic_address(ElectronicAddress {
-                    id: "4035812991006".parse()?,
-                    scheme: ElectronicAddressScheme::EanLocationCode,
-                })
-                .address(
-                    PostalAddress::builder()
-                        .line1("Main street 1".parse()?)
-                        .city("Berlin".parse()?)
-                        .country(CountryCode::for_alpha2("DE")?)
-                        .postal_code("10115".parse()?)
-                        .build(),
-                )
-                .build(),
-        )
-        .invoicing_period(Period::Range {
+    Ok(Invoice {
+        number: Some("INV-2026-001".parse()?),
+        issue_date: Some(Date::from_calendar_date(2026, Month::January, 15)?),
+        type_code: "380".parse()?,
+        currency: Some(Currency::EUR),
+        payment_due_date: Some(Date::from_calendar_date(2026, Month::February, 15)?),
+        buyer_reference: Some("04011000-12345-03".parse()?),
+        payment_terms: Some("Payable within 30 days".parse()?),
+        seller: Some(Seller {
+            name: Some("Seller Official Name".parse()?),
+            legal_entity: Some(LegalEntity {
+                id: Some("DE123456".parse()?),
+                issuer: None,
+            }),
+            vat: Some("DE123456789".parse()?),
+            electronic_address: Some(ElectronicAddress {
+                id: Some("4035811991007".parse()?),
+                scheme: Some(ElectronicAddressScheme::EanLocationCode),
+            }),
+            address: Some(address()?),
+            contact: Some(Contact {
+                name: Some("Anna Seller".parse()?),
+                telephone: Some("+49 30 123456".parse()?),
+                email: Some("anna@example.de".parse()?),
+            }),
+            ..Default::default()
+        }),
+        buyer: Some(Buyer {
+            name: Some("Buyer Official Name".parse()?),
+            electronic_address: Some(ElectronicAddress {
+                id: Some("4035812991006".parse()?),
+                scheme: Some(ElectronicAddressScheme::EanLocationCode),
+            }),
+            address: Some(address()?),
+            ..Default::default()
+        }),
+        invoicing_period: Some(Period::Range {
             start: Date::from_calendar_date(2026, Month::January, 1)?,
             end: Date::from_calendar_date(2026, Month::January, 31)?,
-        })
-        .payment(
-            PaymentInstructions::builder()
-                .means(PaymentMeans::CreditTransfer)
-                .details(PaymentDetails::CreditTransfers(vec![
-                    CreditTransfer::builder()
-                        .account("DE89370400440532013000".parse()?)
-                        .build(),
-                ]))
-                .build(),
-        )
-        .lines(vec![
-            InvoiceLine::builder()
-                .id("1".parse()?)
-                .quantity(Quantity {
-                    unit: "C62".parse()?,
-                    value: Decimal::from(2),
-                })
-                .price(Price::builder().gross(Decimal::new(10000, 2)).build())
-                .vat(VatTreatment::Standard {
-                    rate: Percentage::try_from(Decimal::from(19))?,
-                })
-                .item(Item::builder().name("Item name".parse()?).build())
-                .build(),
-        ])
-        .build())
+        }),
+        payment: Some(PaymentInstructions {
+            means: Some(PaymentMeans::CreditTransfer),
+            details: Some(PaymentDetails::CreditTransfers(vec![CreditTransfer {
+                account: Some("DE89370400440532013000".parse()?),
+                ..Default::default()
+            }])),
+            ..Default::default()
+        }),
+        lines: vec![InvoiceLine {
+            id: Some("1".parse()?),
+            quantity: Some(Quantity {
+                unit: "C62".parse()?,
+                value: Decimal::from(2),
+            }),
+            price: Some(Price {
+                gross: Some(Decimal::new(10000, 2)),
+                ..Default::default()
+            }),
+            vat: Some(VatTreatment::Standard {
+                rate: Percentage::try_from(Decimal::from(19))?,
+            }),
+            item: Some(Item {
+                name: Some("Item name".parse()?),
+                ..Default::default()
+            }),
+            ..Default::default()
+        }],
+        ..Default::default()
+    })
+}
+
+// The postal address both parties share in the example.
+fn address() -> Result<PostalAddress, Box<dyn std::error::Error>> {
+    Ok(PostalAddress {
+        line1: Some("Main street 1".parse()?),
+        city: Some("Berlin".parse()?),
+        country: Some(CountryCode::for_alpha2("DE")?),
+        postal_code: Some("10115".parse()?),
+        ..Default::default()
+    })
 }

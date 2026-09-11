@@ -1,18 +1,16 @@
-use crate::prelude::*;
 use crate::{
     Contact, ElectronicAddress, LegalEntity, NonEmptyString, OperationalEntity, PostalAddress,
     Seller, VatIdentifier,
 };
 
 /// The buyer (`BG-7`): the party that receives the invoice and the goods or services.
-#[derive(Debug, Clone, PartialEq, Eq, Builder)]
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub struct Buyer {
     /// Buyer name (`BT-44`).
-    pub name: NonEmptyString,
+    pub name: Option<NonEmptyString>,
     /// Buyer trading name (`BT-45`).
     pub trading_name: Option<NonEmptyString>,
     /// Buyer identifiers (`BT-46`): alternative identifiers of the same party.
-    #[builder(default)]
     pub identifiers: Vec<OperationalEntity>,
     /// Buyer legal registration (`BT-47`).
     pub legal_entity: Option<LegalEntity>,
@@ -21,7 +19,7 @@ pub struct Buyer {
     /// Buyer electronic address (`BT-49`).
     pub electronic_address: Option<ElectronicAddress>,
     /// Buyer postal address (`BG-8`).
-    pub address: PostalAddress,
+    pub address: Option<PostalAddress>,
     /// Buyer contact (`BG-9`).
     pub contact: Option<Contact>,
 }
@@ -46,34 +44,22 @@ impl From<Seller> for Buyer {
 #[cfg(test)]
 mod test {
     use super::*;
-    use crate::CountryCode;
 
     #[test]
     fn demotes_a_seller_to_a_buyer() {
         let seller = Seller {
-            name: "Acme".parse().expect("a valid name"),
-            trading_name: None,
-            identifiers: Vec::new(),
-            legal_entity: None,
+            name: Some("Acme".parse().expect("a valid name")),
             additional_legal_information: Some("share capital".parse().expect("a value")),
-            vat: None,
             tax_registration: Some("TAX-1".parse().expect("a value")),
-            electronic_address: None,
-            address: PostalAddress {
-                line1: None,
-                line2: None,
-                line3: None,
-                city: None,
-                postal_code: None,
-                country_subdivision: None,
-                country: CountryCode::for_alpha2("DE").expect("DE is a country code"),
-            },
-            contact: None,
+            ..Default::default()
         };
 
         let buyer = Buyer::from(seller);
 
-        assert_eq!(buyer.name.as_ref(), "Acme");
+        assert_eq!(
+            buyer.name,
+            Some("Acme".parse::<NonEmptyString>().expect("a valid name"))
+        );
         assert!(buyer.vat.is_none());
     }
 }

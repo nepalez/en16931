@@ -87,7 +87,9 @@ fn prefix(namespace: Namespace) -> &'static str {
 #[cfg(test)]
 mod test {
     use super::*;
-    use crate::format::test_helpers::{builder, card_builder, pretty, variant_builder};
+    use crate::format::test_helpers::{
+        builder, card_builder, empty_builder, pretty, variant_builder,
+    };
     use crate::{Binding, Error};
 
     #[test]
@@ -207,6 +209,55 @@ mod test {
         let (parsed, _, _) = deserialize(&xml).expect("a valid CII document");
 
         assert_eq!(parsed, source);
+    }
+
+    // A document of the given body under the base profile, with every CII namespace declared.
+    fn document(body: &str) -> String {
+        format!(
+            r#"<rsm:CrossIndustryInvoice xmlns:rsm="urn:un:unece:uncefact:data:standard:CrossIndustryInvoice:100" xmlns:ram="urn:un:unece:uncefact:data:standard:ReusableAggregateBusinessInformationEntity:100" xmlns:udt="urn:un:unece:uncefact:data:standard:UnqualifiedDataType:100" xmlns:qdt="urn:un:unece:uncefact:data:standard:QualifiedDataType:100"><rsm:ExchangedDocumentContext><ram:GuidelineSpecifiedDocumentContextParameter><ram:ID>urn:cen.eu:en16931:2017</ram:ID></ram:GuidelineSpecifiedDocumentContextParameter></rsm:ExchangedDocumentContext>{body}</rsm:CrossIndustryInvoice>"#
+        )
+    }
+
+    #[test]
+    fn serializes_an_empty_invoice_with_zero_totals() {
+        let source = empty_builder(Binding::Cii);
+        let (xml, _, _) = serialize(&source);
+
+        assert!(xml.contains("<ram:TypeCode>380</ram:TypeCode>"));
+        assert!(xml.contains("<ram:DuePayableAmount>0.00</ram:DuePayableAmount>"));
+        assert!(!xml.contains("ApplicableTradeTax"));
+        let (parsed, _, _) = deserialize(&xml).expect("a valid CII document");
+        assert_eq!(parsed, source);
+    }
+
+    #[test]
+    fn parses_a_document_without_a_number() {
+        let xml =
+            include_str!("cii/fixtures/1.xml").replacen("<ram:ID>INV-2026-001</ram:ID>", "", 1);
+
+        let (parsed, _, _) = deserialize(&xml).expect("a valid CII document");
+
+        assert_eq!(parsed.invoice.number, None);
+    }
+
+    #[test]
+    fn rejects_a_document_without_a_type_code() {
+        let xml = document("<rsm:ExchangedDocument></rsm:ExchangedDocument>");
+
+        let outcome = deserialize(&xml);
+
+        assert!(matches!(outcome, Err(Error::MalformedXml { .. })));
+    }
+
+    #[test]
+    fn rejects_a_standard_rated_category_without_a_rate() {
+        let xml = document(
+            "<rsm:ExchangedDocument><ram:TypeCode>380</ram:TypeCode></rsm:ExchangedDocument><rsm:SupplyChainTradeTransaction><ram:IncludedSupplyChainTradeLineItem><ram:SpecifiedLineTradeSettlement><ram:ApplicableTradeTax><ram:TypeCode>VAT</ram:TypeCode><ram:CategoryCode>S</ram:CategoryCode></ram:ApplicableTradeTax></ram:SpecifiedLineTradeSettlement></ram:IncludedSupplyChainTradeLineItem></rsm:SupplyChainTradeTransaction>",
+        );
+
+        let outcome = deserialize(&xml);
+
+        assert!(matches!(outcome, Err(Error::MalformedXml { .. })));
     }
 
     #[test]

@@ -1,8 +1,7 @@
-use crate::prelude::*;
 use crate::{Date, LocationReference, NonEmptyString, PostalAddress};
 
 /// Delivery information (`BG-13`): where and when the goods or services are delivered.
-#[derive(Debug, Clone, PartialEq, Eq, Builder)]
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub struct Delivery {
     /// Deliver-to party name (`BT-70`).
     pub name: Option<NonEmptyString>,
