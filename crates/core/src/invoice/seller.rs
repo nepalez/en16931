@@ -1,18 +1,16 @@
-use crate::prelude::*;
 use crate::{
     Buyer, Contact, ElectronicAddress, LegalEntity, NonEmptyString, OperationalEntity,
     PostalAddress, VatIdentifier,
 };
 
 /// The seller (`BG-4`): the party that issues the invoice and supplies the goods or services.
-#[derive(Debug, Clone, PartialEq, Eq, Builder)]
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub struct Seller {
     /// Seller name (`BT-27`).
-    pub name: NonEmptyString,
+    pub name: Option<NonEmptyString>,
     /// Seller trading name (`BT-28`).
     pub trading_name: Option<NonEmptyString>,
     /// Seller identifiers (`BT-29`): alternative identifiers of the same party.
-    #[builder(default)]
     pub identifiers: Vec<OperationalEntity>,
     /// Seller legal registration (`BT-30`).
     pub legal_entity: Option<LegalEntity>,
@@ -25,7 +23,7 @@ pub struct Seller {
     /// Seller electronic address (`BT-34`).
     pub electronic_address: Option<ElectronicAddress>,
     /// Seller postal address (`BG-5`).
-    pub address: PostalAddress,
+    pub address: Option<PostalAddress>,
     /// Seller contact (`BG-6`).
     pub contact: Option<Contact>,
 }
@@ -52,32 +50,20 @@ impl From<Buyer> for Seller {
 #[cfg(test)]
 mod test {
     use super::*;
-    use crate::CountryCode;
 
     #[test]
     fn promotes_a_buyer_to_a_seller() {
         let buyer = Buyer {
-            name: "Acme".parse().expect("a valid name"),
-            trading_name: None,
-            identifiers: Vec::new(),
-            legal_entity: None,
-            vat: None,
-            electronic_address: None,
-            address: PostalAddress {
-                line1: None,
-                line2: None,
-                line3: None,
-                city: None,
-                postal_code: None,
-                country_subdivision: None,
-                country: CountryCode::for_alpha2("DE").expect("DE is a country code"),
-            },
-            contact: None,
+            name: Some("Acme".parse().expect("a valid name")),
+            ..Default::default()
         };
 
         let seller = Seller::from(buyer);
 
-        assert_eq!(seller.name.as_ref(), "Acme");
+        assert_eq!(
+            seller.name,
+            Some("Acme".parse::<NonEmptyString>().expect("a valid name"))
+        );
         assert!(seller.tax_registration.is_none());
         assert!(seller.additional_legal_information.is_none());
     }

@@ -5,14 +5,14 @@ use crate::{AllowanceReason, ChargeReason, Decimal, NonEmptyString, Percentage, 
 /// The `reason` direction tells an allowance from a charge.
 ///
 /// All its amounts are in the invoice currency (`BT-5`).
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub struct Adjustment {
     /// Amount (`BT-92`/`BT-99`+`BT-93`+`BT-94`/`BT-100`+`BT-101`).
-    pub amount: Amount,
+    pub amount: Option<Amount>,
     /// VAT treatment (`BT-95`+`BT-96`/`BT-102`+`BT-103`).
-    pub vat: VatTreatment,
+    pub vat: Option<VatTreatment>,
     /// Reason and direction (`BT-97`+`BT-98`/`BT-104`+`BT-105`).
-    pub reason: Reason,
+    pub reason: Option<Reason>,
 }
 
 /// A line-level adjustment (`BG-27` allowance, `BG-28` charge):
@@ -20,20 +20,22 @@ pub struct Adjustment {
 /// The line carries its own VAT, so no VAT treatment appears here.
 ///
 /// All its amounts are in the invoice currency (`BT-5`).
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub struct LineAdjustment {
     /// Amount (`BT-136`/`BT-141`+`BT-137`+`BT-138`/`BT-142`+`BT-143`).
-    pub amount: Amount,
+    pub amount: Option<Amount>,
     /// Reason and direction (`BT-139`+`BT-140`/`BT-144`+`BT-145`).
-    pub reason: Reason,
+    pub reason: Option<Reason>,
 }
 
 impl LineAdjustment {
-    /// The amount signed by direction: positive for a charge, negative for an allowance.
-    pub fn signed_amount(&self) -> Decimal {
-        match self.reason {
-            Reason::Charge { .. } => self.amount.value(),
-            Reason::Allowance { .. } => -self.amount.value(),
+    /// The amount signed by direction: positive for a charge, negative for an allowance,
+    /// or `None` without the amount or the direction.
+    pub fn signed_amount(&self) -> Option<Decimal> {
+        let value = self.amount.as_ref()?.value();
+        match self.reason.as_ref()? {
+            Reason::Charge { .. } => Some(value),
+            Reason::Allowance { .. } => Some(-value),
         }
     }
 }

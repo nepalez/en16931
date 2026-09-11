@@ -1,8 +1,7 @@
-use crate::prelude::*;
 use crate::{AccountNumber, NonEmptyString};
 
 /// Direct debit details (`BG-19`): the mandate under which a direct-debit payment is collected
-#[derive(Debug, Clone, PartialEq, Eq, Builder)]
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub struct DirectDebit {
     /// Mandate reference identifier (`BT-89`).
     pub mandate_reference: Option<NonEmptyString>,

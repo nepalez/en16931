@@ -37,7 +37,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             let Invoice {
                 number, issue_date, ..
             } = valid.into();
-            println!("Received invoice {number} issued on {issue_date}");
+            println!("Received invoice {number:?} issued on {issue_date:?}");
         }
         Err(invalid) => {
             println!("The validator rejected the invoice.");

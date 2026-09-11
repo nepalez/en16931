@@ -73,7 +73,9 @@ fn prefix(namespace: Namespace) -> &'static str {
 #[cfg(test)]
 mod test {
     use super::*;
-    use crate::format::test_helpers::{builder, card_builder, path, pretty, step, variant_builder};
+    use crate::format::test_helpers::{
+        builder, card_builder, empty_builder, path, pretty, step, variant_builder,
+    };
     use crate::{Binding, Context, Error, Profile, Segment};
 
     // A context of the given model segments.
@@ -262,6 +264,46 @@ mod test {
         assert!(xml.contains("<cbc:CustomizationID>urn:cen.eu:en16931:2017#compliant"));
         assert!(xml.contains("<cbc:Note>General note text</cbc:Note>"));
         assert!(!xml.contains("#AAB#"));
+    }
+
+    #[test]
+    fn serializes_an_empty_invoice_with_zero_totals() {
+        let source = empty_builder(Binding::Ubl);
+        let (xml, _, _) = serialize(&source);
+
+        assert!(xml.contains("<cbc:InvoiceTypeCode>380</cbc:InvoiceTypeCode>"));
+        assert!(xml.contains("<cbc:PayableAmount>0.00</cbc:PayableAmount>"));
+        assert!(!xml.contains("TaxSubtotal"));
+        let (parsed, _, _) = deserialize(&xml).expect("a valid UBL document");
+        assert_eq!(parsed, source);
+    }
+
+    #[test]
+    fn parses_a_document_without_a_number() {
+        let xml =
+            include_str!("ubl/fixtures/1.xml").replacen("<cbc:ID>INV-2026-001</cbc:ID>", "", 1);
+
+        let (parsed, _, _) = deserialize(&xml).expect("a valid UBL document");
+
+        assert_eq!(parsed.invoice.number, None);
+    }
+
+    #[test]
+    fn rejects_a_document_without_a_type_code() {
+        let xml = r#"<Invoice xmlns="urn:oasis:names:specification:ubl:schema:xsd:Invoice-2" xmlns:cbc="urn:oasis:names:specification:ubl:schema:xsd:CommonBasicComponents-2"><cbc:CustomizationID>urn:cen.eu:en16931:2017</cbc:CustomizationID></Invoice>"#;
+
+        let outcome = deserialize(xml);
+
+        assert!(matches!(outcome, Err(Error::MalformedXml { .. })));
+    }
+
+    #[test]
+    fn rejects_a_standard_rated_category_without_a_rate() {
+        let xml = r#"<Invoice xmlns="urn:oasis:names:specification:ubl:schema:xsd:Invoice-2" xmlns:cac="urn:oasis:names:specification:ubl:schema:xsd:CommonAggregateComponents-2" xmlns:cbc="urn:oasis:names:specification:ubl:schema:xsd:CommonBasicComponents-2"><cbc:CustomizationID>urn:cen.eu:en16931:2017</cbc:CustomizationID><cbc:InvoiceTypeCode>380</cbc:InvoiceTypeCode><cac:InvoiceLine><cac:Item><cac:ClassifiedTaxCategory><cbc:ID>S</cbc:ID><cac:TaxScheme><cbc:ID>VAT</cbc:ID></cac:TaxScheme></cac:ClassifiedTaxCategory></cac:Item></cac:InvoiceLine></Invoice>"#;
+
+        let outcome = deserialize(xml);
+
+        assert!(matches!(outcome, Err(Error::MalformedXml { .. })));
     }
 
     #[test]

@@ -5,10 +5,11 @@ use crate::format::ubl::{self, prefix};
 use crate::prelude::*;
 use crate::{
     Abbreviations, Adjustment, AdjustmentAmount, AdjustmentReason, BinaryObject, Buyer, Contact,
-    Delivery, Dictionary, DocumentBuilder, ElectronicAddress, Format, Invoice, InvoiceLine, Item,
-    LegalEntity, LineAdjustment, Namespace, Note, ObjectReference, OperationalEntity, Payee,
-    PaymentDetails, PaymentInstructions, Period, PostalAddress, PrecedingInvoice, Seller,
-    SupportingDocument, TaxRepresentative, Term, Ubl, VatPoint, VatTreatment,
+    Currency, Delivery, Dictionary, DocumentBuilder, ElectronicAddress, Format, Invoice,
+    InvoiceLine, Item, LegalEntity, LineAdjustment, Namespace, Note, ObjectReference,
+    OperationalEntity, Payee, PaymentDetails, PaymentInstructions, Period, PostalAddress,
+    PrecedingInvoice, Price, Seller, SupportingDocument, TaxRepresentative, Term, Ubl, VatPoint,
+    VatTreatment,
 };
 
 /// Serializes a `DocumentBuilder` to UBL XML,
@@ -45,12 +46,14 @@ fn plain(value: Decimal) -> String {
     value.to_string()
 }
 
-// Encodes a note as `#subject#text`, or bare text when the subject is dropped.
-fn note_text(note: &Note, drop_subject: bool) -> String {
-    match &note.subject_code {
-        Some(code) if !drop_subject => format!("#{}#{}", code.as_ref(), note.text.as_ref()),
-        _ => note.text.as_ref().to_owned(),
-    }
+// Encodes a note as `#subject#text`, or bare text when the subject is dropped,
+// or nothing when the note carries no text.
+fn note_text(note: &Note, drop_subject: bool) -> Option<String> {
+    let text = note.text.as_ref()?;
+    Some(match &note.subject_code {
+        Some(code) if !drop_subject => format!("#{}#{}", code.as_ref(), text.as_ref()),
+        _ => text.as_ref().to_owned(),
+    })
 }
 
 /// The stateful UBL writer: an XML sink plus the trace that builds the dictionary in lockstep.
@@ -59,7 +62,7 @@ struct Serializer {
     trace: Trace<ubl::Namespace>,
     abbreviations: Abbreviations<ubl::Namespace>,
     forbidden: &'static [Term],
-    currency: &'static str,
+    currency: Option<&'static str>,
 }
 
 impl Serializer {
@@ -69,8 +72,15 @@ impl Serializer {
             trace: Trace::new(),
             abbreviations: <Ubl as Format>::Namespace::default_abbreviations(),
             forbidden: builder.profile.forbidden_terms(),
-            currency: builder.invoice.currency.code(),
+            currency: builder.invoice.currency.as_ref().map(Currency::code),
         }
+    }
+
+    // The `currencyID` attribute of an amount, absent without the invoice currency.
+    fn currency_attribute(&self) -> Vec<(&'static str, &'static str)> {
+        self.currency
+            .map(|currency| vec![("currencyID", currency)])
+            .unwrap_or_default()
     }
 
     fn finish(
@@ -121,20 +131,24 @@ impl Serializer {
             self.rooted(ubl::Namespace::Cbc, "ProfileID", &[], process.as_ref());
         }
 
-        self.leaf(
-            ubl::Namespace::Cbc,
-            "ID",
-            "number",
-            Term::BT(1),
-            invoice.number.as_ref(),
-        );
-        self.leaf(
-            ubl::Namespace::Cbc,
-            "IssueDate",
-            "issue_date",
-            Term::BT(2),
-            &date(invoice.issue_date),
-        );
+        if let Some(number) = &invoice.number {
+            self.leaf(
+                ubl::Namespace::Cbc,
+                "ID",
+                "number",
+                Term::BT(1),
+                number.as_ref(),
+            );
+        }
+        if let Some(issued) = invoice.issue_date {
+            self.leaf(
+                ubl::Namespace::Cbc,
+                "IssueDate",
+                "issue_date",
+                Term::BT(2),
+                &date(issued),
+            );
+        }
         if let Some(due) = invoice.payment_due_date {
             self.leaf(
                 ubl::Namespace::Cbc,
@@ -161,13 +175,15 @@ impl Serializer {
                 &date(point),
             );
         }
-        self.leaf(
-            ubl::Namespace::Cbc,
-            "DocumentCurrencyCode",
-            "currency",
-            Term::BT(5),
-            invoice.currency.code(),
-        );
+        if let Some(currency) = &invoice.currency {
+            self.leaf(
+                ubl::Namespace::Cbc,
+                "DocumentCurrencyCode",
+                "currency",
+                Term::BT(5),
+                currency.code(),
+            );
+        }
         if let Some(accounting) = &invoice.vat_accounting_total {
             self.leaf(
                 ubl::Namespace::Cbc,
@@ -241,8 +257,12 @@ impl Serializer {
             );
         }
 
-        self.supplier_party(&invoice.seller);
-        self.customer_party(&invoice.buyer);
+        if let Some(seller) = &invoice.seller {
+            self.supplier_party(seller);
+        }
+        if let Some(buyer) = &invoice.buyer {
+            self.customer_party(buyer);
+        }
         if let Some(payee) = &invoice.payee {
             self.payee_party(payee);
         }
@@ -285,7 +305,9 @@ impl Serializer {
         let drop_subject = self.forbids(Term::BT(21));
         for (position, note) in notes.iter().enumerate() {
             let instance = NonZeroUsize::new(position + 1).expect("a positive note index");
-            let text = note_text(note, drop_subject);
+            let Some(text) = note_text(note, drop_subject) else {
+                continue;
+            };
             self.repeatable_leaf(
                 ubl::Namespace::Cbc,
                 "Note",
@@ -381,12 +403,14 @@ impl Serializer {
                         ubl::Namespace::Cac,
                         "InvoiceDocumentReference",
                         |serializer| {
-                            serializer.field_leaf(
-                                ubl::Namespace::Cbc,
-                                "ID",
-                                "number",
-                                invoice.number.as_ref(),
-                            );
+                            if let Some(number) = &invoice.number {
+                                serializer.field_leaf(
+                                    ubl::Namespace::Cbc,
+                                    "ID",
+                                    "number",
+                                    number.as_ref(),
+                                );
+                            }
                             if let Some(issued) = invoice.issue_date {
                                 serializer.field_leaf(
                                     ubl::Namespace::Cbc,
@@ -428,14 +452,16 @@ impl Serializer {
             "object",
             Term::BT(18),
             |serializer| {
-                match &object.scheme {
-                    Some(scheme) => serializer.derived(
-                        ubl::Namespace::Cbc,
-                        "ID",
-                        &[("schemeID", &scheme.to_string())],
-                        object.id.as_ref(),
-                    ),
-                    None => serializer.derived(ubl::Namespace::Cbc, "ID", &[], object.id.as_ref()),
+                if let Some(id) = &object.id {
+                    match &object.scheme {
+                        Some(scheme) => serializer.derived(
+                            ubl::Namespace::Cbc,
+                            "ID",
+                            &[("schemeID", &scheme.to_string())],
+                            id.as_ref(),
+                        ),
+                        None => serializer.derived(ubl::Namespace::Cbc, "ID", &[], id.as_ref()),
+                    }
                 }
                 serializer.derived(ubl::Namespace::Cbc, "DocumentTypeCode", &[], "130");
             },
@@ -451,12 +477,14 @@ impl Serializer {
             Term::BG(24),
             instance,
             |serializer| {
-                serializer.field_leaf(
-                    ubl::Namespace::Cbc,
-                    "ID",
-                    "reference",
-                    document.reference.as_ref(),
-                );
+                if let Some(reference) = &document.reference {
+                    serializer.field_leaf(
+                        ubl::Namespace::Cbc,
+                        "ID",
+                        "reference",
+                        reference.as_ref(),
+                    );
+                }
                 if let Some(description) = &document.description {
                     serializer.leaf(
                         ubl::Namespace::Cbc,
@@ -527,7 +555,9 @@ impl Serializer {
                         if let Some(trading) = &seller.trading_name {
                             serializer.party_name(trading.as_ref(), Term::BT(28));
                         }
-                        serializer.postal_address("PostalAddress", Term::BG(5), &seller.address);
+                        if let Some(address) = &seller.address {
+                            serializer.postal_address("PostalAddress", Term::BG(5), address);
+                        }
                         if let Some(vat) = &seller.vat {
                             serializer.party_tax_scheme(&vat.to_string(), "VAT", Term::BT(31));
                         }
@@ -535,7 +565,7 @@ impl Serializer {
                             serializer.party_tax_scheme(registration.as_ref(), "FC", Term::BT(32));
                         }
                         serializer.party_legal_entity(
-                            seller.name.as_ref(),
+                            seller.name.as_ref().map(|name| name.as_ref()),
                             Term::BT(27),
                             seller.legal_entity.as_ref(),
                             Term::BT(30),
@@ -578,12 +608,14 @@ impl Serializer {
                         if let Some(trading) = &buyer.trading_name {
                             serializer.party_name(trading.as_ref(), Term::BT(45));
                         }
-                        serializer.postal_address("PostalAddress", Term::BG(8), &buyer.address);
+                        if let Some(address) = &buyer.address {
+                            serializer.postal_address("PostalAddress", Term::BG(8), address);
+                        }
                         if let Some(vat) = &buyer.vat {
                             serializer.party_tax_scheme(&vat.to_string(), "VAT", Term::BT(48));
                         }
                         serializer.party_legal_entity(
-                            buyer.name.as_ref(),
+                            buyer.name.as_ref().map(|name| name.as_ref()),
                             Term::BT(44),
                             buyer.legal_entity.as_ref(),
                             Term::BT(47),
@@ -613,7 +645,9 @@ impl Serializer {
             Term::BG(10),
             |serializer| {
                 serializer.party_identifiers(&payee.identifiers, Term::BT(60));
-                serializer.party_name(payee.name.as_ref(), Term::BT(59));
+                if let Some(name) = &payee.name {
+                    serializer.party_name(name.as_ref(), Term::BT(59));
+                }
                 if let Some(entity) = &payee.legal_entity {
                     serializer.structural(ubl::Namespace::Cac, "PartyLegalEntity", |serializer| {
                         serializer.legal_entity_id(entity, Term::BT(61));
@@ -631,23 +665,41 @@ impl Serializer {
             "tax_representative",
             Term::BG(11),
             |serializer| {
-                serializer.party_name(representative.name.as_ref(), Term::BT(62));
-                serializer.postal_address("PostalAddress", Term::BG(12), &representative.address);
-                serializer.party_tax_scheme(&representative.vat.to_string(), "VAT", Term::BT(63));
+                if let Some(name) = &representative.name {
+                    serializer.party_name(name.as_ref(), Term::BT(62));
+                }
+                if let Some(address) = &representative.address {
+                    serializer.postal_address("PostalAddress", Term::BG(12), address);
+                }
+                if let Some(vat) = &representative.vat {
+                    serializer.party_tax_scheme(&vat.to_string(), "VAT", Term::BT(63));
+                }
             },
         );
     }
 
     // Serializes a party endpoint electronic address (`BT-34`/`BT-49`).
     fn endpoint(&mut self, address: &ElectronicAddress, term: Term) {
-        self.leaf_attr(
-            ubl::Namespace::Cbc,
-            "EndpointID",
-            field_of(term),
-            term,
-            &[("schemeID", &address.scheme.to_string())],
-            address.id.as_ref(),
-        );
+        let Some(id) = &address.id else {
+            return;
+        };
+        match &address.scheme {
+            Some(scheme) => self.leaf_attr(
+                ubl::Namespace::Cbc,
+                "EndpointID",
+                field_of(term),
+                term,
+                &[("schemeID", &scheme.to_string())],
+                id.as_ref(),
+            ),
+            None => self.leaf(
+                ubl::Namespace::Cbc,
+                "EndpointID",
+                field_of(term),
+                term,
+                id.as_ref(),
+            ),
+        }
     }
 
     // Serializes the party identifiers (`BT-29`/`BT-46`/`BT-60`).
@@ -658,20 +710,25 @@ impl Serializer {
                 "PartyIdentification",
                 field_of(term),
                 term,
-                |serializer| match &identifier.issuer {
-                    Some(issuer) => serializer.field_leaf_attr(
-                        ubl::Namespace::Cbc,
-                        "ID",
-                        field_of(term),
-                        &[("schemeID", &issuer.to_string())],
-                        identifier.id.as_ref(),
-                    ),
-                    None => serializer.field_leaf(
-                        ubl::Namespace::Cbc,
-                        "ID",
-                        field_of(term),
-                        identifier.id.as_ref(),
-                    ),
+                |serializer| {
+                    let Some(id) = &identifier.id else {
+                        return;
+                    };
+                    match &identifier.issuer {
+                        Some(issuer) => serializer.field_leaf_attr(
+                            ubl::Namespace::Cbc,
+                            "ID",
+                            field_of(term),
+                            &[("schemeID", &issuer.to_string())],
+                            id.as_ref(),
+                        ),
+                        None => serializer.field_leaf(
+                            ubl::Namespace::Cbc,
+                            "ID",
+                            field_of(term),
+                            id.as_ref(),
+                        ),
+                    }
                 },
             );
         }
@@ -709,20 +766,22 @@ impl Serializer {
     // Serializes the party legal entity: the registration name, the legal id, and the legal form.
     fn party_legal_entity(
         &mut self,
-        name: &str,
+        name: Option<&str>,
         name_term: Term,
         entity: Option<&LegalEntity>,
         entity_term: Term,
         legal_form: Option<&str>,
     ) {
         self.structural(ubl::Namespace::Cac, "PartyLegalEntity", |serializer| {
-            serializer.leaf(
-                ubl::Namespace::Cbc,
-                "RegistrationName",
-                field_of(name_term),
-                name_term,
-                name,
-            );
+            if let Some(name) = name {
+                serializer.leaf(
+                    ubl::Namespace::Cbc,
+                    "RegistrationName",
+                    field_of(name_term),
+                    name_term,
+                    name,
+                );
+            }
             if let Some(entity) = entity {
                 serializer.legal_entity_id(entity, entity_term);
             }
@@ -740,6 +799,9 @@ impl Serializer {
 
     // Serializes the legal registration id (`BT-30`/`BT-47`/`BT-61`).
     fn legal_entity_id(&mut self, entity: &LegalEntity, term: Term) {
+        let Some(id) = &entity.id else {
+            return;
+        };
         match &entity.issuer {
             Some(issuer) => self.leaf_attr(
                 ubl::Namespace::Cbc,
@@ -747,14 +809,14 @@ impl Serializer {
                 field_of(term),
                 term,
                 &[("schemeID", &issuer.to_string())],
-                entity.id.as_ref(),
+                id.as_ref(),
             ),
             None => self.leaf(
                 ubl::Namespace::Cbc,
                 "CompanyID",
                 field_of(term),
                 term,
-                entity.id.as_ref(),
+                id.as_ref(),
             ),
         }
     }
@@ -846,14 +908,16 @@ impl Serializer {
                         serializer.field_leaf(ubl::Namespace::Cbc, "Line", "line3", line.as_ref());
                     });
                 }
-                serializer.structural(ubl::Namespace::Cac, "Country", |serializer| {
-                    serializer.field_leaf(
-                        ubl::Namespace::Cbc,
-                        "IdentificationCode",
-                        "country",
-                        address.country.alpha2(),
-                    );
-                });
+                if let Some(country) = &address.country {
+                    serializer.structural(ubl::Namespace::Cac, "Country", |serializer| {
+                        serializer.field_leaf(
+                            ubl::Namespace::Cbc,
+                            "IdentificationCode",
+                            "country",
+                            country.alpha2(),
+                        );
+                    });
+                }
             },
         );
     }
@@ -877,20 +941,22 @@ impl Serializer {
                 if delivery.location.is_some() || delivery.address.is_some() {
                     serializer.structural(ubl::Namespace::Cac, "DeliveryLocation", |serializer| {
                         if let Some(location) = &delivery.location {
-                            match &location.issuer {
-                                Some(issuer) => serializer.field_leaf_attr(
-                                    ubl::Namespace::Cbc,
-                                    "ID",
-                                    "location",
-                                    &[("schemeID", &issuer.to_string())],
-                                    location.id.as_ref(),
-                                ),
-                                None => serializer.field_leaf(
-                                    ubl::Namespace::Cbc,
-                                    "ID",
-                                    "location",
-                                    location.id.as_ref(),
-                                ),
+                            if let Some(id) = &location.id {
+                                match &location.issuer {
+                                    Some(issuer) => serializer.field_leaf_attr(
+                                        ubl::Namespace::Cbc,
+                                        "ID",
+                                        "location",
+                                        &[("schemeID", &issuer.to_string())],
+                                        id.as_ref(),
+                                    ),
+                                    None => serializer.field_leaf(
+                                        ubl::Namespace::Cbc,
+                                        "ID",
+                                        "location",
+                                        id.as_ref(),
+                                    ),
+                                }
                             }
                         }
                         if let Some(address) = &delivery.address {
@@ -923,13 +989,15 @@ impl Serializer {
                     .iter()
                     .map(|(key, value)| (key.as_str(), value.as_str()))
                     .collect();
-                serializer.field_leaf_attr(
-                    ubl::Namespace::Cbc,
-                    "PaymentMeansCode",
-                    "means",
-                    &borrowed,
-                    &payment.means.to_string(),
-                );
+                if let Some(means) = &payment.means {
+                    serializer.field_leaf_attr(
+                        ubl::Namespace::Cbc,
+                        "PaymentMeansCode",
+                        "means",
+                        &borrowed,
+                        &means.to_string(),
+                    );
+                }
                 if let Some(reference) = &payment.remittance_information {
                     serializer.field_leaf(
                         ubl::Namespace::Cbc,
@@ -945,12 +1013,14 @@ impl Serializer {
                                 ubl::Namespace::Cac,
                                 "PayeeFinancialAccount",
                                 |serializer| {
-                                    serializer.field_leaf(
-                                        ubl::Namespace::Cbc,
-                                        "ID",
-                                        "account",
-                                        transfer.account.as_ref(),
-                                    );
+                                    if let Some(account) = &transfer.account {
+                                        serializer.field_leaf(
+                                            ubl::Namespace::Cbc,
+                                            "ID",
+                                            "account",
+                                            account.as_ref(),
+                                        );
+                                    }
                                     if let Some(name) = &transfer.account_name {
                                         serializer.field_leaf(
                                             ubl::Namespace::Cbc,
@@ -979,12 +1049,14 @@ impl Serializer {
                     }
                     Some(PaymentDetails::Card(card)) => {
                         serializer.structural(ubl::Namespace::Cac, "CardAccount", |serializer| {
-                            serializer.field_leaf(
-                                ubl::Namespace::Cbc,
-                                "PrimaryAccountNumberID",
-                                "primary_account_number",
-                                card.primary_account_number.as_ref(),
-                            );
+                            if let Some(number) = &card.primary_account_number {
+                                serializer.field_leaf(
+                                    ubl::Namespace::Cbc,
+                                    "PrimaryAccountNumberID",
+                                    "primary_account_number",
+                                    number.as_ref(),
+                                );
+                            }
                             if let Some(holder) = &card.holder_name {
                                 serializer.field_leaf(
                                     ubl::Namespace::Cbc,
@@ -1043,8 +1115,15 @@ impl Serializer {
     fn adjustments(&mut self, adjustments: &[Adjustment]) {
         for (position, adjustment) in adjustments.iter().enumerate() {
             let instance = NonZeroUsize::new(position + 1).expect("a positive adjustment index");
-            let charge = matches!(adjustment.reason, AdjustmentReason::Charge { .. });
-            let term = if charge { Term::BG(21) } else { Term::BG(20) };
+            let charge = adjustment
+                .reason
+                .as_ref()
+                .map(|reason| matches!(reason, AdjustmentReason::Charge { .. }));
+            let term = if charge == Some(true) {
+                Term::BG(21)
+            } else {
+                Term::BG(20)
+            };
             self.repeatable(
                 ubl::Namespace::Cac,
                 "AllowanceCharge",
@@ -1052,16 +1131,29 @@ impl Serializer {
                 term,
                 instance,
                 |serializer| {
-                    serializer.derived(
-                        ubl::Namespace::Cbc,
-                        "ChargeIndicator",
-                        &[],
-                        if charge { "true" } else { "false" },
-                    );
-                    serializer.adjustment_reason(&adjustment.reason);
-                    serializer.adjustment_amount(&adjustment.amount);
-                    serializer.tax_category(&adjustment.vat);
+                    serializer.charge_indicator(charge);
+                    if let Some(reason) = &adjustment.reason {
+                        serializer.adjustment_reason(reason);
+                    }
+                    if let Some(amount) = &adjustment.amount {
+                        serializer.adjustment_amount(amount);
+                    }
+                    if let Some(vat) = &adjustment.vat {
+                        serializer.tax_category(vat);
+                    }
                 },
+            );
+        }
+    }
+
+    // Serializes the charge indicator of an adjustment, absent without the direction.
+    fn charge_indicator(&mut self, charge: Option<bool>) {
+        if let Some(charge) = charge {
+            self.derived(
+                ubl::Namespace::Cbc,
+                "ChargeIndicator",
+                &[],
+                if charge { "true" } else { "false" },
             );
         }
     }
@@ -1091,7 +1183,7 @@ impl Serializer {
 
     // Serializes the amount of an adjustment, absolute or relative, mapped to the adjustment.
     fn adjustment_amount(&mut self, amount: &AdjustmentAmount) {
-        let currency = self.currency;
+        let currency = self.currency_attribute();
         if let AdjustmentAmount::Relative { rate, base } = amount {
             self.derived(
                 ubl::Namespace::Cbc,
@@ -1102,87 +1194,81 @@ impl Serializer {
             self.derived(
                 ubl::Namespace::Cbc,
                 "Amount",
-                &[("currencyID", currency)],
+                &currency,
                 &money(amount.value()),
             );
-            self.derived(
-                ubl::Namespace::Cbc,
-                "BaseAmount",
-                &[("currencyID", currency)],
-                &money(*base),
-            );
+            self.derived(ubl::Namespace::Cbc, "BaseAmount", &currency, &money(*base));
         } else {
             self.derived(
                 ubl::Namespace::Cbc,
                 "Amount",
-                &[("currencyID", currency)],
+                &currency,
                 &money(amount.value()),
             );
         }
     }
 
     // Serializes the tax total (`BG-23`) and the accounting-currency tax total (`BT-111`).
+    // The breakdown is absent when a line or an adjustment lacks an input.
     fn tax_total(&mut self, invoice: &Invoice) {
-        let currency = self.currency;
-        self.structural(ubl::Namespace::Cac, "TaxTotal", |serializer| {
-            serializer.derived(
-                ubl::Namespace::Cbc,
-                "TaxAmount",
-                &[("currencyID", currency)],
-                &money(invoice.vat_total()),
-            );
-            for group in invoice.vat_breakdown() {
-                serializer.structural(ubl::Namespace::Cac, "TaxSubtotal", |serializer| {
-                    serializer.derived(
-                        ubl::Namespace::Cbc,
-                        "TaxableAmount",
-                        &[("currencyID", currency)],
-                        &money(group.taxable),
-                    );
-                    serializer.derived(
-                        ubl::Namespace::Cbc,
-                        "TaxAmount",
-                        &[("currencyID", currency)],
-                        &money(group.tax),
-                    );
-                    serializer.structural(ubl::Namespace::Cac, "TaxCategory", |serializer| {
+        let currency = self.currency_attribute();
+        if let Some(groups) = invoice.vat_breakdown() {
+            let total: Decimal = groups.iter().map(|group| group.tax).sum();
+            self.structural(ubl::Namespace::Cac, "TaxTotal", |serializer| {
+                serializer.derived(ubl::Namespace::Cbc, "TaxAmount", &currency, &money(total));
+                for group in groups {
+                    serializer.structural(ubl::Namespace::Cac, "TaxSubtotal", |serializer| {
                         serializer.derived(
                             ubl::Namespace::Cbc,
-                            "ID",
-                            &[],
-                            &group.treatment.category().to_string(),
+                            "TaxableAmount",
+                            &currency,
+                            &money(group.taxable),
                         );
                         serializer.derived(
                             ubl::Namespace::Cbc,
-                            "Percent",
-                            &[],
-                            &plain(group.treatment.rate()),
+                            "TaxAmount",
+                            &currency,
+                            &money(group.tax),
                         );
-                        if let VatTreatment::Exempt { code, text } = &group.treatment {
-                            if let Some(code) = code {
-                                serializer.derived(
-                                    ubl::Namespace::Cbc,
-                                    "TaxExemptionReasonCode",
-                                    &[],
-                                    &code.to_string(),
-                                );
+                        serializer.structural(ubl::Namespace::Cac, "TaxCategory", |serializer| {
+                            serializer.derived(
+                                ubl::Namespace::Cbc,
+                                "ID",
+                                &[],
+                                &group.treatment.category().to_string(),
+                            );
+                            serializer.derived(
+                                ubl::Namespace::Cbc,
+                                "Percent",
+                                &[],
+                                &plain(group.treatment.rate()),
+                            );
+                            if let VatTreatment::Exempt { code, text } = &group.treatment {
+                                if let Some(code) = code {
+                                    serializer.derived(
+                                        ubl::Namespace::Cbc,
+                                        "TaxExemptionReasonCode",
+                                        &[],
+                                        &code.to_string(),
+                                    );
+                                }
+                                if let Some(text) = text {
+                                    serializer.derived(
+                                        ubl::Namespace::Cbc,
+                                        "TaxExemptionReason",
+                                        &[],
+                                        text.as_ref(),
+                                    );
+                                }
                             }
-                            if let Some(text) = text {
-                                serializer.derived(
-                                    ubl::Namespace::Cbc,
-                                    "TaxExemptionReason",
-                                    &[],
-                                    text.as_ref(),
-                                );
-                            }
-                        }
-                        serializer.structural(ubl::Namespace::Cac, "TaxScheme", |serializer| {
-                            serializer.derived(ubl::Namespace::Cbc, "ID", &[], "VAT");
+                            serializer.structural(ubl::Namespace::Cac, "TaxScheme", |serializer| {
+                                serializer.derived(ubl::Namespace::Cbc, "ID", &[], "VAT");
+                            });
                         });
                     });
-                });
-            }
-        });
+                }
+            });
+        }
         if let Some(accounting) = &invoice.vat_accounting_total {
             let accounting_currency = accounting.currency.code();
             let value = money(accounting.value);
@@ -1198,42 +1284,53 @@ impl Serializer {
     }
 
     // Serializes the legal monetary total, all derived amounts mapped to the root.
+    // A derived amount is absent when an input it needs is absent,
+    // and the whole group is absent when nothing remains to write.
     fn legal_monetary_total(&mut self, invoice: &Invoice) {
-        let currency = self.currency;
+        let attr = self.currency_attribute();
+        let line_net = invoice.line_net_total();
+        if line_net.is_none() && invoice.paid.is_none() && invoice.rounding.is_none() {
+            return;
+        }
         self.structural(ubl::Namespace::Cac, "LegalMonetaryTotal", |serializer| {
-            let attr: [(&str, &str); 1] = [("currencyID", currency)];
-            serializer.derived(
-                ubl::Namespace::Cbc,
-                "LineExtensionAmount",
-                &attr,
-                &money(invoice.line_net_total()),
-            );
-            serializer.derived(
-                ubl::Namespace::Cbc,
-                "TaxExclusiveAmount",
-                &attr,
-                &money(invoice.net_total()),
-            );
-            serializer.derived(
-                ubl::Namespace::Cbc,
-                "TaxInclusiveAmount",
-                &attr,
-                &money(invoice.gross_total()),
-            );
-            if !invoice.allowances_total().is_zero() {
+            if let Some(total) = line_net {
+                serializer.derived(
+                    ubl::Namespace::Cbc,
+                    "LineExtensionAmount",
+                    &attr,
+                    &money(total),
+                );
+            }
+            if let Some(total) = invoice.net_total() {
+                serializer.derived(
+                    ubl::Namespace::Cbc,
+                    "TaxExclusiveAmount",
+                    &attr,
+                    &money(total),
+                );
+            }
+            if let Some(total) = invoice.gross_total() {
+                serializer.derived(
+                    ubl::Namespace::Cbc,
+                    "TaxInclusiveAmount",
+                    &attr,
+                    &money(total),
+                );
+            }
+            if let Some(total) = invoice.allowances_total().filter(|total| !total.is_zero()) {
                 serializer.derived(
                     ubl::Namespace::Cbc,
                     "AllowanceTotalAmount",
                     &attr,
-                    &money(invoice.allowances_total()),
+                    &money(total),
                 );
             }
-            if !invoice.charges_total().is_zero() {
+            if let Some(total) = invoice.charges_total().filter(|total| !total.is_zero()) {
                 serializer.derived(
                     ubl::Namespace::Cbc,
                     "ChargeTotalAmount",
                     &attr,
-                    &money(invoice.charges_total()),
+                    &money(total),
                 );
             }
             if let Some(paid) = invoice.paid {
@@ -1247,12 +1344,9 @@ impl Serializer {
                     &money(rounding),
                 );
             }
-            serializer.derived(
-                ubl::Namespace::Cbc,
-                "PayableAmount",
-                &attr,
-                &money(invoice.due()),
-            );
+            if let Some(due) = invoice.due() {
+                serializer.derived(ubl::Namespace::Cbc, "PayableAmount", &attr, &money(due));
+            }
         });
     }
 
@@ -1275,14 +1369,10 @@ impl Serializer {
 
     // Serializes one invoice line body.
     fn invoice_line(&mut self, line: &InvoiceLine) {
-        let currency = self.currency;
-        self.leaf(
-            ubl::Namespace::Cbc,
-            "ID",
-            "id",
-            Term::BT(126),
-            line.id.as_ref(),
-        );
+        let currency = self.currency_attribute();
+        if let Some(id) = &line.id {
+            self.leaf(ubl::Namespace::Cbc, "ID", "id", Term::BT(126), id.as_ref());
+        }
         if let Some(note) = &line.note {
             self.leaf(
                 ubl::Namespace::Cbc,
@@ -1292,20 +1382,24 @@ impl Serializer {
                 note.as_ref(),
             );
         }
-        self.leaf_attr(
-            ubl::Namespace::Cbc,
-            "InvoicedQuantity",
-            "quantity",
-            Term::BT(129),
-            &[("unitCode", line.quantity.unit.code())],
-            &plain(line.quantity.value),
-        );
-        self.derived(
-            ubl::Namespace::Cbc,
-            "LineExtensionAmount",
-            &[("currencyID", currency)],
-            &money(line.net_amount()),
-        );
+        if let Some(quantity) = &line.quantity {
+            self.leaf_attr(
+                ubl::Namespace::Cbc,
+                "InvoicedQuantity",
+                "quantity",
+                Term::BT(129),
+                &[("unitCode", quantity.unit.code())],
+                &plain(quantity.value),
+            );
+        }
+        if let Some(net) = line.net_amount() {
+            self.derived(
+                ubl::Namespace::Cbc,
+                "LineExtensionAmount",
+                &currency,
+                &money(net),
+            );
+        }
         if let Some(reference) = &line.buyer_accounting_reference {
             self.leaf(
                 ubl::Namespace::Cbc,
@@ -1330,31 +1424,36 @@ impl Serializer {
             });
         }
         if let Some(object) = &line.object {
-            self.structural(
-                ubl::Namespace::Cac,
-                "DocumentReference",
-                |serializer| match &object.scheme {
+            self.structural(ubl::Namespace::Cac, "DocumentReference", |serializer| {
+                let Some(id) = &object.id else {
+                    return;
+                };
+                match &object.scheme {
                     Some(scheme) => serializer.leaf_attr(
                         ubl::Namespace::Cbc,
                         "ID",
                         "object",
                         Term::BT(128),
                         &[("schemeID", &scheme.to_string())],
-                        object.id.as_ref(),
+                        id.as_ref(),
                     ),
                     None => serializer.leaf(
                         ubl::Namespace::Cbc,
                         "ID",
                         "object",
                         Term::BT(128),
-                        object.id.as_ref(),
+                        id.as_ref(),
                     ),
-                },
-            );
+                }
+            });
         }
         self.line_adjustments(&line.adjustments);
-        self.item(&line.item, &line.vat);
-        self.line_price(line);
+        if line.item.is_some() || line.vat.is_some() {
+            self.item(line.item.as_ref(), line.vat.as_ref());
+        }
+        if let Some(price) = &line.price {
+            self.line_price(price);
+        }
     }
 
     // Serializes the line invoice period (`BG-26`).
@@ -1379,8 +1478,15 @@ impl Serializer {
     fn line_adjustments(&mut self, adjustments: &[LineAdjustment]) {
         for (position, adjustment) in adjustments.iter().enumerate() {
             let instance = NonZeroUsize::new(position + 1).expect("a positive adjustment index");
-            let charge = matches!(adjustment.reason, AdjustmentReason::Charge { .. });
-            let term = if charge { Term::BG(28) } else { Term::BG(27) };
+            let charge = adjustment
+                .reason
+                .as_ref()
+                .map(|reason| matches!(reason, AdjustmentReason::Charge { .. }));
+            let term = if charge == Some(true) {
+                Term::BG(28)
+            } else {
+                Term::BG(27)
+            };
             self.repeatable(
                 ubl::Namespace::Cac,
                 "AllowanceCharge",
@@ -1388,26 +1494,45 @@ impl Serializer {
                 term,
                 instance,
                 |serializer| {
-                    serializer.derived(
-                        ubl::Namespace::Cbc,
-                        "ChargeIndicator",
-                        &[],
-                        if charge { "true" } else { "false" },
-                    );
-                    serializer.adjustment_reason(&adjustment.reason);
-                    serializer.adjustment_amount(&adjustment.amount);
+                    serializer.charge_indicator(charge);
+                    if let Some(reason) = &adjustment.reason {
+                        serializer.adjustment_reason(reason);
+                    }
+                    if let Some(amount) = &adjustment.amount {
+                        serializer.adjustment_amount(amount);
+                    }
                 },
             );
         }
     }
 
     // Serializes the item (`BG-31`), rebasing the classified tax category onto the line VAT.
-    fn item(&mut self, item: &Item, vat: &VatTreatment) {
+    fn item(&mut self, item: Option<&Item>, vat: Option<&VatTreatment>) {
         self.trace.enter(ubl::Namespace::Cac, "Item");
         self.trace.push_field("item");
         self.trace.record_context();
         self.write_start(ubl::Namespace::Cac, "Item");
 
+        if let Some(item) = item {
+            self.item_head(item);
+        }
+
+        // The classified tax category is a sibling of the item in the model.
+        self.trace.pop_context();
+        if let Some(vat) = vat {
+            self.classified_tax_category(vat);
+        }
+
+        if let Some(item) = item {
+            self.item_attributes(item);
+        }
+
+        self.write_end(ubl::Namespace::Cac, "Item");
+        self.trace.leave();
+    }
+
+    // Serializes the item fields that precede the classified tax category.
+    fn item_head(&mut self, item: &Item) {
         if let Some(description) = &item.description {
             self.field_leaf(
                 ubl::Namespace::Cbc,
@@ -1416,7 +1541,9 @@ impl Serializer {
                 description.as_ref(),
             );
         }
-        self.field_leaf(ubl::Namespace::Cbc, "Name", "name", item.name.as_ref());
+        if let Some(name) = &item.name {
+            self.field_leaf(ubl::Namespace::Cbc, "Name", "name", name.as_ref());
+        }
         if let Some(id) = &item.buyer_id {
             self.structural(
                 ubl::Namespace::Cac,
@@ -1440,13 +1567,24 @@ impl Serializer {
                 ubl::Namespace::Cac,
                 "StandardItemIdentification",
                 |serializer| {
-                    serializer.field_leaf_attr(
-                        ubl::Namespace::Cbc,
-                        "ID",
-                        "standard_id",
-                        &[("schemeID", &standard.issuer.to_string())],
-                        standard.id.as_ref(),
-                    );
+                    let Some(id) = &standard.id else {
+                        return;
+                    };
+                    match &standard.issuer {
+                        Some(issuer) => serializer.field_leaf_attr(
+                            ubl::Namespace::Cbc,
+                            "ID",
+                            "standard_id",
+                            &[("schemeID", &issuer.to_string())],
+                            id.as_ref(),
+                        ),
+                        None => serializer.field_leaf(
+                            ubl::Namespace::Cbc,
+                            "ID",
+                            "standard_id",
+                            id.as_ref(),
+                        ),
+                    }
                 },
             );
         }
@@ -1465,8 +1603,13 @@ impl Serializer {
                 ubl::Namespace::Cac,
                 "CommodityClassification",
                 |serializer| {
-                    let mut attributes =
-                        vec![("listID".to_owned(), classification.scheme.to_string())];
+                    let Some(id) = &classification.id else {
+                        return;
+                    };
+                    let mut attributes = Vec::new();
+                    if let Some(scheme) = &classification.scheme {
+                        attributes.push(("listID".to_owned(), scheme.to_string()));
+                    }
                     if let Some(version) = &classification.version {
                         attributes.push(("listVersionID".to_owned(), version.as_ref().to_owned()));
                     }
@@ -1479,39 +1622,39 @@ impl Serializer {
                         "ItemClassificationCode",
                         "classifications",
                         &borrowed,
-                        classification.id.as_ref(),
+                        id.as_ref(),
                     );
                 },
             );
         }
+    }
 
-        // The classified tax category is a sibling of the item in the model.
-        self.trace.pop_context();
-        self.classified_tax_category(vat);
-
+    // Serializes the item attributes (`BG-32`), which follow the classified tax category.
+    fn item_attributes(&mut self, item: &Item) {
         for attribute in &item.attributes {
             self.structural(
                 ubl::Namespace::Cac,
                 "AdditionalItemProperty",
                 |serializer| {
-                    serializer.field_leaf(
-                        ubl::Namespace::Cbc,
-                        "Name",
-                        "attributes",
-                        attribute.name.as_ref(),
-                    );
-                    serializer.field_leaf(
-                        ubl::Namespace::Cbc,
-                        "Value",
-                        "attributes",
-                        attribute.value.as_ref(),
-                    );
+                    if let Some(name) = &attribute.name {
+                        serializer.field_leaf(
+                            ubl::Namespace::Cbc,
+                            "Name",
+                            "attributes",
+                            name.as_ref(),
+                        );
+                    }
+                    if let Some(value) = &attribute.value {
+                        serializer.field_leaf(
+                            ubl::Namespace::Cbc,
+                            "Value",
+                            "attributes",
+                            value.as_ref(),
+                        );
+                    }
                 },
             );
         }
-
-        self.write_end(ubl::Namespace::Cac, "Item");
-        self.trace.leave();
     }
 
     // Serializes the line VAT as a UBL classified tax category, mapped to the VAT field.
@@ -1537,21 +1680,18 @@ impl Serializer {
     }
 
     // Serializes the line price (`BG-29`), its derived net amount mapped to the price group.
-    fn line_price(&mut self, line: &InvoiceLine) {
-        let currency = self.currency;
+    fn line_price(&mut self, price: &Price) {
+        let currency = self.currency_attribute();
         self.group(
             ubl::Namespace::Cac,
             "Price",
             "price",
             Term::BG(29),
             |serializer| {
-                serializer.derived(
-                    ubl::Namespace::Cbc,
-                    "PriceAmount",
-                    &[("currencyID", currency)],
-                    &money(line.price.net()),
-                );
-                if let Some(base) = line.price.base_quantity {
+                if let Some(net) = price.net() {
+                    serializer.derived(ubl::Namespace::Cbc, "PriceAmount", &currency, &money(net));
+                }
+                if let Some(base) = price.base_quantity {
                     serializer.field_leaf_attr(
                         ubl::Namespace::Cbc,
                         "BaseQuantity",
@@ -1560,7 +1700,7 @@ impl Serializer {
                         &plain(base.value),
                     );
                 }
-                if let Some(discount) = line.price.discount {
+                if let Some(discount) = price.discount {
                     serializer.structural(ubl::Namespace::Cac, "AllowanceCharge", |serializer| {
                         serializer.field_leaf(
                             ubl::Namespace::Cbc,
@@ -1572,16 +1712,18 @@ impl Serializer {
                             ubl::Namespace::Cbc,
                             "Amount",
                             "price",
-                            &[("currencyID", currency)],
+                            &currency,
                             &money(discount),
                         );
-                        serializer.field_leaf_attr(
-                            ubl::Namespace::Cbc,
-                            "BaseAmount",
-                            "price",
-                            &[("currencyID", currency)],
-                            &money(line.price.gross),
-                        );
+                        if let Some(gross) = price.gross {
+                            serializer.field_leaf_attr(
+                                ubl::Namespace::Cbc,
+                                "BaseAmount",
+                                "price",
+                                &currency,
+                                &money(gross),
+                            );
+                        }
                     });
                 }
             },

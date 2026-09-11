@@ -1,6 +1,5 @@
 //! An entity reference (`BT-29` seller, `BT-46` buyer, `BT-60` payee).
 
-use crate::prelude::*;
 use crate::{IssuingAgency, NonEmptyString};
 
 /// An entity reference:
@@ -9,13 +8,12 @@ use crate::{IssuingAgency, NonEmptyString};
 ///
 /// The same organization in its registered legal capacity is a `LegalEntity` instead.
 ///
-/// The issuer is optional.
-/// Without it the identifier is contextual, agreed between the parties
+/// Without the issuer the identifier is contextual, agreed between the parties
 /// rather than resolvable through a registry.
-#[derive(Debug, Clone, PartialEq, Eq, Builder)]
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub struct OperationalEntity {
     /// The identifier value.
-    pub id: NonEmptyString,
+    pub id: Option<NonEmptyString>,
     /// The issuing agency (`schemeID`), absent for a contextual identifier.
     pub issuer: Option<IssuingAgency>,
 }

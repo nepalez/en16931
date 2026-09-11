@@ -135,8 +135,8 @@ impl Parser {
             None
         };
 
-        let number = self.leaf(ubl::Namespace::Cbc, "ID", "number")?.parse()?;
-        let issue_date = parse_date(&self.leaf(ubl::Namespace::Cbc, "IssueDate", "issue_date")?)?;
+        let number = self.optional_leaf(ubl::Namespace::Cbc, "ID", "number")?;
+        let issue_date = self.optional_date(ubl::Namespace::Cbc, "IssueDate", "issue_date")?;
         let payment_due_date =
             self.optional_date(ubl::Namespace::Cbc, "DueDate", "payment_due_date")?;
         let type_code = self
@@ -159,8 +159,10 @@ impl Parser {
             )?)?));
         }
 
-        let currency =
-            parse_currency(&self.leaf(ubl::Namespace::Cbc, "DocumentCurrencyCode", "currency")?)?;
+        let currency = self
+            .optional_text(ubl::Namespace::Cbc, "DocumentCurrencyCode", "currency")?
+            .map(|code| parse_currency(&code))
+            .transpose()?;
         let accounting_currency = if self.is_open(ubl::Namespace::Cbc, "TaxCurrencyCode") {
             Some(parse_currency(&self.leaf(
                 ubl::Namespace::Cbc,
@@ -234,8 +236,16 @@ impl Parser {
         let project_reference =
             self.optional_reference(ubl::Namespace::Cac, "ProjectReference", "project_reference")?;
 
-        let seller = self.parse_supplier_party()?;
-        let buyer = self.parse_customer_party()?;
+        let seller = if self.is_open(ubl::Namespace::Cac, "AccountingSupplierParty") {
+            Some(self.parse_supplier_party()?)
+        } else {
+            None
+        };
+        let buyer = if self.is_open(ubl::Namespace::Cac, "AccountingCustomerParty") {
+            Some(self.parse_customer_party()?)
+        } else {
+            None
+        };
         let payee = if self.is_open(ubl::Namespace::Cac, "PayeeParty") {
             Some(self.parse_payee_party()?)
         } else {
@@ -257,7 +267,7 @@ impl Parser {
             None
         };
         let payment_terms = if self.is_open(ubl::Namespace::Cac, "PaymentTerms") {
-            Some(self.parse_payment_terms()?)
+            self.parse_payment_terms()?
         } else {
             None
         };
@@ -274,7 +284,7 @@ impl Parser {
             exemptions = self.parse_tax_total()?;
         }
         if self.is_open(ubl::Namespace::Cac, "TaxTotal") {
-            accounting_value = Some(self.parse_accounting_tax_total()?);
+            accounting_value = self.parse_accounting_tax_total()?;
         }
         let (paid, rounding) = if self.is_open(ubl::Namespace::Cac, "LegalMonetaryTotal") {
             self.parse_legal_monetary_total()?
@@ -381,7 +391,7 @@ impl Parser {
             instance,
         )?;
         self.enter_structural(ubl::Namespace::Cac, "InvoiceDocumentReference")?;
-        let number = self.leaf(ubl::Namespace::Cbc, "ID", "number")?.parse()?;
+        let number = self.optional_leaf(ubl::Namespace::Cbc, "ID", "number")?;
         let issue_date = self.optional_date(ubl::Namespace::Cbc, "IssueDate", "issue_date")?;
         self.leave_structural()?;
         self.leave_repeatable()?;
@@ -397,12 +407,15 @@ impl Parser {
         let is_object = self.additional_is_object();
         if is_object {
             self.enter_group(ubl::Namespace::Cac, "AdditionalDocumentReference", "object")?;
-            let (attributes, id) = self.derived(ubl::Namespace::Cbc, "ID")?;
-            let id = id.parse()?;
-            let scheme = match attr(&attributes, "schemeID") {
-                Some(value) => Some(value.parse()?),
-                None => None,
-            };
+            let mut id = None;
+            let mut scheme = None;
+            if let Some((attributes, value)) = self.optional_derived(ubl::Namespace::Cbc, "ID")? {
+                id = Some(value.parse()?);
+                scheme = match attr(&attributes, "schemeID") {
+                    Some(value) => Some(value.parse()?),
+                    None => None,
+                };
+            }
             self.derived(ubl::Namespace::Cbc, "DocumentTypeCode")?;
             self.leave_group()?;
             Ok(AdditionalDocument::Object(ObjectReference { id, scheme }))
@@ -414,7 +427,7 @@ impl Parser {
                 "supporting_documents",
                 instance,
             )?;
-            let reference = self.leaf(ubl::Namespace::Cbc, "ID", "reference")?.parse()?;
+            let reference = self.optional_leaf(ubl::Namespace::Cbc, "ID", "reference")?;
             let description =
                 self.optional_leaf(ubl::Namespace::Cbc, "DocumentDescription", "description")?;
             let mut external_location = None;
@@ -423,11 +436,10 @@ impl Parser {
                 self.enter_structural(ubl::Namespace::Cac, "Attachment")?;
                 if self.is_open(ubl::Namespace::Cac, "ExternalReference") {
                     self.enter_structural(ubl::Namespace::Cac, "ExternalReference")?;
-                    external_location = Some(parse_url(&self.leaf(
-                        ubl::Namespace::Cbc,
-                        "URI",
-                        "external_location",
-                    )?)?);
+                    external_location = self
+                        .optional_text(ubl::Namespace::Cbc, "URI", "external_location")?
+                        .map(|uri| parse_url(&uri))
+                        .transpose()?;
                     self.leave_structural()?;
                 } else {
                     attachment = Some(self.parse_binary()?);
@@ -466,13 +478,14 @@ impl Parser {
         let electronic_address = self.optional_endpoint("electronic_address")?;
         let identifiers = self.parse_identifiers("identifiers")?;
         let trading_name = self.optional_party_name("trading_name")?;
-        let address = self.parse_address(ubl::Namespace::Cac, "PostalAddress")?;
+        let address = self.optional_address(ubl::Namespace::Cac, "PostalAddress")?;
         let mut vat = None;
         let mut tax_registration = None;
         while self.is_open(ubl::Namespace::Cac, "PartyTaxScheme") {
             match self.parse_party_tax_scheme()? {
-                PartyTaxScheme::Vat(value) => vat = Some(value),
-                PartyTaxScheme::Other(value) => tax_registration = Some(value),
+                Some(PartyTaxScheme::Vat(value)) => vat = Some(value),
+                Some(PartyTaxScheme::Other(value)) => tax_registration = Some(value),
+                None => {}
             }
         }
         let (name, legal_entity, additional_legal_information) = self.parse_legal_entity("name")?;
@@ -500,10 +513,10 @@ impl Parser {
         let electronic_address = self.optional_endpoint("electronic_address")?;
         let identifiers = self.parse_identifiers("identifiers")?;
         let trading_name = self.optional_party_name("trading_name")?;
-        let address = self.parse_address(ubl::Namespace::Cac, "PostalAddress")?;
+        let address = self.optional_address(ubl::Namespace::Cac, "PostalAddress")?;
         let mut vat = None;
         while self.is_open(ubl::Namespace::Cac, "PartyTaxScheme") {
-            if let PartyTaxScheme::Vat(value) = self.parse_party_tax_scheme()? {
+            if let Some(PartyTaxScheme::Vat(value)) = self.parse_party_tax_scheme()? {
                 vat = Some(value);
             }
         }
@@ -527,12 +540,12 @@ impl Parser {
     fn parse_payee_party(&mut self) -> Result<Payee, Error> {
         self.enter_group(ubl::Namespace::Cac, "PayeeParty", "payee")?;
         let identifiers = self.parse_identifiers("identifiers")?;
-        let name = self.parse_party_name("name")?;
+        let name = self.optional_party_name("name")?;
         let legal_entity = if self.is_open(ubl::Namespace::Cac, "PartyLegalEntity") {
             self.enter_structural(ubl::Namespace::Cac, "PartyLegalEntity")?;
-            let entity = self.parse_company_id("legal_entity")?;
+            let entity = self.optional_company_id("legal_entity")?;
             self.leave_structural()?;
-            Some(entity)
+            entity
         } else {
             None
         };
@@ -551,13 +564,18 @@ impl Parser {
             "TaxRepresentativeParty",
             "tax_representative",
         )?;
-        let name = self.parse_party_name("name")?;
-        let address = self.parse_address(ubl::Namespace::Cac, "PostalAddress")?;
-        let vat = match self.parse_party_tax_scheme()? {
-            PartyTaxScheme::Vat(value) => value,
-            PartyTaxScheme::Other(_) => {
-                return Err(bad("a tax representative without a VAT scheme"));
+        let name = self.optional_party_name("name")?;
+        let address = self.optional_address(ubl::Namespace::Cac, "PostalAddress")?;
+        let vat = if self.is_open(ubl::Namespace::Cac, "PartyTaxScheme") {
+            match self.parse_party_tax_scheme()? {
+                Some(PartyTaxScheme::Vat(value)) => Some(value),
+                Some(PartyTaxScheme::Other(_)) => {
+                    return Err(bad("a tax representative without a VAT scheme"));
+                }
+                None => None,
             }
+        } else {
+            None
         };
         self.leave_group()?;
         Ok(TaxRepresentative { name, vat, address })
@@ -578,20 +596,18 @@ impl Parser {
                     None => None,
                 };
                 location = Some(LocationReference {
-                    id: id.parse()?,
+                    id: Some(id.parse()?),
                     issuer,
                 });
             }
-            if self.is_open(ubl::Namespace::Cac, "Address") {
-                address = Some(self.parse_address(ubl::Namespace::Cac, "Address")?);
-            }
+            address = self.optional_address(ubl::Namespace::Cac, "Address")?;
             self.leave_structural()?;
         }
         let name = if self.is_open(ubl::Namespace::Cac, "DeliveryParty") {
             self.enter_structural(ubl::Namespace::Cac, "DeliveryParty")?;
-            let name = self.parse_party_name("name")?;
+            let name = self.optional_party_name("name")?;
             self.leave_structural()?;
-            Some(name)
+            name
         } else {
             None
         };
@@ -607,13 +623,17 @@ impl Parser {
     // Parses the payment means.
     fn parse_payment_means(&mut self) -> Result<PaymentInstructions, Error> {
         self.enter_group(ubl::Namespace::Cac, "PaymentMeans", "payment")?;
-        let (attributes, code) =
-            self.leaf_attr(ubl::Namespace::Cbc, "PaymentMeansCode", "means")?;
-        let means = code.parse()?;
-        let means_text = match attr(&attributes, "name") {
-            Some(value) => Some(value.parse()?),
-            None => None,
-        };
+        let mut means = None;
+        let mut means_text = None;
+        if let Some((attributes, code)) =
+            self.optional_leaf_attr(ubl::Namespace::Cbc, "PaymentMeansCode", "means")?
+        {
+            means = Some(code.parse()?);
+            means_text = match attr(&attributes, "name") {
+                Some(value) => Some(value.parse()?),
+                None => None,
+            };
+        }
         let remittance_information =
             self.optional_leaf(ubl::Namespace::Cbc, "PaymentID", "remittance_information")?;
         let details = if self.is_open(ubl::Namespace::Cac, "PayeeFinancialAccount") {
@@ -640,13 +660,19 @@ impl Parser {
 
     fn parse_credit_transfer(&mut self) -> Result<CreditTransfer, Error> {
         self.enter_structural(ubl::Namespace::Cac, "PayeeFinancialAccount")?;
-        let account = self.leaf(ubl::Namespace::Cbc, "ID", "account")?.parse()?;
+        let account = self
+            .optional_text(ubl::Namespace::Cbc, "ID", "account")?
+            .map(|value| value.parse())
+            .transpose()?;
         let account_name = self.optional_leaf(ubl::Namespace::Cbc, "Name", "account_name")?;
         let provider = if self.is_open(ubl::Namespace::Cac, "FinancialInstitutionBranch") {
             self.enter_structural(ubl::Namespace::Cac, "FinancialInstitutionBranch")?;
-            let bic = self.leaf(ubl::Namespace::Cbc, "ID", "provider")?.parse()?;
+            let bic = self
+                .optional_text(ubl::Namespace::Cbc, "ID", "provider")?
+                .map(|value| value.parse())
+                .transpose()?;
             self.leave_structural()?;
-            Some(bic)
+            bic
         } else {
             None
         };
@@ -660,13 +686,11 @@ impl Parser {
 
     fn parse_card(&mut self) -> Result<PaymentCard, Error> {
         self.enter_structural(ubl::Namespace::Cac, "CardAccount")?;
-        let primary_account_number = self
-            .leaf(
-                ubl::Namespace::Cbc,
-                "PrimaryAccountNumberID",
-                "primary_account_number",
-            )?
-            .parse()?;
+        let primary_account_number = self.optional_leaf(
+            ubl::Namespace::Cbc,
+            "PrimaryAccountNumberID",
+            "primary_account_number",
+        )?;
         let holder_name = self.optional_leaf(ubl::Namespace::Cbc, "HolderName", "holder_name")?;
         self.leave_structural()?;
         Ok(PaymentCard {
@@ -684,10 +708,11 @@ impl Parser {
         let debited_account = if self.is_open(ubl::Namespace::Cac, "PayerFinancialAccount") {
             self.enter_structural(ubl::Namespace::Cac, "PayerFinancialAccount")?;
             let account = self
-                .leaf(ubl::Namespace::Cbc, "ID", "debited_account")?
-                .parse()?;
+                .optional_text(ubl::Namespace::Cbc, "ID", "debited_account")?
+                .map(|value| value.parse())
+                .transpose()?;
             self.leave_structural()?;
-            Some(account)
+            account
         } else {
             None
         };
@@ -700,11 +725,9 @@ impl Parser {
     }
 
     // Parses the payment terms.
-    fn parse_payment_terms(&mut self) -> Result<NonEmptyString, Error> {
+    fn parse_payment_terms(&mut self) -> Result<Option<NonEmptyString>, Error> {
         self.enter_group(ubl::Namespace::Cac, "PaymentTerms", "payment_terms")?;
-        let note = self
-            .leaf(ubl::Namespace::Cbc, "Note", "payment_terms")?
-            .parse()?;
+        let note = self.optional_leaf(ubl::Namespace::Cbc, "Note", "payment_terms")?;
         self.leave_group()?;
         Ok(note)
     }
@@ -717,14 +740,14 @@ impl Parser {
             "adjustments",
             instance,
         )?;
-        let charge = self
-            .derived(ubl::Namespace::Cbc, "ChargeIndicator")?
-            .1
-            .trim()
-            == "true";
+        let charge = self.optional_charge_indicator()?;
         let reason = self.parse_reason(charge)?;
         let amount = self.parse_adjustment_amount()?;
-        let vat = self.parse_tax_category()?;
+        let vat = if self.is_open(ubl::Namespace::Cac, "TaxCategory") {
+            Some(self.parse_tax_category()?)
+        } else {
+            None
+        };
         self.leave_repeatable()?;
         Ok(Adjustment {
             amount,
@@ -733,8 +756,15 @@ impl Parser {
         })
     }
 
-    // Parses the reason code and text of an adjustment.
-    fn parse_reason(&mut self, charge: bool) -> Result<AdjustmentReason, Error> {
+    // Parses the charge indicator of an adjustment, when present.
+    fn optional_charge_indicator(&mut self) -> Result<Option<bool>, Error> {
+        Ok(self
+            .optional_derived(ubl::Namespace::Cbc, "ChargeIndicator")?
+            .map(|(_, text)| text.trim() == "true"))
+    }
+
+    // Parses the reason code and text of an adjustment, dropped without the direction.
+    fn parse_reason(&mut self, charge: Option<bool>) -> Result<Option<AdjustmentReason>, Error> {
         let code = if self.is_open(ubl::Namespace::Cbc, "AllowanceChargeReasonCode") {
             Some(
                 self.derived(ubl::Namespace::Cbc, "AllowanceChargeReasonCode")?
@@ -752,46 +782,46 @@ impl Parser {
         } else {
             None
         };
-        Ok(if charge {
-            AdjustmentReason::Charge {
+        Ok(match charge {
+            Some(true) => Some(AdjustmentReason::Charge {
                 code: match code {
                     Some(code) => Some(code.parse()?),
                     None => None,
                 },
                 text,
-            }
-        } else {
-            AdjustmentReason::Allowance {
+            }),
+            Some(false) => Some(AdjustmentReason::Allowance {
                 code: match code {
                     Some(code) => Some(code.parse()?),
                     None => None,
                 },
                 text,
-            }
+            }),
+            None => None,
         })
     }
 
-    // Parses the amount of an adjustment, absolute or relative.
-    fn parse_adjustment_amount(&mut self) -> Result<AdjustmentAmount, Error> {
-        let factor = if self.is_open(ubl::Namespace::Cbc, "MultiplierFactorNumeric") {
-            Some(
-                self.derived(ubl::Namespace::Cbc, "MultiplierFactorNumeric")?
-                    .1,
-            )
-        } else {
-            None
-        };
-        let amount = self.derived(ubl::Namespace::Cbc, "Amount")?.1;
-        match factor {
-            Some(factor) => {
-                let base = parse_decimal(&self.derived(ubl::Namespace::Cbc, "BaseAmount")?.1)?;
-                Ok(AdjustmentAmount::Relative {
-                    rate: factor.parse()?,
-                    base,
-                })
-            }
-            None => Ok(AdjustmentAmount::Absolute(parse_decimal(&amount)?)),
-        }
+    // Parses the amount of an adjustment, absolute or relative, absent without the amount.
+    fn parse_adjustment_amount(&mut self) -> Result<Option<AdjustmentAmount>, Error> {
+        let factor = self
+            .optional_derived(ubl::Namespace::Cbc, "MultiplierFactorNumeric")?
+            .map(|(_, text)| text);
+        let amount = self
+            .optional_derived(ubl::Namespace::Cbc, "Amount")?
+            .map(|(_, text)| parse_decimal(&text))
+            .transpose()?;
+        let base = self
+            .optional_derived(ubl::Namespace::Cbc, "BaseAmount")?
+            .map(|(_, text)| parse_decimal(&text))
+            .transpose()?;
+        Ok(match (factor, amount, base) {
+            (Some(factor), Some(_), Some(base)) => Some(AdjustmentAmount::Relative {
+                rate: factor.parse()?,
+                base,
+            }),
+            (None, Some(amount), _) => Some(AdjustmentAmount::Absolute(amount)),
+            _ => None,
+        })
     }
 
     // Parses an allowance or charge VAT category.
@@ -810,14 +840,17 @@ impl Parser {
     fn parse_tax_total(&mut self) -> Result<ExemptionMap, Error> {
         let mut exemptions = ExemptionMap::new();
         self.enter_structural(ubl::Namespace::Cac, "TaxTotal")?;
-        self.derived(ubl::Namespace::Cbc, "TaxAmount")?;
+        self.optional_derived(ubl::Namespace::Cbc, "TaxAmount")?;
         while self.is_open(ubl::Namespace::Cac, "TaxSubtotal") {
             self.enter_structural(ubl::Namespace::Cac, "TaxSubtotal")?;
-            self.derived(ubl::Namespace::Cbc, "TaxableAmount")?;
-            self.derived(ubl::Namespace::Cbc, "TaxAmount")?;
+            self.optional_derived(ubl::Namespace::Cbc, "TaxableAmount")?;
+            self.optional_derived(ubl::Namespace::Cbc, "TaxAmount")?;
             self.enter_structural(ubl::Namespace::Cac, "TaxCategory")?;
-            let category: VatCategory = self.derived(ubl::Namespace::Cbc, "ID")?.1.parse()?;
-            self.derived(ubl::Namespace::Cbc, "Percent")?;
+            let category: Option<VatCategory> = self
+                .optional_derived(ubl::Namespace::Cbc, "ID")?
+                .map(|(_, text)| text.parse())
+                .transpose()?;
+            self.optional_derived(ubl::Namespace::Cbc, "Percent")?;
             let mut code = None;
             let mut text = None;
             if self.is_open(ubl::Namespace::Cbc, "TaxExemptionReasonCode") {
@@ -834,12 +867,14 @@ impl Parser {
                         .parse()?,
                 );
             }
-            self.enter_structural(ubl::Namespace::Cac, "TaxScheme")?;
-            self.derived(ubl::Namespace::Cbc, "ID")?;
+            if self.is_open(ubl::Namespace::Cac, "TaxScheme") {
+                self.enter_structural(ubl::Namespace::Cac, "TaxScheme")?;
+                self.optional_derived(ubl::Namespace::Cbc, "ID")?;
+                self.leave_structural()?;
+            }
             self.leave_structural()?;
             self.leave_structural()?;
-            self.leave_structural()?;
-            if category == VatCategory::Exempt {
+            if category == Some(VatCategory::Exempt) {
                 exemptions.set(code, text);
             }
         }
@@ -847,10 +882,13 @@ impl Parser {
         Ok(exemptions)
     }
 
-    // Parses the accounting-currency tax total, returning its amount (`BT-111`).
-    fn parse_accounting_tax_total(&mut self) -> Result<Decimal, Error> {
+    // Parses the accounting-currency tax total, returning its amount (`BT-111`) when present.
+    fn parse_accounting_tax_total(&mut self) -> Result<Option<Decimal>, Error> {
         self.enter_structural(ubl::Namespace::Cac, "TaxTotal")?;
-        let value = parse_decimal(&self.derived(ubl::Namespace::Cbc, "TaxAmount")?.1)?;
+        let value = self
+            .optional_derived(ubl::Namespace::Cbc, "TaxAmount")?
+            .map(|(_, text)| parse_decimal(&text))
+            .transpose()?;
         self.leave_structural()?;
         Ok(value)
     }
@@ -877,12 +915,13 @@ impl Parser {
     // Parses one invoice line.
     fn parse_line(&mut self, instance: NonZeroUsize) -> Result<InvoiceLine, Error> {
         self.enter_repeatable(ubl::Namespace::Cac, "InvoiceLine", "lines", instance)?;
-        let id = self.leaf(ubl::Namespace::Cbc, "ID", "id")?.parse()?;
+        let id = self.optional_leaf(ubl::Namespace::Cbc, "ID", "id")?;
         let note = self.optional_leaf(ubl::Namespace::Cbc, "Note", "note")?;
-        let (quantity_attrs, quantity_text) =
-            self.leaf_attr(ubl::Namespace::Cbc, "InvoicedQuantity", "quantity")?;
-        let quantity = parse_quantity(&quantity_attrs, &quantity_text)?;
-        self.derived(ubl::Namespace::Cbc, "LineExtensionAmount")?;
+        let quantity = self
+            .optional_leaf_attr(ubl::Namespace::Cbc, "InvoicedQuantity", "quantity")?
+            .map(|(attributes, text)| parse_quantity(&attributes, &text))
+            .transpose()?;
+        self.optional_derived(ubl::Namespace::Cbc, "LineExtensionAmount")?;
         let buyer_accounting_reference = self.optional_leaf(
             ubl::Namespace::Cbc,
             "AccountingCost",
@@ -899,26 +938,27 @@ impl Parser {
         };
         let order_line_reference = if self.is_open(ubl::Namespace::Cac, "OrderLineReference") {
             self.enter_structural(ubl::Namespace::Cac, "OrderLineReference")?;
-            let reference = self
-                .leaf(ubl::Namespace::Cbc, "LineID", "order_line_reference")?
-                .parse()?;
+            let reference =
+                self.optional_leaf(ubl::Namespace::Cbc, "LineID", "order_line_reference")?;
             self.leave_structural()?;
-            Some(reference)
+            reference
         } else {
             None
         };
         let object = if self.is_open(ubl::Namespace::Cac, "DocumentReference") {
             self.enter_structural(ubl::Namespace::Cac, "DocumentReference")?;
-            let (attributes, id) = self.leaf_attr(ubl::Namespace::Cbc, "ID", "object")?;
-            let scheme = match attr(&attributes, "schemeID") {
-                Some(value) => Some(value.parse()?),
-                None => None,
-            };
+            let mut reference = ObjectReference::default();
+            if let Some((attributes, id)) =
+                self.optional_leaf_attr(ubl::Namespace::Cbc, "ID", "object")?
+            {
+                reference.id = Some(id.parse()?);
+                reference.scheme = match attr(&attributes, "schemeID") {
+                    Some(value) => Some(value.parse()?),
+                    None => None,
+                };
+            }
             self.leave_structural()?;
-            Some(ObjectReference {
-                id: id.parse()?,
-                scheme,
-            })
+            Some(reference)
         } else {
             None
         };
@@ -927,8 +967,17 @@ impl Parser {
             let instance = index(adjustments.len());
             adjustments.push(self.parse_line_adjustment(instance)?);
         }
-        let (item, vat) = self.parse_item()?;
-        let price = self.parse_price()?;
+        let (item, vat) = if self.is_open(ubl::Namespace::Cac, "Item") {
+            let (item, vat) = self.parse_item()?;
+            (Some(item), vat)
+        } else {
+            (None, None)
+        };
+        let price = if self.is_open(ubl::Namespace::Cac, "Price") {
+            Some(self.parse_price()?)
+        } else {
+            None
+        };
         self.leave_repeatable()?;
         Ok(InvoiceLine {
             id,
@@ -953,11 +1002,7 @@ impl Parser {
             "adjustments",
             instance,
         )?;
-        let charge = self
-            .derived(ubl::Namespace::Cbc, "ChargeIndicator")?
-            .1
-            .trim()
-            == "true";
+        let charge = self.optional_charge_indicator()?;
         let reason = self.parse_reason(charge)?;
         let amount = self.parse_adjustment_amount()?;
         self.leave_repeatable()?;
@@ -965,14 +1010,14 @@ impl Parser {
     }
 
     // Parses the item, whose classified tax category yields the line VAT.
-    fn parse_item(&mut self) -> Result<(Item, VatTreatment), Error> {
+    fn parse_item(&mut self) -> Result<(Item, Option<VatTreatment>), Error> {
         self.take_open(ubl::Namespace::Cac, "Item")?;
         self.trace.enter(ubl::Namespace::Cac, "Item");
         self.trace.push_field("item");
         self.trace.record_context();
 
         let description = self.optional_leaf(ubl::Namespace::Cbc, "Description", "description")?;
-        let name = self.leaf(ubl::Namespace::Cbc, "Name", "name")?.parse()?;
+        let name = self.optional_leaf(ubl::Namespace::Cbc, "Name", "name")?;
         let buyer_id =
             self.optional_identifier(ubl::Namespace::Cac, "BuyersItemIdentification", "buyer_id")?;
         let seller_id = self.optional_identifier(
@@ -982,66 +1027,69 @@ impl Parser {
         )?;
         let standard_id = if self.is_open(ubl::Namespace::Cac, "StandardItemIdentification") {
             self.enter_structural(ubl::Namespace::Cac, "StandardItemIdentification")?;
-            let (attributes, id) = self.leaf_attr(ubl::Namespace::Cbc, "ID", "standard_id")?;
-            let issuer = attr(&attributes, "schemeID")
-                .ok_or_else(|| bad("a standard item id without a scheme"))?
-                .parse()?;
+            let mut reference = crate::ItemReference::default();
+            if let Some((attributes, id)) =
+                self.optional_leaf_attr(ubl::Namespace::Cbc, "ID", "standard_id")?
+            {
+                reference.id = Some(id.parse()?);
+                reference.issuer = match attr(&attributes, "schemeID") {
+                    Some(value) => Some(value.parse()?),
+                    None => None,
+                };
+            }
             self.leave_structural()?;
-            Some(crate::ItemReference {
-                id: id.parse()?,
-                issuer,
-            })
+            Some(reference)
         } else {
             None
         };
         let country_of_origin = if self.is_open(ubl::Namespace::Cac, "OriginCountry") {
             self.enter_structural(ubl::Namespace::Cac, "OriginCountry")?;
-            let code = self.leaf(
+            let code = self.optional_text(
                 ubl::Namespace::Cbc,
                 "IdentificationCode",
                 "country_of_origin",
             )?;
             self.leave_structural()?;
-            Some(parse_country(&code)?)
+            code.map(|code| parse_country(&code)).transpose()?
         } else {
             None
         };
         let mut classifications = Vec::new();
         while self.is_open(ubl::Namespace::Cac, "CommodityClassification") {
             self.enter_structural(ubl::Namespace::Cac, "CommodityClassification")?;
-            let (attributes, id) = self.leaf_attr(
+            let mut classification = Classification::default();
+            if let Some((attributes, id)) = self.optional_leaf_attr(
                 ubl::Namespace::Cbc,
                 "ItemClassificationCode",
                 "classifications",
-            )?;
-            let scheme = attr(&attributes, "listID")
-                .ok_or_else(|| bad("a classification without a scheme"))?
-                .parse()?;
-            let version = match attr(&attributes, "listVersionID") {
-                Some(value) => Some(value.parse()?),
-                None => None,
-            };
+            )? {
+                classification.id = Some(id.parse()?);
+                classification.scheme = match attr(&attributes, "listID") {
+                    Some(value) => Some(value.parse()?),
+                    None => None,
+                };
+                classification.version = match attr(&attributes, "listVersionID") {
+                    Some(value) => Some(value.parse()?),
+                    None => None,
+                };
+            }
             self.leave_structural()?;
-            classifications.push(Classification {
-                id: id.parse()?,
-                scheme,
-                version,
-            });
+            classifications.push(classification);
         }
 
         // The classified tax category is a sibling of the item in the model.
         self.trace.pop_context();
-        let vat = self.parse_classified_tax_category()?;
+        let vat = if self.is_open(ubl::Namespace::Cac, "ClassifiedTaxCategory") {
+            Some(self.parse_classified_tax_category()?)
+        } else {
+            None
+        };
 
         let mut attributes = Vec::new();
         while self.is_open(ubl::Namespace::Cac, "AdditionalItemProperty") {
             self.enter_structural(ubl::Namespace::Cac, "AdditionalItemProperty")?;
-            let name = self
-                .leaf(ubl::Namespace::Cbc, "Name", "attributes")?
-                .parse()?;
-            let value = self
-                .leaf(ubl::Namespace::Cbc, "Value", "attributes")?
-                .parse()?;
+            let name = self.optional_leaf(ubl::Namespace::Cbc, "Name", "attributes")?;
+            let value = self.optional_leaf(ubl::Namespace::Cbc, "Value", "attributes")?;
             self.leave_structural()?;
             attributes.push(ItemAttribute { name, value });
         }
@@ -1079,21 +1127,27 @@ impl Parser {
     // Parses the line price.
     fn parse_price(&mut self) -> Result<Price, Error> {
         self.enter_group(ubl::Namespace::Cac, "Price", "price")?;
-        let net = parse_decimal(&self.derived(ubl::Namespace::Cbc, "PriceAmount")?.1)?;
-        let base_quantity = if self.is_open(ubl::Namespace::Cbc, "BaseQuantity") {
-            let (attributes, text) =
-                self.leaf_attr(ubl::Namespace::Cbc, "BaseQuantity", "price")?;
-            Some(parse_quantity(&attributes, &text)?)
-        } else {
-            None
-        };
+        let net = self
+            .optional_derived(ubl::Namespace::Cbc, "PriceAmount")?
+            .map(|(_, text)| parse_decimal(&text))
+            .transpose()?;
+        let base_quantity = self
+            .optional_leaf_attr(ubl::Namespace::Cbc, "BaseQuantity", "price")?
+            .map(|(attributes, text)| parse_quantity(&attributes, &text))
+            .transpose()?;
         let (gross, discount) = if self.is_open(ubl::Namespace::Cac, "AllowanceCharge") {
             self.enter_structural(ubl::Namespace::Cac, "AllowanceCharge")?;
-            self.field_or_leaf(ubl::Namespace::Cbc, "ChargeIndicator", "price")?;
-            let amount = parse_decimal(&self.leaf(ubl::Namespace::Cbc, "Amount", "price")?)?;
-            let base = parse_decimal(&self.leaf(ubl::Namespace::Cbc, "BaseAmount", "price")?)?;
+            self.optional_text(ubl::Namespace::Cbc, "ChargeIndicator", "price")?;
+            let amount = self
+                .optional_text(ubl::Namespace::Cbc, "Amount", "price")?
+                .map(|text| parse_decimal(&text))
+                .transpose()?;
+            let base = self
+                .optional_text(ubl::Namespace::Cbc, "BaseAmount", "price")?
+                .map(|text| parse_decimal(&text))
+                .transpose()?;
             self.leave_structural()?;
-            (base, Some(amount))
+            (base, amount)
         } else {
             (net, None)
         };
@@ -1115,11 +1169,12 @@ impl Parser {
             return Ok(None);
         }
         let (attributes, id) = self.leaf_attr(ubl::Namespace::Cbc, "EndpointID", field)?;
-        let scheme = attr(&attributes, "schemeID")
-            .ok_or_else(|| bad("an endpoint without a scheme"))?
-            .parse()?;
+        let scheme = match attr(&attributes, "schemeID") {
+            Some(value) => Some(value.parse()?),
+            None => None,
+        };
         Ok(Some(ElectronicAddress {
-            id: id.parse()?,
+            id: Some(id.parse()?),
             scheme,
         }))
     }
@@ -1128,16 +1183,18 @@ impl Parser {
         let mut identifiers = Vec::new();
         while self.is_open(ubl::Namespace::Cac, "PartyIdentification") {
             self.enter_group(ubl::Namespace::Cac, "PartyIdentification", field)?;
-            let (attributes, id) = self.leaf_attr(ubl::Namespace::Cbc, "ID", field)?;
-            let issuer = match attr(&attributes, "schemeID") {
-                Some(value) => Some(value.parse()?),
-                None => None,
-            };
+            let mut identifier = OperationalEntity::default();
+            if let Some((attributes, id)) =
+                self.optional_leaf_attr(ubl::Namespace::Cbc, "ID", field)?
+            {
+                identifier.id = Some(id.parse()?);
+                identifier.issuer = match attr(&attributes, "schemeID") {
+                    Some(value) => Some(value.parse()?),
+                    None => None,
+                };
+            }
             self.leave_group()?;
-            identifiers.push(OperationalEntity {
-                id: id.parse()?,
-                issuer,
-            });
+            identifiers.push(identifier);
         }
         Ok(identifiers)
     }
@@ -1146,21 +1203,16 @@ impl Parser {
         &mut self,
         field: &'static str,
     ) -> Result<Option<NonEmptyString>, Error> {
-        if self.is_open(ubl::Namespace::Cac, "PartyName") {
-            Ok(Some(self.parse_party_name(field)?))
-        } else {
-            Ok(None)
+        if !self.is_open(ubl::Namespace::Cac, "PartyName") {
+            return Ok(None);
         }
-    }
-
-    fn parse_party_name(&mut self, field: &'static str) -> Result<NonEmptyString, Error> {
         self.enter_group(ubl::Namespace::Cac, "PartyName", field)?;
-        let name = self.leaf(ubl::Namespace::Cbc, "Name", field)?.parse()?;
+        let name = self.optional_leaf(ubl::Namespace::Cbc, "Name", field)?;
         self.leave_group()?;
         Ok(name)
     }
 
-    fn parse_party_tax_scheme(&mut self) -> Result<PartyTaxScheme, Error> {
+    fn parse_party_tax_scheme(&mut self) -> Result<Option<PartyTaxScheme>, Error> {
         // The serializer chose the context field from the scheme, so peek it first.
         let field: &'static str = if self.peek_tax_scheme() == "VAT" {
             "vat"
@@ -1168,15 +1220,21 @@ impl Parser {
             "tax_registration"
         };
         self.enter_group(ubl::Namespace::Cac, "PartyTaxScheme", field)?;
-        let company = self.leaf(ubl::Namespace::Cbc, "CompanyID", field)?;
-        self.enter_structural(ubl::Namespace::Cac, "TaxScheme")?;
-        let scheme = self.leaf(ubl::Namespace::Cbc, "ID", field)?;
-        self.leave_structural()?;
+        let company = self.optional_text(ubl::Namespace::Cbc, "CompanyID", field)?;
+        let mut scheme = None;
+        if self.is_open(ubl::Namespace::Cac, "TaxScheme") {
+            self.enter_structural(ubl::Namespace::Cac, "TaxScheme")?;
+            scheme = self.optional_text(ubl::Namespace::Cbc, "ID", field)?;
+            self.leave_structural()?;
+        }
         self.leave_group()?;
-        if scheme == "VAT" {
-            Ok(PartyTaxScheme::Vat(company.parse()?))
+        let Some(company) = company else {
+            return Ok(None);
+        };
+        if scheme.as_deref() == Some("VAT") {
+            Ok(Some(PartyTaxScheme::Vat(company.parse()?)))
         } else {
-            Ok(PartyTaxScheme::Other(company.parse()?))
+            Ok(Some(PartyTaxScheme::Other(company.parse()?)))
         }
     }
 
@@ -1199,19 +1257,25 @@ impl Parser {
         String::new()
     }
 
+    // Parses the party legal entity, when present: the name, the legal id, and the legal form.
+    #[allow(clippy::type_complexity)]
     fn parse_legal_entity(
         &mut self,
         name_field: &'static str,
-    ) -> Result<(NonEmptyString, Option<LegalEntity>, Option<NonEmptyString>), Error> {
+    ) -> Result<
+        (
+            Option<NonEmptyString>,
+            Option<LegalEntity>,
+            Option<NonEmptyString>,
+        ),
+        Error,
+    > {
+        if !self.is_open(ubl::Namespace::Cac, "PartyLegalEntity") {
+            return Ok((None, None, None));
+        }
         self.enter_structural(ubl::Namespace::Cac, "PartyLegalEntity")?;
-        let name = self
-            .leaf(ubl::Namespace::Cbc, "RegistrationName", name_field)?
-            .parse()?;
-        let legal_entity = if self.is_open(ubl::Namespace::Cbc, "CompanyID") {
-            Some(self.parse_company_id("legal_entity")?)
-        } else {
-            None
-        };
+        let name = self.optional_leaf(ubl::Namespace::Cbc, "RegistrationName", name_field)?;
+        let legal_entity = self.optional_company_id("legal_entity")?;
         let legal_form = self.optional_leaf(
             ubl::Namespace::Cbc,
             "CompanyLegalForm",
@@ -1221,16 +1285,20 @@ impl Parser {
         Ok((name, legal_entity, legal_form))
     }
 
-    fn parse_company_id(&mut self, field: &'static str) -> Result<LegalEntity, Error> {
-        let (attributes, id) = self.leaf_attr(ubl::Namespace::Cbc, "CompanyID", field)?;
+    fn optional_company_id(&mut self, field: &'static str) -> Result<Option<LegalEntity>, Error> {
+        let Some((attributes, id)) =
+            self.optional_leaf_attr(ubl::Namespace::Cbc, "CompanyID", field)?
+        else {
+            return Ok(None);
+        };
         let issuer = match attr(&attributes, "schemeID") {
             Some(value) => Some(value.parse()?),
             None => None,
         };
-        Ok(LegalEntity {
-            id: id.parse()?,
+        Ok(Some(LegalEntity {
+            id: Some(id.parse()?),
             issuer,
-        })
+        }))
     }
 
     fn optional_contact(&mut self, field: &'static str) -> Result<Option<Contact>, Error> {
@@ -1257,11 +1325,14 @@ impl Parser {
         }))
     }
 
-    fn parse_address(
+    fn optional_address(
         &mut self,
         namespace: ubl::Namespace,
         element: &str,
-    ) -> Result<PostalAddress, Error> {
+    ) -> Result<Option<PostalAddress>, Error> {
+        if !self.is_open(namespace, element) {
+            return Ok(None);
+        }
         self.enter_group(namespace, element, "address")?;
         let line1 = self.optional_leaf(ubl::Namespace::Cbc, "StreetName", "line1")?;
         let line2 = self.optional_leaf(ubl::Namespace::Cbc, "AdditionalStreetName", "line2")?;
@@ -1274,18 +1345,22 @@ impl Parser {
         )?;
         let line3 = if self.is_open(ubl::Namespace::Cac, "AddressLine") {
             self.enter_structural(ubl::Namespace::Cac, "AddressLine")?;
-            let line = self.leaf(ubl::Namespace::Cbc, "Line", "line3")?.parse()?;
+            let line = self.optional_leaf(ubl::Namespace::Cbc, "Line", "line3")?;
             self.leave_structural()?;
-            Some(line)
+            line
         } else {
             None
         };
-        self.enter_structural(ubl::Namespace::Cac, "Country")?;
-        let country =
-            parse_country(&self.leaf(ubl::Namespace::Cbc, "IdentificationCode", "country")?)?;
-        self.leave_structural()?;
+        let country = if self.is_open(ubl::Namespace::Cac, "Country") {
+            self.enter_structural(ubl::Namespace::Cac, "Country")?;
+            let code = self.optional_text(ubl::Namespace::Cbc, "IdentificationCode", "country")?;
+            self.leave_structural()?;
+            code.map(|code| parse_country(&code)).transpose()?
+        } else {
+            None
+        };
         self.leave_group()?;
-        Ok(PostalAddress {
+        Ok(Some(PostalAddress {
             line1,
             line2,
             line3,
@@ -1293,7 +1368,7 @@ impl Parser {
             country,
             country_subdivision,
             postal_code,
-        })
+        }))
     }
 
     fn optional_identifier(
@@ -1306,9 +1381,9 @@ impl Parser {
             return Ok(None);
         }
         self.enter_structural(namespace, element)?;
-        let id = self.leaf(ubl::Namespace::Cbc, "ID", field)?.parse()?;
+        let id = self.optional_leaf(ubl::Namespace::Cbc, "ID", field)?;
         self.leave_structural()?;
-        Ok(Some(id))
+        Ok(id)
     }
 
     // ---- mirror primitives ----------------------------------------------
@@ -1360,6 +1435,49 @@ impl Parser {
     ) -> Result<Option<NonEmptyString>, Error> {
         if self.is_open(namespace, name) {
             Ok(Some(self.leaf(namespace, name, field)?.parse()?))
+        } else {
+            Ok(None)
+        }
+    }
+
+    // Reads the text of an optional leaf mapped to a model field.
+    fn optional_text(
+        &mut self,
+        namespace: ubl::Namespace,
+        name: &str,
+        field: &'static str,
+    ) -> Result<Option<String>, Error> {
+        if self.is_open(namespace, name) {
+            Ok(Some(self.leaf(namespace, name, field)?))
+        } else {
+            Ok(None)
+        }
+    }
+
+    // Reads an optional leaf mapped to a model field, returning its attributes and text.
+    #[allow(clippy::type_complexity)]
+    fn optional_leaf_attr(
+        &mut self,
+        namespace: ubl::Namespace,
+        name: &str,
+        field: &'static str,
+    ) -> Result<Option<(Vec<(String, String)>, String)>, Error> {
+        if self.is_open(namespace, name) {
+            Ok(Some(self.leaf_attr(namespace, name, field)?))
+        } else {
+            Ok(None)
+        }
+    }
+
+    // Reads an optional derived leaf with no model field, returning its attributes and text.
+    #[allow(clippy::type_complexity)]
+    fn optional_derived(
+        &mut self,
+        namespace: ubl::Namespace,
+        name: &str,
+    ) -> Result<Option<(Vec<(String, String)>, String)>, Error> {
+        if self.is_open(namespace, name) {
+            Ok(Some(self.derived(namespace, name)?))
         } else {
             Ok(None)
         }
@@ -1645,11 +1763,19 @@ impl ExemptionMap {
                 *slot_text = text.clone();
             }
         };
-        for line in &mut invoice.lines {
-            fill(&mut line.vat);
+        for vat in invoice
+            .lines
+            .iter_mut()
+            .filter_map(|line| line.vat.as_mut())
+        {
+            fill(vat);
         }
-        for adjustment in &mut invoice.adjustments {
-            fill(&mut adjustment.vat);
+        for vat in invoice
+            .adjustments
+            .iter_mut()
+            .filter_map(|adjustment| adjustment.vat.as_mut())
+        {
+            fill(vat);
         }
     }
 }
@@ -1689,13 +1815,13 @@ fn parse_note(value: &str) -> Result<Note, Error> {
         if let Some((code, text)) = rest.split_once('#') {
             return Ok(Note {
                 subject_code: Some(code.parse()?),
-                text: text.parse()?,
+                text: Some(text.parse()?),
             });
         }
     }
     Ok(Note {
         subject_code: None,
-        text: value.parse()?,
+        text: Some(value.parse()?),
     })
 }
 

@@ -10,7 +10,8 @@ use crate::prelude::*;
 /// The set is the EN-16931 subset of UNTDID 1001, enforced by `BR-CL-01`.
 /// It unites the UBL `InvoiceTypeCode` and `CreditNoteTypeCode` lists.
 /// The discriminant of each variant is its numeric code.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, IntoPrimitive, TryFromPrimitive)]
+/// The default is the commercial invoice (`380`).
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, IntoPrimitive, TryFromPrimitive)]
 #[repr(u16)]
 pub enum InvoiceType {
     RequestForPayment = 71,
@@ -35,6 +36,7 @@ pub enum InvoiceType {
     ProformaInvoice = 325,
     PartialInvoice = 326,
     CommercialInvoiceWithPackingList = 331,
+    #[default]
     CommercialInvoice = 380,
     CreditNote = 381,
     CommissionNote = 382,
