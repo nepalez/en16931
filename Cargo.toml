@@ -18,22 +18,22 @@ repository = "https://github.com/nepalez/en16931"
 # A crate refers to an entry with `workspace = true`,
 # and adds the features or the `optional` flag it needs on top.
 [workspace.dependencies]
-base64 = "0.22"
-cefact-units = "0.1"
-email_address = "0.2"
-en16931-core = { path = "crates/core", version = "0.1" }
-en16931-iso = { path = "crates/xpath/iso", version = "0.1" }
-en16931-kosit = { path = "crates/envelopes/kosit", version = "0.1" }
-en16931-phive = { path = "crates/envelopes/phive", version = "0.1" }
-iban_validate = "5"
-iso_currency = "0.5.3"
-isocountry = "0.3"
-mime = "0.3"
-num_enum = "0.7"
-parse-display = "0.11"
+base64 = { version = "0.22", default-features = false }
+cefact-units = { version = "0.1", default-features = false }
+email_address = { version = "0.2", default-features = false }
+en16931-core = { path = "crates/core", version = "0.1", default-features = false }
+en16931-iso = { path = "crates/xpath/iso", version = "0.1", default-features = false }
+en16931-kosit = { path = "crates/envelopes/kosit", version = "0.1", default-features = false }
+en16931-phive = { path = "crates/envelopes/phive", version = "0.1", default-features = false }
+iban_validate = { version = "5", default-features = false }
+iso_currency = { version = "0.5.3", default-features = false }
+isocountry = { version = "0.3", default-features = false }
+mime = { version = "0.3", default-features = false }
+num_enum = { version = "0.7", default-features = false }
+parse-display = { version = "0.11", default-features = false }
 quick-xml = { version = "0.41", default-features = false }
-reqwest = { version = "0.12", default-features = false, features = ["blocking"] }
-roxmltree = "0.20"
+reqwest = { version = "0.12", default-features = false }
+roxmltree = { version = "0.20", default-features = false }
 rust_decimal = { version = "1", default-features = false }
 time = { version = "0.3", default-features = false }
-url = "2"
+url = { version = "2", default-features = false }

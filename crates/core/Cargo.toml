@@ -12,7 +12,7 @@ keywords = ["en16931", "invoice", "peppol", "schematron"]
 categories = ["parsing", "finance"]
 
 [dependencies]
-base64.workspace = true
+base64 = { workspace = true, features = ["std"] }
 cefact-units.workspace = true
 email_address.workspace = true
 iban_validate.workspace = true

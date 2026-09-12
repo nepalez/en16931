@@ -14,4 +14,4 @@ en16931-core.workspace = true
 roxmltree.workspace = true
 
 [dev-dependencies]
-reqwest.workspace = true
+reqwest = { workspace = true, features = ["blocking"] }
