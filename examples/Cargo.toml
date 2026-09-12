@@ -15,7 +15,7 @@ en16931-kosit.workspace = true
 en16931-phive.workspace = true
 iso_currency.workspace = true
 isocountry.workspace = true
-reqwest.workspace = true
+reqwest = { workspace = true, features = ["blocking"] }
 rust_decimal.workspace = true
 time.workspace = true
 
