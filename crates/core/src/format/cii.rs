@@ -1,9 +1,9 @@
 mod deserialize;
 mod serialize;
 
+use crate::Format;
 use crate::format::Sealed;
 use crate::prelude::*;
-use crate::{Abbreviations, Format};
 pub(crate) use deserialize::deserialize;
 pub(crate) use serialize::serialize;
 
@@ -16,6 +16,8 @@ impl Sealed for Cii {}
 impl Format for Cii {
     type Namespace = Namespace;
 
+    const ROOT_ELEMENT: &'static str = "CrossIndustryInvoice";
+
     fn root_namespace() -> Namespace {
         Namespace::Rsm
     }
@@ -25,7 +27,7 @@ impl Format for Cii {
 ///
 /// A member renders as the abbreviation of its namespace URI,
 /// so a CII path reads as `/Q{RSM}CrossIndustryInvoice[1]/Q{RAM}…`.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Display)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Display, VariantArray)]
 pub enum Namespace {
     /// The namespace of the root `CrossIndustryInvoice` document
     /// and its top-level structural elements.
@@ -56,31 +58,22 @@ impl crate::Namespace for Namespace {
         }
     }
 
-    fn from_uri(uri: &str) -> Option<Self> {
-        [Self::Rsm, Self::Ram, Self::Udt, Self::Qdt]
-            .into_iter()
-            .find(|member| <Self as crate::Namespace>::uri(*member) == uri)
+    fn prefix(self) -> &'static str {
+        match self {
+            Self::Rsm => "rsm",
+            Self::Ram => "ram",
+            Self::Udt => "udt",
+            Self::Qdt => "qdt",
+        }
     }
 
-    fn default_abbreviations() -> Abbreviations<Self> {
-        [
-            ("rsm", Self::Rsm),
-            ("ram", Self::Ram),
-            ("udt", Self::Udt),
-            ("qdt", Self::Qdt),
-        ]
-        .into_iter()
-        .collect()
-    }
-}
-
-// The XML prefix a CII document binds to a record-form namespace.
-fn prefix(namespace: Namespace) -> &'static str {
-    match namespace {
-        Namespace::Rsm => "rsm",
-        Namespace::Ram => "ram",
-        Namespace::Udt => "udt",
-        Namespace::Qdt => "qdt",
+    fn abbreviation(self) -> &'static str {
+        match self {
+            Self::Rsm => "rsm",
+            Self::Ram => "ram",
+            Self::Udt => "udt",
+            Self::Qdt => "qdt",
+        }
     }
 }
 

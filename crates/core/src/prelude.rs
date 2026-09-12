@@ -21,5 +21,6 @@ pub use std::fmt::{self, Display, Formatter};
 pub use std::hash::Hash;
 pub use std::num::NonZeroUsize;
 pub use std::str::FromStr;
+pub use strum::VariantArray;
 pub use time::{Date, Month};
 pub use url::Url;
