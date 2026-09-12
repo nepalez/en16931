@@ -1,9 +1,9 @@
 mod deserialize;
 mod serialize;
 
+use crate::Format;
 use crate::format::Sealed;
 use crate::prelude::*;
-use crate::{Abbreviations, Format};
 pub(crate) use deserialize::deserialize;
 pub(crate) use serialize::serialize;
 
@@ -16,6 +16,8 @@ impl Sealed for Ubl {}
 impl Format for Ubl {
     type Namespace = Namespace;
 
+    const ROOT_ELEMENT: &'static str = "Invoice";
+
     fn root_namespace() -> Namespace {
         Namespace::Inv
     }
@@ -25,7 +27,7 @@ impl Format for Ubl {
 ///
 /// A member renders as the abbreviation of its namespace URI,
 /// so a UBL path reads as `/Q{INV}Invoice[1]/Q{CAC}InvoiceLine[2]/Q{CBC}ID[1]`.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Display)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Display, VariantArray)]
 pub enum Namespace {
     /// The namespace of the root `Invoice` document.
     #[display("INV")]
@@ -47,26 +49,21 @@ impl crate::Namespace for Namespace {
         }
     }
 
-    fn from_uri(uri: &str) -> Option<Self> {
-        [Self::Inv, Self::Cac, Self::Cbc]
-            .into_iter()
-            .find(|member| <Self as crate::Namespace>::uri(*member) == uri)
+    // The root carries the default namespace, so it needs no prefix.
+    fn prefix(self) -> &'static str {
+        match self {
+            Self::Inv => "",
+            Self::Cac => "cac",
+            Self::Cbc => "cbc",
+        }
     }
 
-    fn default_abbreviations() -> Abbreviations<Self> {
-        [("ubl", Self::Inv), ("cac", Self::Cac), ("cbc", Self::Cbc)]
-            .into_iter()
-            .collect()
-    }
-}
-
-// The XML prefix a UBL document binds to a record-form namespace. The root
-// carries the default namespace, so it needs no prefix.
-fn prefix(namespace: Namespace) -> &'static str {
-    match namespace {
-        Namespace::Cac => "cac",
-        Namespace::Cbc => "cbc",
-        Namespace::Inv => "",
+    fn abbreviation(self) -> &'static str {
+        match self {
+            Self::Inv => "ubl",
+            Self::Cac => "cac",
+            Self::Cbc => "cbc",
+        }
     }
 }
 

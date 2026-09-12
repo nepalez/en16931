@@ -1,4 +1,4 @@
-use crate::format::cii::{self, prefix};
+use crate::format::cii;
 use crate::format::trace::Trace;
 use crate::prelude::*;
 use crate::{
@@ -88,25 +88,27 @@ impl Serializer {
     // Serializes the whole document under the CII root element.
     fn document(&mut self, builder: &DocumentBuilder) {
         let invoice = &builder.invoice;
-        let root = BytesStart::new("rsm:CrossIndustryInvoice").with_attributes([
-            ("xmlns:rsm", cii::Namespace::Rsm.uri()),
-            ("xmlns:ram", cii::Namespace::Ram.uri()),
-            ("xmlns:udt", cii::Namespace::Udt.uri()),
-            ("xmlns:qdt", cii::Namespace::Qdt.uri()),
-        ]);
+        let declarations: Vec<(String, &'static str)> = cii::Namespace::VARIANTS
+            .iter()
+            .map(|namespace| {
+                let prefix = namespace.prefix();
+                let key = if prefix.is_empty() {
+                    "xmlns".to_owned()
+                } else {
+                    format!("xmlns:{prefix}")
+                };
+                (key, namespace.uri())
+            })
+            .collect();
+        let root = BytesStart::new(qname(Cii::root_namespace(), Cii::ROOT_ELEMENT))
+            .with_attributes(declarations.iter().map(|(key, uri)| (key.as_str(), *uri)));
         self.write(Event::Start(root));
-        for namespace in [
-            cii::Namespace::Rsm,
-            cii::Namespace::Ram,
-            cii::Namespace::Udt,
-            cii::Namespace::Qdt,
-        ] {
+        for namespace in cii::Namespace::VARIANTS {
             self.abbreviations
-                .declare(prefix(namespace), namespace)
+                .declare(namespace.prefix(), *namespace)
                 .expect("the writer binds each abbreviation to one namespace");
         }
-        self.trace
-            .enter(cii::Namespace::Rsm, "CrossIndustryInvoice");
+        self.trace.enter(Cii::root_namespace(), Cii::ROOT_ELEMENT);
         self.trace.record_root();
 
         self.exchanged_document_context(builder);
@@ -123,7 +125,10 @@ impl Serializer {
         );
 
         self.trace.leave();
-        self.write(Event::End(BytesEnd::new("rsm:CrossIndustryInvoice")));
+        self.write(Event::End(BytesEnd::new(qname(
+            Cii::root_namespace(),
+            Cii::ROOT_ELEMENT,
+        ))));
     }
 
     // Serializes the document context: the business process (BT-23) and the profile (BT-24).
@@ -1916,7 +1921,7 @@ impl Serializer {
 
 // The record-form qualified name of an element, prefixed for its namespace.
 fn qname(namespace: cii::Namespace, name: &str) -> String {
-    format!("{}:{}", prefix(namespace), name)
+    format!("{}:{}", namespace.prefix(), name)
 }
 
 fn index(position: usize) -> NonZeroUsize {

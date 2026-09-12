@@ -1,3 +1,4 @@
+use crate::format::Token;
 use crate::format::trace::Trace;
 use crate::format::ubl;
 use crate::prelude::*;
@@ -5,7 +6,7 @@ use crate::{
     Abbreviations, Adjustment, AdjustmentAmount, AdjustmentReason, Amount, BinaryObject, Buyer,
     Classification, Contact, CreditTransfer, Delivery, Dictionary, DirectDebit, DocumentBuilder,
     ElectronicAddress, Error, ExemptionReason, Format, Invoice, InvoiceLine, Item, ItemAttribute,
-    LegalEntity, LineAdjustment, LocationReference, MimeCode, Namespace, NonEmptyString, Note,
+    LegalEntity, LineAdjustment, LocationReference, MimeCode, NonEmptyString, Note,
     ObjectReference, OperationalEntity, Payee, PaymentCard, PaymentDetails, PaymentInstructions,
     Period, PostalAddress, PrecedingInvoice, Price, Quantity, Seller, SupportingDocument,
     TaxRepresentative, Ubl, Unit, VatCategory, VatPoint, VatTreatment,
@@ -23,7 +24,7 @@ pub(crate) fn deserialize(
     ),
     Error,
 > {
-    let (tokens, abbreviations) = tokenize(xml)?;
+    let (tokens, abbreviations) = Ubl::tokenize(xml)?;
     let mut parser = Parser {
         tokens,
         cursor: 0,
@@ -33,97 +34,18 @@ pub(crate) fn deserialize(
     Ok((builder, parser.trace.into_dictionary(), abbreviations))
 }
 
-// ---- tokens --------------------------------------------------------------
-
-enum Token {
-    Open {
-        namespace: ubl::Namespace,
-        name: String,
-        attributes: Vec<(String, String)>,
-    },
-    Text(String),
-    Close,
-}
-
-// Reads the document into resolved, owned tokens, collecting the abbreviations it
-// declares and dropping insignificant whitespace.
-fn tokenize(xml: &str) -> Result<(Vec<Token>, Abbreviations<ubl::Namespace>), Error> {
-    let mut reader = NsReader::from_str(xml);
-    let mut tokens = Vec::new();
-    let mut abbreviations = <Ubl as Format>::Namespace::default_abbreviations();
-    loop {
-        let (resolved, event) = reader.read_resolved_event()?;
-        match event {
-            Event::Start(start) => {
-                tokens.push(open_token(resolved, &start, &mut abbreviations)?);
-            }
-            Event::Empty(start) => {
-                tokens.push(open_token(resolved, &start, &mut abbreviations)?);
-                tokens.push(Token::Close);
-            }
-            Event::End(_) => tokens.push(Token::Close),
-            Event::Text(value) => {
-                let bytes = value.into_inner();
-                let text = String::from_utf8_lossy(&bytes);
-                if !text.trim().is_empty() {
-                    tokens.push(Token::Text(text.into_owned()));
-                }
-            }
-            Event::Eof => return Ok((tokens, abbreviations)),
-            _ => {}
-        }
-    }
-}
-
-// Builds an `Open` token from a start tag, resolving its namespace and reading
-// its attributes. A namespace declaration binds an abbreviation instead.
-fn open_token(
-    resolved: ResolveResult<'_>,
-    start: &BytesStart<'_>,
-    abbreviations: &mut Abbreviations<ubl::Namespace>,
-) -> Result<Token, Error> {
-    let ResolveResult::Bound(uri) = resolved else {
-        return Err(Error::malformed_xml("an element has no namespace"));
-    };
-    let uri = String::from_utf8_lossy(uri.into_inner());
-    let namespace = <Ubl as Format>::Namespace::from_uri(&uri)
-        .ok_or_else(|| Error::malformed_xml(format!("unknown namespace: {uri}")))?;
-    let name = String::from_utf8_lossy(start.local_name().as_ref()).into_owned();
-    let mut attributes = Vec::new();
-    for attribute in start.attributes() {
-        let attribute = attribute?;
-        let key = attribute.key.as_ref();
-        if key == b"xmlns" || key.starts_with(b"xmlns:") {
-            let abbreviation = String::from_utf8_lossy(key.strip_prefix(b"xmlns:").unwrap_or(b""));
-            let uri = String::from_utf8_lossy(&attribute.value);
-            if let Some(namespace) = <Ubl as Format>::Namespace::from_uri(&uri) {
-                abbreviations.declare(&abbreviation, namespace)?;
-            }
-            continue;
-        }
-        let key = String::from_utf8_lossy(attribute.key.local_name().as_ref()).into_owned();
-        let value = String::from_utf8_lossy(&attribute.value).into_owned();
-        attributes.push((key, value));
-    }
-    Ok(Token::Open {
-        namespace,
-        name,
-        attributes,
-    })
-}
-
 // ---- parser --------------------------------------------------------------
 
 struct Parser {
-    tokens: Vec<Token>,
+    tokens: Vec<Token<ubl::Namespace>>,
     cursor: usize,
     trace: Trace<ubl::Namespace>,
 }
 
 impl Parser {
     fn document(&mut self) -> Result<DocumentBuilder, Error> {
-        self.take_open(ubl::Namespace::Inv, "Invoice")?;
-        self.trace.enter(ubl::Namespace::Inv, "Invoice");
+        self.take_open(Ubl::root_namespace(), Ubl::ROOT_ELEMENT)?;
+        self.trace.enter(Ubl::root_namespace(), Ubl::ROOT_ELEMENT);
         self.trace.record_root();
 
         let profile = self

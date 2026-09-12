@@ -1,7 +1,7 @@
 use base64::Engine as _;
 
 use crate::format::trace::Trace;
-use crate::format::ubl::{self, prefix};
+use crate::format::ubl;
 use crate::prelude::*;
 use crate::{
     Abbreviations, Adjustment, AdjustmentAmount, AdjustmentReason, BinaryObject, Buyer, Contact,
@@ -102,22 +102,27 @@ impl Serializer {
     // Serializes the whole document under the UBL root element.
     fn document(&mut self, builder: &DocumentBuilder) {
         let invoice = &builder.invoice;
-        let root = BytesStart::new("Invoice").with_attributes([
-            ("xmlns", ubl::Namespace::Inv.uri()),
-            ("xmlns:cac", ubl::Namespace::Cac.uri()),
-            ("xmlns:cbc", ubl::Namespace::Cbc.uri()),
-        ]);
+        let declarations: Vec<(String, &'static str)> = ubl::Namespace::VARIANTS
+            .iter()
+            .map(|namespace| {
+                let prefix = namespace.prefix();
+                let key = if prefix.is_empty() {
+                    "xmlns".to_owned()
+                } else {
+                    format!("xmlns:{prefix}")
+                };
+                (key, namespace.uri())
+            })
+            .collect();
+        let root = BytesStart::new(qname(Ubl::root_namespace(), Ubl::ROOT_ELEMENT))
+            .with_attributes(declarations.iter().map(|(key, uri)| (key.as_str(), *uri)));
         self.write(Event::Start(root));
-        for namespace in [
-            ubl::Namespace::Inv,
-            ubl::Namespace::Cac,
-            ubl::Namespace::Cbc,
-        ] {
+        for namespace in ubl::Namespace::VARIANTS {
             self.abbreviations
-                .declare(prefix(namespace), namespace)
+                .declare(namespace.prefix(), *namespace)
                 .expect("the writer binds each abbreviation to one namespace");
         }
-        self.trace.enter(ubl::Namespace::Inv, "Invoice");
+        self.trace.enter(Ubl::root_namespace(), Ubl::ROOT_ELEMENT);
         self.trace.record_root();
 
         // Regulatory-flow fields: the specification identifier (BT-24) and business process (BT-23).
@@ -297,7 +302,10 @@ impl Serializer {
         self.lines(&invoice.lines);
 
         self.trace.leave();
-        self.write(Event::End(BytesEnd::new("Invoice")));
+        self.write(Event::End(BytesEnd::new(qname(
+            Ubl::root_namespace(),
+            Ubl::ROOT_ELEMENT,
+        ))));
     }
 
     // Serializes the notes (`BG-1`), each a repeatable single-value element.
@@ -1979,7 +1987,7 @@ impl Serializer {
 
 // The record-form qualified name of an element, prefixed for its namespace.
 fn qname(namespace: ubl::Namespace, name: &str) -> String {
-    let prefix = prefix(namespace);
+    let prefix = namespace.prefix();
     if prefix.is_empty() {
         name.to_owned()
     } else {
