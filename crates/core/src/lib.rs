@@ -6,6 +6,7 @@
 
 mod binding;
 mod context;
+mod deserializable;
 mod document;
 mod document_builder;
 mod error;
@@ -20,6 +21,7 @@ mod prelude;
 mod profile;
 mod raw_report;
 mod report;
+mod serializable;
 mod target;
 mod term;
 mod valid_document;
@@ -28,6 +30,7 @@ mod wrapper;
 
 pub use binding::Binding;
 pub use context::{Context, Segment};
+pub use deserializable::Deserializable;
 pub use document::Document;
 pub use document_builder::DocumentBuilder;
 pub use error::Error;
@@ -41,6 +44,7 @@ pub use path::{Path, Step};
 pub use profile::Profile;
 pub use raw_report::{Entry, RawReport, Severity};
 pub use report::{Problem, Report};
+pub use serializable::Serializable;
 pub use target::Target;
 pub use term::Term;
 pub use valid_document::ValidDocument;

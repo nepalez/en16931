@@ -1,8 +1,7 @@
 //! Receives an invoice:
-//! * takes the XML text that arrived from the seller,
-//! * parses it with automatic binding detection,
-//! * checks the document at the phive service,
-//! * reads the report to highlight model fields,
+//! * parses the XML that arrived from the seller,
+//! * checks it at the phive service,
+//! * binds each finding to a field of the model,
 //! * and takes the business object out.
 //!
 //! The example needs a live validator. Start the services first (`cargo make env-up`), then run:
@@ -11,29 +10,28 @@
 //! cargo run -p en16931-examples --example receive_invoice
 //! ```
 
-use en16931_core::{Document, Invoice, RawReport, Wrapper};
+use en16931_core::{Cii, Document, Invoice, RawReport, Wrapper};
 use en16931_iso::Iso;
 use en16931_phive::Phive;
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
-    // Parse the received XML: the binding is recognized automatically
-    // from the root element (here it turns out to be CII).
-    let document = Document::parse(RECEIVED_XML)?;
+    // The contract or the exchange channel fixes the binding of an incoming document,
+    // so the receiver names it by the type instead of guessing it from the content.
+    let document = Document::<Invoice, Cii>::parse(RECEIVED_XML)?;
 
-    // Check the document by a validator of your own, as the seller did.
+    // The buyer checks the received document as well, not only the seller who sent it.
     let answer = post(&document)?;
 
-    // Parse the report received from the validator.
     let report = RawReport::parse(&answer, &Phive, &Iso)?;
 
     match document.check(report)? {
         Ok(valid) => {
-            // A report without errors may still carry some warnings.
+            // A report without a single error still admits warnings and remarks.
             for problem in valid.problems() {
                 println!("{problem}");
             }
 
-            // On success, take the business object out of the document.
+            // The checked document yields the business object, dropping the XML and the report.
             let Invoice {
                 number, issue_date, ..
             } = valid.into();
@@ -49,9 +47,9 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     Ok(())
 }
 
-// Sends the document to the phive service under the rule set its target names.
-// This responsibility is up to the library user.
-fn post(document: &Document) -> Result<String, Box<dyn std::error::Error>> {
+// Sends the document to the phive service, which needs the rule set named in the request.
+// The target of the document supplies that name, and the transport belongs to the caller.
+fn post(document: &Document<Invoice, Cii>) -> Result<String, Box<dyn std::error::Error>> {
     let base = std::env::var("PHIVE_URL").unwrap_or_else(|_| "http://localhost:8083".to_owned());
     let token = std::env::var("PHIVE_TOKEN").unwrap_or_else(|_| "phorm-dev-token".to_owned());
     let rules = Phive.vendor_id(document.target())?;
@@ -66,7 +64,7 @@ fn post(document: &Document) -> Result<String, Box<dyn std::error::Error>> {
         .text()?)
 }
 
-// The XML document as it arrived from the seller.
+// The XML as it arrived from the seller, under the base EN-16931 profile of the CII binding.
 const RECEIVED_XML: &str = r#"<rsm:CrossIndustryInvoice xmlns:rsm="urn:un:unece:uncefact:data:standard:CrossIndustryInvoice:100" xmlns:ram="urn:un:unece:uncefact:data:standard:ReusableAggregateBusinessInformationEntity:100" xmlns:udt="urn:un:unece:uncefact:data:standard:UnqualifiedDataType:100" xmlns:qdt="urn:un:unece:uncefact:data:standard:QualifiedDataType:100">
   <rsm:ExchangedDocumentContext>
     <ram:BusinessProcessSpecifiedDocumentContextParameter>

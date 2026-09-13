@@ -1,5 +1,5 @@
 use crate::prelude::*;
-use crate::{Abbreviations, Context, Error, Namespace, Path};
+use crate::{Abbreviations, Binding, Context, Error, Namespace, Path};
 
 pub(crate) mod trace;
 
@@ -20,6 +20,9 @@ pub trait Format: Sealed {
 
     /// The local name of the root element of a document in this binding.
     const ROOT_ELEMENT: &'static str;
+
+    /// The binding this marker stands for, as a validator's target names it.
+    const BINDING: Binding;
 
     /// The namespace of the root element of a document in this binding.
     fn root_namespace() -> Self::Namespace;

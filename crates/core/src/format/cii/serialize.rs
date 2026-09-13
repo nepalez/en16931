@@ -3,24 +3,21 @@ use crate::format::trace::Trace;
 use crate::prelude::*;
 use crate::{
     Abbreviations, Adjustment, AdjustmentAmount, AdjustmentReason, Buyer, Cii, Contact, Currency,
-    Delivery, Dictionary, DocumentBuilder, ElectronicAddress, Format, Invoice, InvoiceLine, Item,
-    LegalEntity, LineAdjustment, Namespace, NonEmptyString, OperationalEntity, Payee,
-    PaymentDetails, PaymentInstructions, Period, PostalAddress, PrecedingInvoice, Price, Seller,
-    TaxRepresentative, Term, VatPoint, VatTreatment,
+    Delivery, Dictionary, Document, DocumentBuilder, ElectronicAddress, Format, Invoice,
+    InvoiceLine, Item, LegalEntity, LineAdjustment, Namespace, NonEmptyString, OperationalEntity,
+    Payee, PaymentDetails, PaymentInstructions, Period, PostalAddress, PrecedingInvoice, Price,
+    Seller, Serializable, TaxRepresentative, Term, VatPoint, VatTreatment,
 };
 
-/// Serializes a `DocumentBuilder` to CII XML,
-/// returning the document, its dictionary, and its abbreviations.
-pub(crate) fn serialize(
-    builder: &DocumentBuilder,
-) -> (
-    String,
-    Dictionary<cii::Namespace>,
-    Abbreviations<cii::Namespace>,
-) {
-    let mut serializer = Serializer::new(builder);
-    serializer.document(builder);
-    serializer.finish()
+impl Serializable<Cii> for Invoice {
+    fn serialize(document: &mut Document<Self, Cii>) {
+        let mut serializer = Serializer::new(&document.builder);
+        serializer.document(&document.builder);
+        let (xml, dictionary, abbreviations) = serializer.finish();
+        document.xml = xml;
+        document.dictionary = dictionary;
+        document.abbreviations = abbreviations;
+    }
 }
 
 // Renders a date as an ISO-8601 basic date (`YYYYMMDD`), the CII form 102.
@@ -53,7 +50,7 @@ struct Serializer {
 }
 
 impl Serializer {
-    fn new(builder: &DocumentBuilder) -> Self {
+    fn new(builder: &DocumentBuilder<Invoice>) -> Self {
         Self {
             inner: Writer::new(Vec::new()),
             trace: Trace::new(),
@@ -86,7 +83,7 @@ impl Serializer {
     }
 
     // Serializes the whole document under the CII root element.
-    fn document(&mut self, builder: &DocumentBuilder) {
+    fn document(&mut self, builder: &DocumentBuilder<Invoice>) {
         let invoice = &builder.invoice;
         let declarations: Vec<(String, &'static str)> = cii::Namespace::VARIANTS
             .iter()
@@ -132,7 +129,7 @@ impl Serializer {
     }
 
     // Serializes the document context: the business process (BT-23) and the profile (BT-24).
-    fn exchanged_document_context(&mut self, builder: &DocumentBuilder) {
+    fn exchanged_document_context(&mut self, builder: &DocumentBuilder<Invoice>) {
         self.structural(
             cii::Namespace::Rsm,
             "ExchangedDocumentContext",

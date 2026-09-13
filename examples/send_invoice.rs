@@ -1,8 +1,8 @@
 //! Issues an invoice:
 //! * fills the model,
-//! * serializes it under a profile,
+//! * serializes it under a profile and a binding,
 //! * sends the XML to the KoSIT validator,
-//! * and reads the answer back.
+//! * and binds the answer back to the fields of the model.
 //!
 //! The example needs a live validator. Start the services first (`cargo make env-up`), then run:
 //!
@@ -11,10 +11,10 @@
 //! ```
 
 use en16931_core::{
-    Binding, BusinessProcess, Buyer, Contact, CreditTransfer, Document, DocumentBuilder,
-    ElectronicAddress, ElectronicAddressScheme, Invoice, InvoiceLine, Item, LegalEntity,
-    PaymentDetails, PaymentInstructions, PaymentMeans, Percentage, Period, PostalAddress, Price,
-    Profile, Quantity, RawReport, Seller, VatTreatment,
+    BusinessProcess, Buyer, Contact, CreditTransfer, Document, DocumentBuilder, ElectronicAddress,
+    ElectronicAddressScheme, Invoice, InvoiceLine, Item, LegalEntity, PaymentDetails,
+    PaymentInstructions, PaymentMeans, Percentage, Period, PostalAddress, Price, Profile, Quantity,
+    RawReport, Seller, Ubl, VatTreatment,
 };
 use en16931_iso::Iso;
 use en16931_kosit::Kosit;
@@ -24,12 +24,11 @@ use rust_decimal::Decimal;
 use time::{Date, Month};
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
-    // Stage the invoice for one profile and one binding.
-    // The XML is rendered under the hood as part of the document.
-    let document = Document::try_from(DocumentBuilder {
+    // The profile stamps `BT-24` and drops the terms it forbids,
+    // while the binding decides the vocabulary of the XML.
+    let document = Document::<Invoice, Ubl>::try_from(DocumentBuilder {
         invoice: prepare_invoice()?,
         profile: Profile::XRechnung30,
-        binding: Binding::Ubl,
         business_process: Some(BusinessProcess::PEPPOL_BILLING),
     })?;
     let target = document.target();
@@ -38,14 +37,14 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         target.kind, target.binding, target.profile
     );
 
-    // Send the XML to the validator. The transport is yours: any HTTP client will do.
+    // The library produces the request parts, while the application owns the transport.
     let answer = post(document.xml())?;
 
-    // Read the answer: the `Kosit` wrapper opens the envelope of the service,
-    // and the `Iso` normalizer reads the addresses its processor writes.
+    // The wrapper opens the envelope of the service,
+    // and the normalizer reads the addresses its processor wrote.
     let report = RawReport::parse(&answer, &Kosit, &Iso)?;
 
-    // Bind the findings of the validator to the fields of the model.
+    // The dictionary binds every address of the report to the model field it points at.
     match document.check(report)? {
         Ok(valid) => {
             println!("The validator accepted the invoice.");
@@ -67,7 +66,8 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     Ok(())
 }
 
-// Sends an XML body to the KoSIT deployment and returns its report.
+// Sends an XML body to the KoSIT deployment, which routes it by the image it runs.
+// Unlike phive, the service takes no rule set identifier in the request.
 fn post(xml: &str) -> Result<String, Box<dyn std::error::Error>> {
     let url = std::env::var("KOSIT_URL").unwrap_or_else(|_| "http://localhost:8082".to_owned());
     Ok(reqwest::blocking::Client::new()
@@ -78,7 +78,7 @@ fn post(xml: &str) -> Result<String, Box<dyn std::error::Error>> {
         .text()?)
 }
 
-// The business facts of the invoice.
+// The business facts of the invoice, free of anything a profile or a binding adds.
 fn prepare_invoice() -> Result<Invoice, Box<dyn std::error::Error>> {
     Ok(Invoice {
         number: Some("INV-2026-001".parse()?),

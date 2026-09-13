@@ -1,6 +1,5 @@
-use crate::format::{cii, ubl};
 use crate::prelude::*;
-use crate::{Abbreviations, Cii, Dictionary, DocumentBuilder, Error, Format, Namespace, Ubl};
+use crate::{Cii, Error, Format, Namespace, Ubl};
 
 /// A serialization binding: one of the two EN-16931 XML syntaxes.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -9,13 +8,6 @@ pub enum Binding {
     Ubl,
     /// UN/CEFACT Cross Industry Invoice.
     Cii,
-}
-
-/// The dictionary and the abbreviations of a document, over the namespace set of its binding.
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub(crate) enum Bound {
-    Ubl(Dictionary<ubl::Namespace>, Abbreviations<ubl::Namespace>),
-    Cii(Dictionary<cii::Namespace>, Abbreviations<cii::Namespace>),
 }
 
 impl Binding {
@@ -29,42 +21,6 @@ impl Binding {
                 Event::Start(_) | Event::Empty(_) => return Self::from_root(namespace),
                 Event::Eof => return Err(Error::malformed_xml("no root element")),
                 _ => {}
-            }
-        }
-    }
-
-    /// Serializes a `DocumentBuilder` to this binding's XML.
-    /// Returns the XML along with the dictionary binding its nodes to the document's,
-    /// and the abbreviations its own namespace declarations bind.
-    pub(crate) fn serialize(self, builder: &DocumentBuilder) -> (String, Bound) {
-        match self {
-            Self::Ubl => {
-                let (xml, dictionary, abbreviations) = ubl::serialize(builder);
-                (xml, Bound::Ubl(dictionary, abbreviations))
-            }
-            Self::Cii => {
-                let (xml, dictionary, abbreviations) = cii::serialize(builder);
-                (xml, Bound::Cii(dictionary, abbreviations))
-            }
-        }
-    }
-
-    /// Parses a `DocumentBuilder` from this binding's XML,
-    /// rebuilding the dictionary and the abbreviations on the inverse path.
-    /// The profile is recovered from `BT-24`.
-    ///
-    /// A malformed document yields `Error::MalformedXml`.
-    /// An abbreviation the document binds to a second namespace
-    /// yields `Error::AmbiguousAbbreviation`.
-    pub(crate) fn deserialize(self, xml: &str) -> Result<(DocumentBuilder, Bound), Error> {
-        match self {
-            Self::Ubl => {
-                let (builder, dictionary, abbreviations) = ubl::deserialize(xml)?;
-                Ok((builder, Bound::Ubl(dictionary, abbreviations)))
-            }
-            Self::Cii => {
-                let (builder, dictionary, abbreviations) = cii::deserialize(xml)?;
-                Ok((builder, Bound::Cii(dictionary, abbreviations)))
             }
         }
     }

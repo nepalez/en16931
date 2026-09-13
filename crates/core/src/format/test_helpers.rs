@@ -2,8 +2,8 @@
 
 use crate::prelude::*;
 use crate::{
-    Adjustment, AdjustmentAmount, AdjustmentReason, AllowanceReason, Binding, BusinessProcess,
-    Buyer, Classification, Contact, CreditTransfer, Delivery, DirectDebit, DocumentBuilder,
+    Adjustment, AdjustmentAmount, AdjustmentReason, AllowanceReason, BusinessProcess, Buyer,
+    Classification, Contact, CreditTransfer, Delivery, DirectDebit, DocumentBuilder,
     ElectronicAddress, ElectronicAddressScheme, Invoice, InvoiceLine, IssuingAgency, Item,
     ItemAttribute, ItemClassification, ItemReference, LegalEntity, LineAdjustment,
     LocationReference, Namespace, Note, ObjectReference, OperationalEntity, Path, Payee,
@@ -43,13 +43,10 @@ fn units(value: i64) -> Quantity {
 /// A rich `DocumentBuilder` under the base EN-16931 profile, shared by the tests.
 ///
 /// The base profile forbids no term, so it serializes and parses back unchanged.
-/// The `binding` is a parameter so each binding test compares against a coherent
-/// fixture, since a parsed document carries the binding of the XML it was read from.
-pub(crate) fn builder(binding: Binding) -> DocumentBuilder {
+pub(crate) fn builder() -> DocumentBuilder<Invoice> {
     DocumentBuilder {
         invoice: invoice(),
         profile: Profile::En16931,
-        binding,
         business_process: Some(BusinessProcess::PEPPOL_BILLING),
     }
 }
@@ -60,10 +57,10 @@ pub(crate) fn builder(binding: Binding) -> DocumentBuilder {
 /// payment, an event VAT point, relative and charge adjustments, an exempt line, an
 /// object scheme, a price discount, and start-only or end-only periods. Every choice
 /// survives both bindings, so each codec parses the document back unchanged.
-pub(crate) fn variant_builder(binding: Binding) -> DocumentBuilder {
+pub(crate) fn variant_builder() -> DocumentBuilder<Invoice> {
     DocumentBuilder {
         invoice: variant_invoice(),
-        ..builder(binding)
+        ..builder()
     }
 }
 
@@ -72,22 +69,21 @@ pub(crate) fn variant_builder(binding: Binding) -> DocumentBuilder {
 /// It overrides the payment of the rich invoice, so the card details reach the
 /// branch neither `builder` (credit transfer) nor `variant_builder` (direct
 /// debit) exercises. The document round-trips through both bindings.
-pub(crate) fn card_builder(binding: Binding) -> DocumentBuilder {
+pub(crate) fn card_builder() -> DocumentBuilder<Invoice> {
     DocumentBuilder {
         invoice: Invoice {
             payment: Some(card_payment()),
             ..invoice()
         },
-        ..builder(binding)
+        ..builder()
     }
 }
 
 /// A `DocumentBuilder` whose invoice carries nothing but the default type code.
-pub(crate) fn empty_builder(binding: Binding) -> DocumentBuilder {
+pub(crate) fn empty_builder() -> DocumentBuilder<Invoice> {
     DocumentBuilder {
         invoice: Invoice::default(),
         profile: Profile::En16931,
-        binding,
         business_process: None,
     }
 }

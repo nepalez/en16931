@@ -12,11 +12,11 @@
 //! ```
 
 use en16931_core::{
-    Binding, BusinessProcess, Buyer, Contact, CreditTransfer, Document, DocumentBuilder,
-    ElectronicAddress, ElectronicAddressScheme, InvalidDocument, Invoice, InvoiceLine, Item,
-    LegalEntity, PaymentDetails, PaymentInstructions, PaymentMeans, Percentage, Period,
-    PostalAddress, Price, Profile, Quantity, RawReport, Seller, Unit, ValidDocument, VatIdentifier,
-    VatTreatment, Wrapper,
+    BusinessProcess, Buyer, Cii, Contact, CreditTransfer, Document, DocumentBuilder,
+    ElectronicAddress, ElectronicAddressScheme, Format, InvalidDocument, Invoice, InvoiceLine,
+    Item, LegalEntity, PaymentDetails, PaymentInstructions, PaymentMeans, Percentage, Period,
+    PostalAddress, Price, Profile, Quantity, RawReport, Seller, Ubl, Unit, ValidDocument,
+    VatIdentifier, VatTreatment, Wrapper,
 };
 use en16931_iso::Iso;
 use en16931_kosit::Kosit;
@@ -154,7 +154,7 @@ fn post(url: &str, headers: &[(&str, &str)], body: String) -> String {
 }
 
 // Sends the document to the phive service under the rule set its target names.
-fn phive_answer(document: &Document) -> String {
+fn phive_answer<F: Format>(document: &Document<Invoice, F>) -> String {
     let base = std::env::var("PHIVE_URL").unwrap_or_else(|_| "http://localhost:8083".to_owned());
     let token = std::env::var("PHIVE_TOKEN").unwrap_or_else(|_| "phorm-dev-token".to_owned());
     let rules = Phive
@@ -172,7 +172,7 @@ fn phive_answer(document: &Document) -> String {
 }
 
 // Sends the document to the KoSIT deployment its profile routes to.
-fn kosit_answer(document: &Document) -> String {
+fn kosit_answer<F: Format>(document: &Document<Invoice, F>) -> String {
     let url = std::env::var("KOSIT_URL").unwrap_or_else(|_| "http://localhost:8082".to_owned());
     post(
         &url,
@@ -183,11 +183,11 @@ fn kosit_answer(document: &Document) -> String {
 
 // Reads the answer through a wrapper paired with the ISO normalizer, and checks the document.
 #[allow(clippy::result_large_err)]
-fn outcome<W: Wrapper>(
-    document: Document,
+fn outcome<W: Wrapper, F: Format>(
+    document: Document<Invoice, F>,
     wrapper: &W,
     answer: &str,
-) -> Result<ValidDocument, InvalidDocument> {
+) -> Result<ValidDocument<Invoice, F>, InvalidDocument<Invoice, F>> {
     let report = RawReport::parse(answer, wrapper, &Iso).expect("a report the pair reads");
     document.check(report).expect("every address to bind")
 }
@@ -195,10 +195,9 @@ fn outcome<W: Wrapper>(
 #[test]
 #[ignore = "requires live validators (cargo make env-up)"]
 fn validates_the_nlcius_serialization_against_phive() {
-    let serialized = Document::try_from(DocumentBuilder {
+    let serialized = Document::<Invoice, Ubl>::try_from(DocumentBuilder {
         invoice: invoice(),
         profile: Profile::Nlcius10,
-        binding: Binding::Ubl,
         business_process: business_process(),
     })
     .expect("a document");
@@ -216,10 +215,9 @@ fn validates_the_nlcius_serialization_against_phive() {
 #[test]
 #[ignore = "requires live validators (cargo make env-up)"]
 fn validates_the_peppol_serialization_against_phive() {
-    let serialized = Document::try_from(DocumentBuilder {
+    let serialized = Document::<Invoice, Ubl>::try_from(DocumentBuilder {
         invoice: invoice(),
         profile: Profile::PeppolBisBilling30,
-        binding: Binding::Ubl,
         business_process: business_process(),
     })
     .expect("a document");
@@ -237,13 +235,12 @@ fn validates_the_peppol_serialization_against_phive() {
 #[test]
 #[ignore = "requires live validators (cargo make env-up)"]
 fn reports_a_missing_buyer_reference_as_a_finding_of_phive() {
-    let serialized = Document::try_from(DocumentBuilder {
+    let serialized = Document::<Invoice, Ubl>::try_from(DocumentBuilder {
         invoice: Invoice {
             buyer_reference: None,
             ..invoice()
         },
         profile: Profile::PeppolBisBilling30,
-        binding: Binding::Ubl,
         business_process: business_process(),
     })
     .expect("a document");
@@ -260,10 +257,9 @@ fn reports_a_missing_buyer_reference_as_a_finding_of_phive() {
 #[test]
 #[ignore = "requires live validators (cargo make env-up)"]
 fn validates_the_xrechnung_cii_serialization_against_kosit() {
-    let serialized = Document::try_from(DocumentBuilder {
+    let serialized = Document::<Invoice, Cii>::try_from(DocumentBuilder {
         invoice: invoice(),
         profile: Profile::XRechnung30,
-        binding: Binding::Cii,
         business_process: business_process(),
     })
     .expect("a document");
@@ -281,10 +277,9 @@ fn validates_the_xrechnung_cii_serialization_against_kosit() {
 #[test]
 #[ignore = "requires live validators (cargo make env-up)"]
 fn validates_the_en16931_cii_serialization_against_phive() {
-    let serialized = Document::try_from(DocumentBuilder {
+    let serialized = Document::<Invoice, Cii>::try_from(DocumentBuilder {
         invoice: invoice(),
         profile: Profile::En16931,
-        binding: Binding::Cii,
         business_process: business_process(),
     })
     .expect("a document");
@@ -302,10 +297,9 @@ fn validates_the_en16931_cii_serialization_against_phive() {
 #[test]
 #[ignore = "requires live validators (cargo make env-up)"]
 fn validates_the_xrechnung_serialization_against_both_services() {
-    let serialized = Document::try_from(DocumentBuilder {
+    let serialized = Document::<Invoice, Ubl>::try_from(DocumentBuilder {
         invoice: invoice(),
         profile: Profile::XRechnung30,
-        binding: Binding::Ubl,
         business_process: business_process(),
     })
     .expect("a document");

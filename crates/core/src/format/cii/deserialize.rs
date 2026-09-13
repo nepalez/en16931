@@ -3,8 +3,8 @@ use crate::format::cii;
 use crate::format::trace::Trace;
 use crate::prelude::*;
 use crate::{
-    Abbreviations, Adjustment, AdjustmentAmount, AdjustmentReason, Amount, Buyer, Cii,
-    Classification, Contact, CreditTransfer, Delivery, Dictionary, DirectDebit, DocumentBuilder,
+    Adjustment, AdjustmentAmount, AdjustmentReason, Amount, Buyer, Cii, Classification, Contact,
+    CreditTransfer, Delivery, Deserializable, DirectDebit, Document, DocumentBuilder,
     ElectronicAddress, Error, ExemptionReason, Format, Invoice, InvoiceLine, Item, ItemAttribute,
     ItemReference, LegalEntity, LineAdjustment, LocationReference, NonEmptyString, Note,
     ObjectReference, OperationalEntity, Payee, PaymentCard, PaymentDetails, PaymentInstructions,
@@ -12,26 +12,19 @@ use crate::{
     TaxRepresentative, Unit, VatCategory, VatPoint, VatTreatment,
 };
 
-/// Parses a CII document from XML,
-/// rebuilding the dictionary and the abbreviations on the inverse path.
-pub(crate) fn deserialize(
-    xml: &str,
-) -> Result<
-    (
-        DocumentBuilder,
-        Dictionary<cii::Namespace>,
-        Abbreviations<cii::Namespace>,
-    ),
-    Error,
-> {
-    let (tokens, abbreviations) = Cii::tokenize(xml)?;
-    let mut parser = Parser {
-        tokens,
-        cursor: 0,
-        trace: Trace::new(),
-    };
-    let builder = parser.document()?;
-    Ok((builder, parser.trace.into_dictionary(), abbreviations))
+impl Deserializable<Cii> for Invoice {
+    fn deserialize(document: &mut Document<Self, Cii>) -> Result<(), Error> {
+        let (tokens, abbreviations) = Cii::tokenize(&document.xml)?;
+        let mut parser = Parser {
+            tokens,
+            cursor: 0,
+            trace: Trace::new(),
+        };
+        document.builder = parser.document()?;
+        document.dictionary = parser.trace.into_dictionary();
+        document.abbreviations = abbreviations;
+        Ok(())
+    }
 }
 
 // ---- parser --------------------------------------------------------------
@@ -43,7 +36,7 @@ struct Parser {
 }
 
 impl Parser {
-    fn document(&mut self) -> Result<DocumentBuilder, Error> {
+    fn document(&mut self) -> Result<DocumentBuilder<Invoice>, Error> {
         self.take_open(Cii::root_namespace(), Cii::ROOT_ELEMENT)?;
         self.trace.enter(Cii::root_namespace(), Cii::ROOT_ELEMENT);
         self.trace.record_root();
@@ -109,7 +102,6 @@ impl Parser {
         Ok(DocumentBuilder {
             invoice,
             profile,
-            binding: crate::Binding::Cii,
             business_process,
         })
     }

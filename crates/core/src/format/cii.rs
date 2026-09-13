@@ -4,11 +4,10 @@ mod serialize;
 use crate::Format;
 use crate::format::Sealed;
 use crate::prelude::*;
-pub(crate) use deserialize::deserialize;
-pub(crate) use serialize::serialize;
 
 /// The marker of the UN/CEFACT Cross Industry Invoice binding.
 /// It carries the CII namespace set, reached as `<Cii as Format>::Namespace`.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct Cii;
 
 impl Sealed for Cii {}
@@ -17,6 +16,8 @@ impl Format for Cii {
     type Namespace = Namespace;
 
     const ROOT_ELEMENT: &'static str = "CrossIndustryInvoice";
+
+    const BINDING: crate::Binding = crate::Binding::Cii;
 
     fn root_namespace() -> Namespace {
         Namespace::Rsm
@@ -83,7 +84,15 @@ mod test {
     use crate::format::test_helpers::{
         builder, card_builder, empty_builder, pretty, variant_builder,
     };
-    use crate::{Binding, Error};
+    use crate::{Binding, Document, DocumentBuilder, Error, Invoice};
+
+    fn written(builder: DocumentBuilder<Invoice>) -> Document<Invoice, Cii> {
+        Document::try_from(builder).expect("a serialized document")
+    }
+
+    fn read(xml: &str) -> Result<Document<Invoice, Cii>, Error> {
+        Document::parse(xml)
+    }
 
     #[test]
     fn names_its_root_namespace() {
@@ -111,23 +120,26 @@ mod test {
 
     #[test]
     fn detects_its_own_output_as_cii() {
-        let (xml, _, _) = serialize(&builder(Binding::Cii));
+        let document = written(builder());
 
-        assert_eq!(Binding::detect(&xml).expect("a CII document"), Binding::Cii);
+        assert_eq!(
+            Binding::detect(document.xml()).expect("a CII document"),
+            Binding::Cii
+        );
     }
 
     #[test]
     fn rebuilds_the_same_dictionary_on_parse() {
-        let (xml, written, _) = serialize(&builder(Binding::Cii));
+        let document = written(builder());
 
-        let (_, read, _) = deserialize(&xml).expect("a valid CII document");
+        let parsed = read(document.xml()).expect("a valid CII document");
 
-        assert_eq!(read, written);
+        assert_eq!(parsed.dictionary, document.dictionary);
     }
 
     #[test]
     fn binds_the_abbreviations_it_writes() {
-        let (_, _, abbreviations) = serialize(&builder(Binding::Cii));
+        let abbreviations = written(builder()).abbreviations;
 
         assert_eq!(abbreviations.resolve("rsm"), Some(Namespace::Rsm));
         assert_eq!(abbreviations.resolve("ram"), Some(Namespace::Ram));
@@ -137,71 +149,68 @@ mod test {
 
     #[test]
     fn rebuilds_the_same_abbreviations_on_parse() {
-        let (xml, _, written) = serialize(&builder(Binding::Cii));
+        let document = written(builder());
 
-        let (_, _, read) = deserialize(&xml).expect("a valid CII document");
+        let parsed = read(document.xml()).expect("a valid CII document");
 
-        assert_eq!(read, written);
+        assert_eq!(parsed.abbreviations, document.abbreviations);
     }
 
     #[test]
     fn binds_an_abbreviation_of_its_own_choice() {
         // The fixture is the rich document with `ram` renamed to `bar`.
-        let (_, _, abbreviations) =
-            deserialize(include_str!("cii/fixtures/3.xml")).expect("a valid CII document");
+        let parsed = read(include_str!("cii/fixtures/3.xml")).expect("a valid CII document");
 
         // The document's own abbreviation joins the ones the rule sets bind.
-        assert_eq!(abbreviations.resolve("bar"), Some(Namespace::Ram));
-        assert_eq!(abbreviations.resolve("ram"), Some(Namespace::Ram));
+        assert_eq!(parsed.abbreviations.resolve("bar"), Some(Namespace::Ram));
+        assert_eq!(parsed.abbreviations.resolve("ram"), Some(Namespace::Ram));
     }
 
     #[test]
     fn emit_fixtures() {
         let base = concat!(env!("CARGO_MANIFEST_DIR"), "/src/format/cii/fixtures");
-        let (rich, _, _) = serialize(&builder(Binding::Cii));
-        let (variant, _, _) = serialize(&variant_builder(Binding::Cii));
-        std::fs::write(format!("{base}/1.xml"), pretty(&rich)).expect("write");
-        std::fs::write(format!("{base}/2.xml"), pretty(&variant)).expect("write");
+        let rich = written(builder());
+        let variant = written(variant_builder());
+        std::fs::write(format!("{base}/1.xml"), pretty(rich.xml())).expect("write");
+        std::fs::write(format!("{base}/2.xml"), pretty(variant.xml())).expect("write");
     }
 
     #[test]
     fn serializes_the_document_to_cii() {
-        let (xml, _, _) = serialize(&builder(Binding::Cii));
+        let document = written(builder());
 
-        assert_eq!(pretty(&xml), include_str!("cii/fixtures/1.xml"));
+        assert_eq!(pretty(document.xml()), include_str!("cii/fixtures/1.xml"));
     }
 
     #[test]
     fn deserializes_the_document_from_cii() {
-        let (parsed, _, _) =
-            deserialize(include_str!("cii/fixtures/1.xml")).expect("a valid CII document");
+        let parsed = read(include_str!("cii/fixtures/1.xml")).expect("a valid CII document");
 
-        assert_eq!(parsed, builder(Binding::Cii));
+        assert_eq!(parsed.builder, builder());
     }
 
     #[test]
     fn serializes_the_variant_document_to_cii() {
-        let (xml, _, _) = serialize(&variant_builder(Binding::Cii));
+        let document = written(variant_builder());
 
-        assert_eq!(pretty(&xml), include_str!("cii/fixtures/2.xml"));
+        assert_eq!(pretty(document.xml()), include_str!("cii/fixtures/2.xml"));
     }
 
     #[test]
     fn deserializes_the_variant_document_from_cii() {
-        let (parsed, _, _) =
-            deserialize(include_str!("cii/fixtures/2.xml")).expect("a valid CII document");
+        let parsed = read(include_str!("cii/fixtures/2.xml")).expect("a valid CII document");
 
-        assert_eq!(parsed, variant_builder(Binding::Cii));
+        assert_eq!(parsed.builder, variant_builder());
     }
 
     #[test]
     fn round_trips_the_card_document_through_cii() {
-        let source = card_builder(Binding::Cii);
-        let (xml, _, _) = serialize(&source);
+        let source = card_builder();
+        let document = written(source.clone());
 
-        let (parsed, _, _) = deserialize(&xml).expect("a valid CII document");
+        let parsed = read(document.xml()).expect("a valid CII document");
 
-        assert_eq!(parsed, source);
+        assert_eq!(parsed.builder, source);
     }
 
     // A document of the given body under the base profile, with every CII namespace declared.
@@ -213,14 +222,18 @@ mod test {
 
     #[test]
     fn serializes_an_empty_invoice_with_zero_totals() {
-        let source = empty_builder(Binding::Cii);
-        let (xml, _, _) = serialize(&source);
+        let source = empty_builder();
+        let document = written(source.clone());
 
-        assert!(xml.contains("<ram:TypeCode>380</ram:TypeCode>"));
-        assert!(xml.contains("<ram:DuePayableAmount>0.00</ram:DuePayableAmount>"));
-        assert!(!xml.contains("ApplicableTradeTax"));
-        let (parsed, _, _) = deserialize(&xml).expect("a valid CII document");
-        assert_eq!(parsed, source);
+        assert!(document.xml().contains("<ram:TypeCode>380</ram:TypeCode>"));
+        assert!(
+            document
+                .xml()
+                .contains("<ram:DuePayableAmount>0.00</ram:DuePayableAmount>")
+        );
+        assert!(!document.xml().contains("ApplicableTradeTax"));
+        let parsed = read(document.xml()).expect("a valid CII document");
+        assert_eq!(parsed.builder, source);
     }
 
     #[test]
@@ -228,16 +241,16 @@ mod test {
         let xml =
             include_str!("cii/fixtures/1.xml").replacen("<ram:ID>INV-2026-001</ram:ID>", "", 1);
 
-        let (parsed, _, _) = deserialize(&xml).expect("a valid CII document");
+        let parsed = read(&xml).expect("a valid CII document");
 
-        assert_eq!(parsed.invoice.number, None);
+        assert_eq!(parsed.builder.invoice.number, None);
     }
 
     #[test]
     fn rejects_a_document_without_a_type_code() {
         let xml = document("<rsm:ExchangedDocument></rsm:ExchangedDocument>");
 
-        let outcome = deserialize(&xml);
+        let outcome = read(&xml);
 
         assert!(matches!(outcome, Err(Error::MalformedXml { .. })));
     }
@@ -248,7 +261,7 @@ mod test {
             "<rsm:ExchangedDocument><ram:TypeCode>380</ram:TypeCode></rsm:ExchangedDocument><rsm:SupplyChainTradeTransaction><ram:IncludedSupplyChainTradeLineItem><ram:SpecifiedLineTradeSettlement><ram:ApplicableTradeTax><ram:TypeCode>VAT</ram:TypeCode><ram:CategoryCode>S</ram:CategoryCode></ram:ApplicableTradeTax></ram:SpecifiedLineTradeSettlement></ram:IncludedSupplyChainTradeLineItem></rsm:SupplyChainTradeTransaction>",
         );
 
-        let outcome = deserialize(&xml);
+        let outcome = read(&xml);
 
         assert!(matches!(outcome, Err(Error::MalformedXml { .. })));
     }
@@ -257,7 +270,7 @@ mod test {
     fn rejects_an_element_of_an_unknown_namespace() {
         let xml = r#"<rsm:CrossIndustryInvoice xmlns:rsm="urn:un:unece:uncefact:data:standard:CrossIndustryInvoice:100" xmlns:foo="urn:example:unknown"><foo:Bar/></rsm:CrossIndustryInvoice>"#;
 
-        let outcome = deserialize(xml);
+        let outcome = read(xml);
 
         assert!(matches!(
             outcome,

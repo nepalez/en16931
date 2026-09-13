@@ -1,54 +1,53 @@
-use crate::binding::Bound;
+use crate::prelude::*;
 use crate::{
-    Abbreviations, Binding, Context, Dictionary, DocumentBuilder, Error, InvalidDocument, Invoice,
-    Location, Namespace, Path, Problem, RawNamespace, RawReport, Report, Step, Target,
-    ValidDocument,
+    Abbreviations, Context, Deserializable, Dictionary, DocumentBuilder, Error, Format,
+    InvalidDocument, Invoice, Location, Namespace, Path, Problem, Profile, RawNamespace, RawReport,
+    Report, Serializable, Step, Target, ValidDocument,
 };
 
 /// The public reporting artifact of the library.
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub struct Document {
+pub struct Document<I, F: Format> {
     // The staging form the document was serialized from or parsed into.
-    builder: DocumentBuilder,
+    pub(crate) builder: DocumentBuilder<I>,
     // The serialized XML of this document.
-    xml: String,
-    // The dictionary (record-form path to `Context`, one entry per node the binding handled)
-    // and the abbreviations a report location of this document may name.
-    bound: Bound,
+    pub(crate) xml: String,
+    // One entry per node the binding handled, from its record-form path to a `Context`.
+    pub(crate) dictionary: Dictionary<F::Namespace>,
+    // The abbreviations a report location of this document may name.
+    pub(crate) abbreviations: Abbreviations<F::Namespace>,
 }
 
-impl Document {
-    /// Parses an XML document into a `Document`.
+impl<I: Deserializable<F> + Default, F: Format> Document<I, F> {
+    /// Parses an XML document of the binding `F` into a `Document`.
     ///
-    /// It detects the binding from the root element and reconstructs the
-    /// builder and the dictionary on the inverse path. A malformed document, or
-    /// one with an unrecognized binding, yields `Error::MalformedXml`.
+    /// A malformed document yields `Error::MalformedXml`.
     pub fn parse(xml: &str) -> Result<Self, Error> {
-        let binding = Binding::detect(xml)?;
-        let (builder, bound) = binding.deserialize(xml)?;
-        Ok(Self {
-            builder,
-            xml: xml.to_owned(),
-            bound,
-        })
+        let mut document = Self::empty(DocumentBuilder {
+            invoice: I::default(),
+            profile: Profile::En16931,
+            business_process: None,
+        });
+        document.xml = xml.to_owned();
+        I::deserialize(&mut document)?;
+        Ok(document)
     }
+}
 
+impl<I, F: Format> Document<I, F> {
     /// The serialized XML.
     pub fn xml(&self) -> &str {
         &self.xml
     }
 
-    /// What a validator needs to pick the rule set for this document.
-    pub fn target(&self) -> Target {
-        Target {
-            profile: self.builder.profile,
-            binding: self.builder.binding,
-            kind: self.builder.invoice.type_code.kind(),
-        }
-    }
-
     /// Binds the answer of a validator to the nodes of this document.
-    pub fn check(self, report: RawReport) -> Result<Result<ValidDocument, InvalidDocument>, Error> {
+    ///
+    /// The outer result covers a location no node answers.
+    #[allow(clippy::type_complexity)]
+    pub fn check(
+        self,
+        report: RawReport,
+    ) -> Result<Result<ValidDocument<I, F>, InvalidDocument<I, F>>, Error> {
         let mut problems = Vec::with_capacity(report.findings.len());
 
         for finding in report.findings {
@@ -80,66 +79,72 @@ impl Document {
         }
     }
 
+    // A document a serialization or a parsing pass has yet to fill.
+    pub(crate) fn empty(builder: DocumentBuilder<I>) -> Self {
+        Self {
+            builder,
+            xml: String::new(),
+            dictionary: HashMap::new(),
+            abbreviations: F::Namespace::default_abbreviations(),
+        }
+    }
+
     // Binds a normalized address to the node of this document it points at.
     fn resolve(&self, location: &Location) -> Option<Context> {
-        match &self.bound {
-            Bound::Ubl(dictionary, abbreviations) => resolve(dictionary, abbreviations, location),
-            Bound::Cii(dictionary, abbreviations) => resolve(dictionary, abbreviations, location),
+        let mut path = Path { steps: Vec::new() };
+        let mut bound = None;
+        for step in &location.steps {
+            let Some(namespace) = (match step.namespace.as_ref() {
+                Some(RawNamespace::Uri(uri)) => F::Namespace::from_uri(uri),
+                Some(RawNamespace::Abbreviation(name)) => self.abbreviations.resolve(name),
+                None => None,
+            }) else {
+                break;
+            };
+
+            path.steps.push(Step {
+                namespace,
+                name: step.name.clone(),
+                index: step.index,
+            });
+            let Some(context) = self.dictionary.get(&path) else {
+                break;
+            };
+
+            bound = Some(context.clone());
+        }
+        bound
+    }
+}
+
+impl<F: Format> Document<Invoice, F> {
+    /// What a validator needs to pick the rule set for this document.
+    pub fn target(&self) -> Target {
+        Target {
+            profile: self.builder.profile,
+            binding: F::BINDING,
+            kind: self.builder.invoice.type_code.kind(),
         }
     }
 }
 
-// Binds a normalized address to the node of a dictionary it points at.
-fn resolve<N: Namespace>(
-    dictionary: &Dictionary<N>,
-    abbreviations: &Abbreviations<N>,
-    location: &Location,
-) -> Option<Context> {
-    let mut path = Path { steps: Vec::new() };
-    let mut bound = None;
-    for step in &location.steps {
-        let Some(namespace) = (match step.namespace.as_ref() {
-            Some(RawNamespace::Uri(uri)) => N::from_uri(uri),
-            Some(RawNamespace::Abbreviation(name)) => abbreviations.resolve(name),
-            None => None,
-        }) else {
-            break;
-        };
-
-        path.steps.push(Step {
-            namespace,
-            name: step.name.clone(),
-            index: step.index,
-        });
-        let Some(context) = dictionary.get(&path) else {
-            break;
-        };
-
-        bound = Some(context.clone());
-    }
-    bound
-}
-
-impl TryFrom<DocumentBuilder> for Document {
+impl<I: Serializable<F>, F: Format> TryFrom<DocumentBuilder<I>> for Document<I, F> {
     type Error = Error;
 
-    /// Serializes a `DocumentBuilder` into a `Document`, running its `Binding`.
+    /// Serializes a `DocumentBuilder` into a `Document` of the binding `F`.
     ///
     /// The pass renders the XML and fills the dictionary in lockstep.
-    fn try_from(builder: DocumentBuilder) -> Result<Self, Self::Error> {
-        let (xml, bound) = builder.binding.serialize(&builder);
-        Ok(Self {
-            builder,
-            xml,
-            bound,
-        })
+    fn try_from(builder: DocumentBuilder<I>) -> Result<Self, Self::Error> {
+        let mut document = Self::empty(builder);
+        I::serialize(&mut document);
+        Ok(document)
     }
 }
 
-impl From<Document> for Invoice {
+impl<F: Format> From<Document<Invoice, F>> for Invoice {
     /// Consumes the document and yields its invoice, dropping the XML and the
     /// dictionary once the artifact becomes a plain business object.
-    fn from(document: Document) -> Self {
+    fn from(document: Document<Invoice, F>) -> Self {
         document.builder.invoice
     }
 }
@@ -148,18 +153,18 @@ impl From<Document> for Invoice {
 mod test {
     use super::*;
     use crate::format::test_helpers::builder;
-    use crate::prelude::*;
     use crate::{
-        Context, Entry, Location, LocationStep, Profile, RawNamespace, Segment, Severity, ubl,
+        Binding, Cii, Context, Entry, Location, LocationStep, RawNamespace, Segment, Severity, Ubl,
+        ubl,
     };
 
     // A serialized document of the rich UBL fixture.
-    fn document() -> Document {
-        Document::try_from(builder(Binding::Ubl)).expect("a serialized document")
+    fn document() -> Document<Invoice, Ubl> {
+        Document::try_from(builder()).expect("a serialized document")
     }
 
     // The same document with `cbc` renamed to `foo`, an abbreviation of its own.
-    fn renamed() -> Document {
+    fn renamed() -> Document<Invoice, Ubl> {
         Document::parse(include_str!("format/ubl/fixtures/3.xml")).expect("a valid UBL document")
     }
 
@@ -434,56 +439,52 @@ mod test {
     }
 
     #[test]
-    fn round_trips_a_builder_through_a_document() {
-        for binding in [Binding::Ubl, Binding::Cii] {
-            let document = Document::try_from(builder(binding)).expect("a serialized document");
+    fn round_trips_a_builder_through_the_ubl_document() {
+        let document = document();
 
-            let parsed = Document::parse(&document.xml).expect("a parsed document");
+        let parsed = Document::<Invoice, Ubl>::parse(&document.xml).expect("a parsed document");
 
-            assert_eq!(parsed, document);
-        }
+        assert_eq!(parsed, document);
     }
 
     #[test]
-    fn rebuilds_the_same_dictionary_on_parse() {
-        for binding in [Binding::Ubl, Binding::Cii] {
-            let document = Document::try_from(builder(binding)).expect("a serialized document");
+    fn round_trips_a_builder_through_the_cii_document() {
+        let document =
+            Document::<Invoice, Cii>::try_from(builder()).expect("a serialized document");
 
-            let parsed = Document::parse(&document.xml).expect("a parsed document");
+        let parsed = Document::<Invoice, Cii>::parse(&document.xml).expect("a parsed document");
 
-            assert_eq!(parsed.bound, document.bound);
-        }
+        assert_eq!(parsed, document);
     }
 
     #[test]
     fn yields_the_request_parts() {
-        let source = builder(Binding::Ubl);
-        let (xml, _) = source.binding.serialize(&source);
-        let document = Document::try_from(source.clone()).expect("a serialized document");
+        let source = builder();
+        let document = document();
 
         let target = Target {
             profile: source.profile,
-            binding: source.binding,
+            binding: Binding::Ubl,
             kind: source.invoice.type_code.kind(),
         };
 
-        assert_eq!(document.xml(), xml);
+        assert!(document.xml().starts_with("<Invoice"));
         assert_eq!(document.target(), target);
     }
 
     #[test]
     fn yields_the_request_parts_of_each_profile_of_one_invoice() {
-        let source = builder(Binding::Ubl);
+        let source = builder();
 
         for profile in [Profile::Nlcius10, Profile::PeppolBisBilling30] {
-            let document = Document::try_from(DocumentBuilder {
+            let document = Document::<Invoice, Ubl>::try_from(DocumentBuilder {
                 profile,
                 ..source.clone()
             })
             .expect("a serialized document");
             let target = Target {
                 profile,
-                binding: source.binding,
+                binding: Binding::Ubl,
                 kind: source.invoice.type_code.kind(),
             };
 
@@ -494,9 +495,8 @@ mod test {
 
     #[test]
     fn yields_its_invoice_by_value() {
-        let source = builder(Binding::Ubl);
-        let document = Document::try_from(source.clone()).expect("a serialized document");
+        let source = builder();
 
-        assert_eq!(Invoice::from(document), source.invoice);
+        assert_eq!(Invoice::from(document()), source.invoice);
     }
 }

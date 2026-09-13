@@ -5,25 +5,22 @@ use crate::format::ubl;
 use crate::prelude::*;
 use crate::{
     Abbreviations, Adjustment, AdjustmentAmount, AdjustmentReason, BinaryObject, Buyer, Contact,
-    Currency, Delivery, Dictionary, DocumentBuilder, ElectronicAddress, Format, Invoice,
+    Currency, Delivery, Dictionary, Document, DocumentBuilder, ElectronicAddress, Format, Invoice,
     InvoiceLine, Item, LegalEntity, LineAdjustment, Namespace, Note, ObjectReference,
     OperationalEntity, Payee, PaymentDetails, PaymentInstructions, Period, PostalAddress,
-    PrecedingInvoice, Price, Seller, SupportingDocument, TaxRepresentative, Term, Ubl, VatPoint,
-    VatTreatment,
+    PrecedingInvoice, Price, Seller, Serializable, SupportingDocument, TaxRepresentative, Term,
+    Ubl, VatPoint, VatTreatment,
 };
 
-/// Serializes a `DocumentBuilder` to UBL XML,
-/// returning the document, its dictionary, and its abbreviations.
-pub(crate) fn serialize(
-    builder: &DocumentBuilder,
-) -> (
-    String,
-    Dictionary<ubl::Namespace>,
-    Abbreviations<ubl::Namespace>,
-) {
-    let mut serializer = Serializer::new(builder);
-    serializer.document(builder);
-    serializer.finish()
+impl Serializable<Ubl> for Invoice {
+    fn serialize(document: &mut Document<Self, Ubl>) {
+        let mut serializer = Serializer::new(&document.builder);
+        serializer.document(&document.builder);
+        let (xml, dictionary, abbreviations) = serializer.finish();
+        document.xml = xml;
+        document.dictionary = dictionary;
+        document.abbreviations = abbreviations;
+    }
 }
 
 // Renders a date as an ISO-8601 calendar date (`YYYY-MM-DD`), the UBL form.
@@ -66,7 +63,7 @@ struct Serializer {
 }
 
 impl Serializer {
-    fn new(builder: &DocumentBuilder) -> Self {
+    fn new(builder: &DocumentBuilder<Invoice>) -> Self {
         Self {
             inner: Writer::new(Vec::new()),
             trace: Trace::new(),
@@ -100,7 +97,7 @@ impl Serializer {
     }
 
     // Serializes the whole document under the UBL root element.
-    fn document(&mut self, builder: &DocumentBuilder) {
+    fn document(&mut self, builder: &DocumentBuilder<Invoice>) {
         let invoice = &builder.invoice;
         let declarations: Vec<(String, &'static str)> = ubl::Namespace::VARIANTS
             .iter()

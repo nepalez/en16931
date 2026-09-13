@@ -4,11 +4,10 @@ mod serialize;
 use crate::Format;
 use crate::format::Sealed;
 use crate::prelude::*;
-pub(crate) use deserialize::deserialize;
-pub(crate) use serialize::serialize;
 
 /// The marker of the OASIS Universal Business Language binding.
 /// It carries the UBL namespace set, reached as `<Ubl as Format>::Namespace`.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct Ubl;
 
 impl Sealed for Ubl {}
@@ -17,6 +16,8 @@ impl Format for Ubl {
     type Namespace = Namespace;
 
     const ROOT_ELEMENT: &'static str = "Invoice";
+
+    const BINDING: crate::Binding = crate::Binding::Ubl;
 
     fn root_namespace() -> Namespace {
         Namespace::Inv
@@ -73,7 +74,15 @@ mod test {
     use crate::format::test_helpers::{
         builder, card_builder, empty_builder, path, pretty, step, variant_builder,
     };
-    use crate::{Binding, Context, Error, Profile, Segment};
+    use crate::{Binding, Context, Document, DocumentBuilder, Error, Invoice, Profile, Segment};
+
+    fn written(builder: DocumentBuilder<Invoice>) -> Document<Invoice, Ubl> {
+        Document::try_from(builder).expect("a serialized document")
+    }
+
+    fn read(xml: &str) -> Result<Document<Invoice, Ubl>, Error> {
+        Document::parse(xml)
+    }
 
     // A context of the given model segments.
     fn context(segments: Vec<Segment>) -> Context {
@@ -120,23 +129,26 @@ mod test {
 
     #[test]
     fn detects_its_own_output_as_ubl() {
-        let (xml, _, _) = serialize(&builder(Binding::Ubl));
+        let document = written(builder());
 
-        assert_eq!(Binding::detect(&xml).expect("a UBL document"), Binding::Ubl);
+        assert_eq!(
+            Binding::detect(document.xml()).expect("a UBL document"),
+            Binding::Ubl
+        );
     }
 
     #[test]
     fn rebuilds_the_same_dictionary_on_parse() {
-        let (xml, written, _) = serialize(&builder(Binding::Ubl));
+        let document = written(builder());
 
-        let (_, read, _) = deserialize(&xml).expect("a valid UBL document");
+        let parsed = read(document.xml()).expect("a valid UBL document");
 
-        assert_eq!(read, written);
+        assert_eq!(parsed.dictionary, document.dictionary);
     }
 
     #[test]
     fn binds_the_abbreviations_it_writes() {
-        let (_, _, abbreviations) = serialize(&builder(Binding::Ubl));
+        let abbreviations = written(builder()).abbreviations;
 
         // The root carries the default namespace, so its abbreviation is empty.
         assert_eq!(abbreviations.resolve(""), Some(Namespace::Inv));
@@ -146,76 +158,73 @@ mod test {
 
     #[test]
     fn rebuilds_the_same_abbreviations_on_parse() {
-        let (xml, _, written) = serialize(&builder(Binding::Ubl));
+        let document = written(builder());
 
-        let (_, _, read) = deserialize(&xml).expect("a valid UBL document");
+        let parsed = read(document.xml()).expect("a valid UBL document");
 
-        assert_eq!(read, written);
+        assert_eq!(parsed.abbreviations, document.abbreviations);
     }
 
     #[test]
     fn binds_an_abbreviation_of_its_own_choice() {
         // The fixture is the rich document with `cbc` renamed to `foo`.
-        let (_, _, abbreviations) =
-            deserialize(include_str!("ubl/fixtures/3.xml")).expect("a valid UBL document");
+        let parsed = read(include_str!("ubl/fixtures/3.xml")).expect("a valid UBL document");
 
         // The document's own abbreviation joins the ones the rule sets bind.
-        assert_eq!(abbreviations.resolve("foo"), Some(Namespace::Cbc));
-        assert_eq!(abbreviations.resolve("cbc"), Some(Namespace::Cbc));
+        assert_eq!(parsed.abbreviations.resolve("foo"), Some(Namespace::Cbc));
+        assert_eq!(parsed.abbreviations.resolve("cbc"), Some(Namespace::Cbc));
     }
 
     #[test]
     fn emit_fixtures() {
         let base = concat!(env!("CARGO_MANIFEST_DIR"), "/src/format/ubl/fixtures");
-        let (rich, _, _) = serialize(&builder(Binding::Ubl));
-        let (variant, _, _) = serialize(&variant_builder(Binding::Ubl));
-        std::fs::write(format!("{base}/1.xml"), pretty(&rich)).expect("write");
-        std::fs::write(format!("{base}/2.xml"), pretty(&variant)).expect("write");
+        let rich = written(builder());
+        let variant = written(variant_builder());
+        std::fs::write(format!("{base}/1.xml"), pretty(rich.xml())).expect("write");
+        std::fs::write(format!("{base}/2.xml"), pretty(variant.xml())).expect("write");
     }
 
     #[test]
     fn serializes_the_document_to_ubl() {
-        let (xml, _, _) = serialize(&builder(Binding::Ubl));
+        let document = written(builder());
 
-        assert_eq!(pretty(&xml), include_str!("ubl/fixtures/1.xml"));
+        assert_eq!(pretty(document.xml()), include_str!("ubl/fixtures/1.xml"));
     }
 
     #[test]
     fn deserializes_the_document_from_ubl() {
-        let (parsed, _, _) =
-            deserialize(include_str!("ubl/fixtures/1.xml")).expect("a valid UBL document");
+        let parsed = read(include_str!("ubl/fixtures/1.xml")).expect("a valid UBL document");
 
-        assert_eq!(parsed, builder(Binding::Ubl));
+        assert_eq!(parsed.builder, builder());
     }
 
     #[test]
     fn serializes_the_variant_document_to_ubl() {
-        let (xml, _, _) = serialize(&variant_builder(Binding::Ubl));
+        let document = written(variant_builder());
 
-        assert_eq!(pretty(&xml), include_str!("ubl/fixtures/2.xml"));
+        assert_eq!(pretty(document.xml()), include_str!("ubl/fixtures/2.xml"));
     }
 
     #[test]
     fn deserializes_the_variant_document_from_ubl() {
-        let (parsed, _, _) =
-            deserialize(include_str!("ubl/fixtures/2.xml")).expect("a valid UBL document");
+        let parsed = read(include_str!("ubl/fixtures/2.xml")).expect("a valid UBL document");
 
-        assert_eq!(parsed, variant_builder(Binding::Ubl));
+        assert_eq!(parsed.builder, variant_builder());
     }
 
     #[test]
     fn round_trips_the_card_document_through_ubl() {
-        let source = card_builder(Binding::Ubl);
-        let (xml, _, _) = serialize(&source);
+        let source = card_builder();
+        let document = written(source.clone());
 
-        let (parsed, _, _) = deserialize(&xml).expect("a valid UBL document");
+        let parsed = read(document.xml()).expect("a valid UBL document");
 
-        assert_eq!(parsed, source);
+        assert_eq!(parsed.builder, source);
     }
 
     #[test]
     fn maps_nodes_to_their_contexts() {
-        let (_, dictionary, _) = serialize(&builder(Binding::Ubl));
+        let dictionary = written(builder()).dictionary;
 
         let root = path(vec![step(Namespace::Inv, "Invoice", 1)]);
         let seller_name = path(vec![
@@ -254,9 +263,10 @@ mod test {
     #[test]
     fn drops_a_term_the_profile_forbids() {
         // Peppol BIS forbids the note subject code (BT-21).
-        let mut document = builder(Binding::Ubl);
-        document.profile = Profile::PeppolBisBilling30;
-        let (xml, _, _) = serialize(&document);
+        let mut source = builder();
+        source.profile = Profile::PeppolBisBilling30;
+        let document = written(source);
+        let xml = document.xml();
 
         assert!(xml.contains("<cbc:CustomizationID>urn:cen.eu:en16931:2017#compliant"));
         assert!(xml.contains("<cbc:Note>General note text</cbc:Note>"));
@@ -265,14 +275,22 @@ mod test {
 
     #[test]
     fn serializes_an_empty_invoice_with_zero_totals() {
-        let source = empty_builder(Binding::Ubl);
-        let (xml, _, _) = serialize(&source);
+        let source = empty_builder();
+        let document = written(source.clone());
 
-        assert!(xml.contains("<cbc:InvoiceTypeCode>380</cbc:InvoiceTypeCode>"));
-        assert!(xml.contains("<cbc:PayableAmount>0.00</cbc:PayableAmount>"));
-        assert!(!xml.contains("TaxSubtotal"));
-        let (parsed, _, _) = deserialize(&xml).expect("a valid UBL document");
-        assert_eq!(parsed, source);
+        assert!(
+            document
+                .xml()
+                .contains("<cbc:InvoiceTypeCode>380</cbc:InvoiceTypeCode>")
+        );
+        assert!(
+            document
+                .xml()
+                .contains("<cbc:PayableAmount>0.00</cbc:PayableAmount>")
+        );
+        assert!(!document.xml().contains("TaxSubtotal"));
+        let parsed = read(document.xml()).expect("a valid UBL document");
+        assert_eq!(parsed.builder, source);
     }
 
     #[test]
@@ -280,16 +298,16 @@ mod test {
         let xml =
             include_str!("ubl/fixtures/1.xml").replacen("<cbc:ID>INV-2026-001</cbc:ID>", "", 1);
 
-        let (parsed, _, _) = deserialize(&xml).expect("a valid UBL document");
+        let parsed = read(&xml).expect("a valid UBL document");
 
-        assert_eq!(parsed.invoice.number, None);
+        assert_eq!(parsed.builder.invoice.number, None);
     }
 
     #[test]
     fn rejects_a_document_without_a_type_code() {
         let xml = r#"<Invoice xmlns="urn:oasis:names:specification:ubl:schema:xsd:Invoice-2" xmlns:cbc="urn:oasis:names:specification:ubl:schema:xsd:CommonBasicComponents-2"><cbc:CustomizationID>urn:cen.eu:en16931:2017</cbc:CustomizationID></Invoice>"#;
 
-        let outcome = deserialize(xml);
+        let outcome = read(xml);
 
         assert!(matches!(outcome, Err(Error::MalformedXml { .. })));
     }
@@ -298,7 +316,7 @@ mod test {
     fn rejects_a_standard_rated_category_without_a_rate() {
         let xml = r#"<Invoice xmlns="urn:oasis:names:specification:ubl:schema:xsd:Invoice-2" xmlns:cac="urn:oasis:names:specification:ubl:schema:xsd:CommonAggregateComponents-2" xmlns:cbc="urn:oasis:names:specification:ubl:schema:xsd:CommonBasicComponents-2"><cbc:CustomizationID>urn:cen.eu:en16931:2017</cbc:CustomizationID><cbc:InvoiceTypeCode>380</cbc:InvoiceTypeCode><cac:InvoiceLine><cac:Item><cac:ClassifiedTaxCategory><cbc:ID>S</cbc:ID><cac:TaxScheme><cbc:ID>VAT</cbc:ID></cac:TaxScheme></cac:ClassifiedTaxCategory></cac:Item></cac:InvoiceLine></Invoice>"#;
 
-        let outcome = deserialize(xml);
+        let outcome = read(xml);
 
         assert!(matches!(outcome, Err(Error::MalformedXml { .. })));
     }
@@ -307,7 +325,7 @@ mod test {
     fn rejects_an_element_of_an_unknown_namespace() {
         let xml = r#"<Invoice xmlns="urn:oasis:names:specification:ubl:schema:xsd:Invoice-2" xmlns:foo="urn:example:unknown"><foo:Bar/></Invoice>"#;
 
-        let outcome = deserialize(xml);
+        let outcome = read(xml);
 
         assert!(matches!(
             outcome,
