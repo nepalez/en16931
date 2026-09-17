@@ -15,26 +15,26 @@ pub enum VatPoint {
     /// An explicit VAT point date (`BT-7`).
     Date(Date),
     /// The event that fixes the VAT point date (`BT-8`).
-    Event(Event),
+    Event(VatPointEvent),
 }
 
 /// The VAT point event (`BT-8`, subset of `UNTDID 2005`):
 /// the event that fixes the date the VAT becomes chargeable.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, IntoPrimitive, TryFromPrimitive)]
 #[repr(u16)]
-pub enum Event {
+pub enum VatPointEvent {
     Invoicing = 3,
     Delivery = 35,
     Payment = 432,
 }
 
-impl Display for Event {
+impl Display for VatPointEvent {
     fn fmt(&self, formatter: &mut Formatter<'_>) -> fmt::Result {
         write!(formatter, "{}", u16::from(*self))
     }
 }
 
-impl FromStr for Event {
+impl FromStr for VatPointEvent {
     type Err = Error;
 
     fn from_str(value: &str) -> Result<Self, Self::Err> {
@@ -46,7 +46,7 @@ impl FromStr for Event {
     }
 }
 
-impl TryFrom<&str> for Event {
+impl TryFrom<&str> for VatPointEvent {
     type Error = Error;
 
     fn try_from(value: &str) -> Result<Self, Self::Error> {
@@ -54,13 +54,13 @@ impl TryFrom<&str> for Event {
     }
 }
 
-impl From<Event> for u32 {
-    fn from(code: Event) -> Self {
+impl From<VatPointEvent> for u32 {
+    fn from(code: VatPointEvent) -> Self {
         u16::from(code).into()
     }
 }
 
-impl TryFrom<u32> for Event {
+impl TryFrom<u32> for VatPointEvent {
     type Error = Error;
 
     fn try_from(value: u32) -> Result<Self, Self::Error> {
@@ -77,8 +77,8 @@ impl From<Date> for VatPoint {
     }
 }
 
-impl From<Event> for VatPoint {
-    fn from(value: Event) -> Self {
+impl From<VatPointEvent> for VatPoint {
+    fn from(value: VatPointEvent) -> Self {
         Self::Event(value)
     }
 }
@@ -87,7 +87,7 @@ impl TryFrom<u16> for VatPoint {
     type Error = Error;
 
     fn try_from(value: u16) -> Result<Self, Self::Error> {
-        Event::try_from(value)
+        VatPointEvent::try_from(value)
             .map(Self::Event)
             .map_err(|_| Error::invalid_value(format!("{value:?}")))
     }
@@ -97,7 +97,7 @@ impl TryFrom<u32> for VatPoint {
     type Error = Error;
 
     fn try_from(value: u32) -> Result<Self, Self::Error> {
-        Event::try_from(value).map(Self::Event)
+        VatPointEvent::try_from(value).map(Self::Event)
     }
 }
 
@@ -107,25 +107,25 @@ mod test {
 
     #[test]
     fn parses_a_known_code() {
-        let event: Event = "35".parse().expect("35 is a valid VAT point event");
+        let event: VatPointEvent = "35".parse().expect("35 is a valid VAT point event");
 
-        assert_eq!(event, Event::Delivery);
+        assert_eq!(event, VatPointEvent::Delivery);
         assert_eq!(event.to_string(), "35");
     }
 
     #[test]
     fn rejects_an_unknown_code() {
-        assert!("1".parse::<Event>().is_err());
+        assert!("1".parse::<VatPointEvent>().is_err());
     }
 
     #[test]
     fn converts_an_event_via_try_from() {
         assert_eq!(
-            Event::try_from("432").expect("432 is a valid VAT point event"),
-            Event::Payment
+            VatPointEvent::try_from("432").expect("432 is a valid VAT point event"),
+            VatPointEvent::Payment
         );
         assert!(matches!(
-            Event::try_from("1"),
+            VatPointEvent::try_from("1"),
             Err(Error::InvalidValue { .. })
         ));
     }
@@ -134,7 +134,7 @@ mod test {
     fn builds_a_vat_point_from_a_numeric_code() {
         assert_eq!(
             VatPoint::try_from(35u16).expect("35 is a valid VAT point event"),
-            VatPoint::Event(Event::Delivery)
+            VatPoint::Event(VatPointEvent::Delivery)
         );
         assert!(matches!(
             VatPoint::try_from(1u32),

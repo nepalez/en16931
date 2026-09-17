@@ -1,63 +1,9 @@
-pub mod adjustment;
-pub mod buyer;
-pub mod classification;
-pub mod contact;
-pub mod credit_transfer;
-pub mod delivery;
-pub mod direct_debit;
-pub mod electronic_address;
-pub mod invoice_line;
-pub mod item;
-pub mod item_attribute;
-pub mod item_reference;
-pub mod legal_entity;
-pub mod location_reference;
-pub mod note;
-pub mod object_reference;
-pub mod operational_entity;
-pub mod payee;
-pub mod payment_card;
-pub mod payment_instructions;
-pub mod postal_address;
-pub mod preceding_invoice;
-pub mod price;
-pub mod seller;
-pub mod supporting_document;
-pub mod tax_representative;
-pub mod vat_treatment;
-
-pub use adjustment::{
-    Adjustment, Amount as AdjustmentAmount, LineAdjustment, Reason as AdjustmentReason,
-};
-pub use buyer::Buyer;
-pub use classification::Classification;
-pub use contact::Contact;
-pub use credit_transfer::CreditTransfer;
-pub use delivery::Delivery;
-pub use direct_debit::DirectDebit;
-pub use electronic_address::ElectronicAddress;
-pub use invoice_line::InvoiceLine;
-pub use item::Item;
-pub use item_attribute::ItemAttribute;
-pub use item_reference::ItemReference;
-pub use legal_entity::LegalEntity;
-pub use location_reference::LocationReference;
-pub use note::Note;
-pub use object_reference::ObjectReference;
-pub use operational_entity::OperationalEntity;
-pub use payee::Payee;
-pub use payment_card::PaymentCard;
-pub use payment_instructions::{Details as PaymentDetails, PaymentInstructions};
-pub use postal_address::PostalAddress;
-pub use preceding_invoice::PrecedingInvoice;
-pub use price::Price;
-pub use seller::Seller;
-pub use supporting_document::SupportingDocument;
-pub use tax_representative::TaxRepresentative;
-pub use vat_treatment::{ExemptionReason, VatTreatment};
-
 use crate::prelude::*;
-use crate::{Amount, Currency, Date, Decimal, InvoiceType, NonEmptyString, Period, VatPoint};
+use crate::{
+    Adjustment, AdjustmentReason, Amount, Buyer, Currency, Date, Decimal, Delivery, InvoiceLine,
+    InvoiceType, NonEmptyString, Note, ObjectReference, Payee, PaymentInstructions, Period,
+    PrecedingInvoice, Seller, SupportingDocument, TaxRepresentative, VatPoint, VatTreatment,
+};
 
 /// Rounds a derived money amount to two decimals, half away from zero.
 pub(crate) fn rounded(value: Decimal) -> Decimal {
@@ -269,7 +215,7 @@ pub(crate) struct VatBreakdown {
 #[cfg(test)]
 mod test {
     use super::*;
-    use crate::{Percentage, Quantity, Unit};
+    use crate::{Percentage, Price, Quantity, Unit};
 
     fn line(gross: i64, rate: i64) -> InvoiceLine {
         InvoiceLine {

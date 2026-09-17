@@ -8,11 +8,11 @@ use crate::{AllowanceReason, ChargeReason, Decimal, NonEmptyString, Percentage, 
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub struct Adjustment {
     /// Amount (`BT-92`/`BT-99`+`BT-93`+`BT-94`/`BT-100`+`BT-101`).
-    pub amount: Option<Amount>,
+    pub amount: Option<AdjustmentAmount>,
     /// VAT treatment (`BT-95`+`BT-96`/`BT-102`+`BT-103`).
     pub vat: Option<VatTreatment>,
     /// Reason and direction (`BT-97`+`BT-98`/`BT-104`+`BT-105`).
-    pub reason: Option<Reason>,
+    pub reason: Option<AdjustmentReason>,
 }
 
 /// A line-level adjustment (`BG-27` allowance, `BG-28` charge):
@@ -23,9 +23,9 @@ pub struct Adjustment {
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub struct LineAdjustment {
     /// Amount (`BT-136`/`BT-141`+`BT-137`+`BT-138`/`BT-142`+`BT-143`).
-    pub amount: Option<Amount>,
+    pub amount: Option<AdjustmentAmount>,
     /// Reason and direction (`BT-139`+`BT-140`/`BT-144`+`BT-145`).
-    pub reason: Option<Reason>,
+    pub reason: Option<AdjustmentReason>,
 }
 
 impl LineAdjustment {
@@ -34,15 +34,15 @@ impl LineAdjustment {
     pub fn signed_amount(&self) -> Option<Decimal> {
         let value = self.amount.as_ref()?.value();
         match self.reason.as_ref()? {
-            Reason::Charge { .. } => Some(value),
-            Reason::Allowance { .. } => Some(-value),
+            AdjustmentReason::Charge { .. } => Some(value),
+            AdjustmentReason::Allowance { .. } => Some(-value),
         }
     }
 }
 
 /// The amount of an adjustment: a fixed sum, or a percentage of a base.
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub enum Amount {
+pub enum AdjustmentAmount {
     /// A fixed amount (`BT-92`/`BT-99`/`BT-136`/`BT-141`).
     Absolute(Decimal),
     /// A percentage of a base
@@ -55,7 +55,7 @@ pub enum Amount {
     },
 }
 
-impl Amount {
+impl AdjustmentAmount {
     /// The adjustment amount (`BT-92`/`BT-99`/`BT-136`/`BT-141`):
     /// the fixed sum, or the base times the rate, rounded.
     pub fn value(&self) -> Decimal {
@@ -72,7 +72,7 @@ impl Amount {
 /// The direction selects the reason code list
 /// (`UNCL5189` for an allowance, `UNCL7161` for a charge).
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub enum Reason {
+pub enum AdjustmentReason {
     /// An allowance (a deduction).
     Allowance {
         /// Reason code (`BT-98`/`BT-140`).
@@ -95,7 +95,7 @@ mod test {
 
     #[test]
     fn values_a_relative_amount_as_the_base_times_the_rate() {
-        let amount = Amount::Relative {
+        let amount = AdjustmentAmount::Relative {
             rate: Percentage::try_from(Decimal::new(15, 1)).expect("a valid rate"),
             base: Decimal::new(20000, 2),
         };
@@ -105,7 +105,7 @@ mod test {
 
     #[test]
     fn rounds_a_relative_amount_half_away_from_zero() {
-        let amount = Amount::Relative {
+        let amount = AdjustmentAmount::Relative {
             rate: Percentage::try_from(Decimal::new(75, 1)).expect("a valid rate"),
             base: Decimal::new(1003, 2),
         };
