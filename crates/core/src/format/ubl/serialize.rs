@@ -54,22 +54,24 @@ fn note_text(note: &Note, drop_subject: bool) -> Option<String> {
 }
 
 /// The stateful UBL writer: an XML sink plus the trace that builds the dictionary in lockstep.
-struct Serializer {
+struct Serializer<'a> {
     inner: Writer<Vec<u8>>,
     trace: Trace<ubl::Namespace>,
     abbreviations: Abbreviations<ubl::Namespace>,
     forbidden: &'static [Term],
     currency: Option<&'static str>,
+    invoice: &'a Invoice,
 }
 
-impl Serializer {
-    fn new(builder: &DocumentBuilder<Invoice>) -> Self {
+impl<'a> Serializer<'a> {
+    fn new(builder: &'a DocumentBuilder<Invoice>) -> Self {
         Self {
             inner: Writer::new(Vec::new()),
             trace: Trace::new(),
             abbreviations: <Ubl as Format>::Namespace::default_abbreviations(),
             forbidden: builder.profile.forbidden_terms(),
             currency: builder.invoice.currency.as_ref().map(Currency::code),
+            invoice: &builder.invoice,
         }
     }
 
@@ -1200,7 +1202,7 @@ impl Serializer {
                 ubl::Namespace::Cbc,
                 "Amount",
                 &currency,
-                &money(amount.value()),
+                &money(amount.value(self.invoice)),
             );
             self.derived(ubl::Namespace::Cbc, "BaseAmount", &currency, &money(*base));
         } else {
@@ -1208,7 +1210,7 @@ impl Serializer {
                 ubl::Namespace::Cbc,
                 "Amount",
                 &currency,
-                &money(amount.value()),
+                &money(amount.value(self.invoice)),
             );
         }
     }
@@ -1397,7 +1399,7 @@ impl Serializer {
                 &plain(quantity.value),
             );
         }
-        if let Some(net) = line.net_amount() {
+        if let Some(net) = line.net_amount(self.invoice) {
             self.derived(
                 ubl::Namespace::Cbc,
                 "LineExtensionAmount",

@@ -1,6 +1,6 @@
 use crate::{
-    Decimal, Item, LineAdjustment, NonEmptyString, ObjectReference, Period, Price, Quantity,
-    VatTreatment,
+    Decimal, Invoice, Item, LineAdjustment, NonEmptyString, ObjectReference, Period, Price,
+    Quantity, VatTreatment,
 };
 
 /// An invoice line (`BG-25`): one charged position of the invoice.
@@ -34,7 +34,8 @@ pub struct InvoiceLine {
 impl InvoiceLine {
     /// The line net amount (`BT-131`): the rounded quantity-times-net-price, plus the signed line
     /// allowances and charges, or `None` when any of these inputs is absent.
-    pub fn net_amount(&self) -> Option<Decimal> {
+    /// The `invoice` the line belongs to rounds the amount.
+    pub fn net_amount(&self, invoice: &Invoice) -> Option<Decimal> {
         let quantity = self.quantity.as_ref()?;
         let price = self.price.as_ref()?;
         let base = price
@@ -42,11 +43,11 @@ impl InvoiceLine {
             .as_ref()
             .map(|quantity| quantity.value)
             .unwrap_or(Decimal::ONE);
-        let line = crate::invoice::rounded(quantity.value * price.net()? / base);
+        let line = invoice.round(quantity.value * price.net()? / base);
         let adjustments: Decimal = self
             .adjustments
             .iter()
-            .map(LineAdjustment::signed_amount)
+            .map(|adjustment| adjustment.signed_amount(invoice))
             .sum::<Option<Decimal>>()?;
         Some(line + adjustments)
     }
@@ -75,7 +76,7 @@ mod test {
     #[test]
     fn nets_the_quantity_times_the_net_price() {
         assert_eq!(
-            line(10, 500, Vec::new()).net_amount(),
+            line(10, 500, Vec::new()).net_amount(&Invoice::default()),
             Some(Decimal::new(5000, 2))
         );
     }
@@ -101,7 +102,7 @@ mod test {
 
         // 10 * 5.00 - 2.00 + 0.50 = 48.50
         assert_eq!(
-            line(10, 500, adjustments).net_amount(),
+            line(10, 500, adjustments).net_amount(&Invoice::default()),
             Some(Decimal::new(4850, 2))
         );
     }
@@ -113,6 +114,6 @@ mod test {
             ..line(10, 500, Vec::new())
         };
 
-        assert_eq!(line.net_amount(), None);
+        assert_eq!(line.net_amount(&Invoice::default()), None);
     }
 }

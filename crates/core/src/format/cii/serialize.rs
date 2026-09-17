@@ -41,22 +41,24 @@ fn plain(value: Decimal) -> String {
 }
 
 /// The stateful CII writer: an XML sink plus the trace that builds the dictionary.
-struct Serializer {
+struct Serializer<'a> {
     inner: Writer<Vec<u8>>,
     trace: Trace<cii::Namespace>,
     abbreviations: Abbreviations<cii::Namespace>,
     forbidden: &'static [Term],
     currency: Option<&'static str>,
+    invoice: &'a Invoice,
 }
 
-impl Serializer {
-    fn new(builder: &DocumentBuilder<Invoice>) -> Self {
+impl<'a> Serializer<'a> {
+    fn new(builder: &'a DocumentBuilder<Invoice>) -> Self {
         Self {
             inner: Writer::new(Vec::new()),
             trace: Trace::new(),
             abbreviations: <Cii as Format>::Namespace::default_abbreviations(),
             forbidden: builder.profile.forbidden_terms(),
             currency: builder.invoice.currency.as_ref().map(Currency::code),
+            invoice: &builder.invoice,
         }
     }
 
@@ -496,7 +498,7 @@ impl Serializer {
                     let instance = index(position);
                     serializer.line_adjustment(adjustment, instance);
                 }
-                if let Some(net) = line.net_amount() {
+                if let Some(net) = line.net_amount(serializer.invoice) {
                     serializer.structural(
                         cii::Namespace::Ram,
                         "SpecifiedTradeSettlementLineMonetarySummation",
@@ -1485,7 +1487,7 @@ impl Serializer {
             cii::Namespace::Ram,
             "ActualAmount",
             &[],
-            &money(amount.value()),
+            &money(amount.value(self.invoice)),
         );
     }
 

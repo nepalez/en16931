@@ -96,6 +96,7 @@ impl Parser {
             paid: settlement.paid,
             supporting_documents: agreement.supporting_documents,
             lines,
+            rounding_strategy: None,
         };
         settlement.exemptions.apply(&mut invoice);
 

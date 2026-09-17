@@ -1,4 +1,6 @@
-use crate::{AllowanceReason, ChargeReason, Decimal, NonEmptyString, Percentage, VatTreatment};
+use crate::{
+    AllowanceReason, ChargeReason, Decimal, Invoice, NonEmptyString, Percentage, VatTreatment,
+};
 
 /// A document-level adjustment (`BG-20` allowance, `BG-21` charge):
 /// a deduction or addition applied to the whole invoice.
@@ -31,8 +33,9 @@ pub struct LineAdjustment {
 impl LineAdjustment {
     /// The amount signed by direction: positive for a charge, negative for an allowance,
     /// or `None` without the amount or the direction.
-    pub fn signed_amount(&self) -> Option<Decimal> {
-        let value = self.amount.as_ref()?.value();
+    /// The `invoice` the adjustment belongs to rounds the amount.
+    pub fn signed_amount(&self, invoice: &Invoice) -> Option<Decimal> {
+        let value = self.amount.as_ref()?.value(invoice);
         match self.reason.as_ref()? {
             AdjustmentReason::Charge { .. } => Some(value),
             AdjustmentReason::Allowance { .. } => Some(-value),
@@ -57,12 +60,13 @@ pub enum AdjustmentAmount {
 
 impl AdjustmentAmount {
     /// The adjustment amount (`BT-92`/`BT-99`/`BT-136`/`BT-141`):
-    /// the fixed sum, or the base times the rate, rounded.
-    pub fn value(&self) -> Decimal {
+    /// the fixed sum, or the base times the rate.
+    /// The `invoice` the adjustment belongs to rounds the amount.
+    pub fn value(&self, invoice: &Invoice) -> Decimal {
         match self {
             Self::Absolute(value) => *value,
             Self::Relative { rate, base } => {
-                crate::invoice::rounded(base * Decimal::from(*rate) / Decimal::from(100))
+                invoice.round(base * Decimal::from(*rate) / Decimal::from(100))
             }
         }
     }
@@ -100,7 +104,7 @@ mod test {
             base: Decimal::new(20000, 2),
         };
 
-        assert_eq!(amount.value(), Decimal::new(300, 2));
+        assert_eq!(amount.value(&Invoice::default()), Decimal::new(300, 2));
     }
 
     #[test]
@@ -111,6 +115,6 @@ mod test {
         };
 
         // 10.03 * 7.5% = 0.75225 -> 0.75
-        assert_eq!(amount.value(), Decimal::new(75, 2));
+        assert_eq!(amount.value(&Invoice::default()), Decimal::new(75, 2));
     }
 }

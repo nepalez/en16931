@@ -5,11 +5,6 @@ use crate::{
     PrecedingInvoice, Seller, SupportingDocument, TaxRepresentative, VatPoint, VatTreatment,
 };
 
-/// Rounds a derived money amount to two decimals, half away from zero.
-pub(crate) fn rounded(value: Decimal) -> Decimal {
-    value.round_dp_with_strategy(2, RoundingStrategy::MidpointAwayFromZero)
-}
-
 /// This object carries business facts an invoice can describe.
 ///
 /// Every field but the type code is optional: the model checks the types of the values,
@@ -83,12 +78,25 @@ pub struct Invoice {
     pub supporting_documents: Vec<SupportingDocument>,
     /// Invoice lines (`BG-25`).
     pub lines: Vec<InvoiceLine>,
+    /// The strategy that rounds the derived amounts, half away from zero when absent.
+    pub rounding_strategy: Option<RoundingStrategy>,
 }
 
 impl Invoice {
+    /// The strategy that rounds the derived amounts: the stated one, or half away from zero.
+    pub fn rounding_strategy(&self) -> RoundingStrategy {
+        self.rounding_strategy
+            .unwrap_or(RoundingStrategy::MidpointAwayFromZero)
+    }
+
+    /// Rounds a derived money amount to two decimals by the strategy of this invoice.
+    pub fn round(&self, value: Decimal) -> Decimal {
+        value.round_dp_with_strategy(2, self.rounding_strategy())
+    }
+
     /// The sum of line net amounts (`BT-106`), or `None` when a line lacks an input.
     pub fn line_net_total(&self) -> Option<Decimal> {
-        self.lines.iter().map(InvoiceLine::net_amount).sum()
+        self.lines.iter().map(|line| line.net_amount(self)).sum()
     }
 
     /// The sum of document-level allowances (`BT-107`),
@@ -144,7 +152,7 @@ impl Invoice {
             .vat_groups()?
             .into_iter()
             .map(|(treatment, taxable)| {
-                let tax = rounded(taxable * treatment.rate() / Decimal::from(100));
+                let tax = self.round(taxable * treatment.rate() / Decimal::from(100));
                 VatBreakdown {
                     treatment,
                     taxable,
@@ -160,7 +168,7 @@ impl Invoice {
         let mut allowances = Decimal::ZERO;
         let mut charges = Decimal::ZERO;
         for adjustment in &self.adjustments {
-            let value = adjustment.amount.as_ref()?.value();
+            let value = adjustment.amount.as_ref()?.value(self);
             match adjustment.reason.as_ref()? {
                 AdjustmentReason::Allowance { .. } => allowances += value,
                 AdjustmentReason::Charge { .. } => charges += value,
@@ -188,10 +196,10 @@ impl Invoice {
             }
         };
         for line in &self.lines {
-            accumulate(line.vat.as_ref()?, line.net_amount()?);
+            accumulate(line.vat.as_ref()?, line.net_amount(self)?);
         }
         for adjustment in &self.adjustments {
-            let value = adjustment.amount.as_ref()?.value();
+            let value = adjustment.amount.as_ref()?.value(self);
             let signed = match adjustment.reason.as_ref()? {
                 AdjustmentReason::Charge { .. } => value,
                 AdjustmentReason::Allowance { .. } => -value,

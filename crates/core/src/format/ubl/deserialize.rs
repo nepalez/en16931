@@ -254,6 +254,7 @@ impl Parser {
             paid,
             supporting_documents,
             lines,
+            rounding_strategy: None,
         };
         exemptions.apply(&mut invoice);
 

@@ -48,7 +48,9 @@ mod vat_identifier;
 mod vat_point;
 mod vat_treatment;
 
-pub use crate::prelude::{CountryCode, Currency, Date, Decimal, EmailAddress, UnitOfMeasure, Url};
+pub use crate::prelude::{
+    CountryCode, Currency, Date, Decimal, EmailAddress, RoundingStrategy, UnitOfMeasure, Url,
+};
 pub use account_number::AccountNumber;
 pub use adjustment::{Adjustment, AdjustmentAmount, AdjustmentReason, LineAdjustment};
 pub use allowance_reason::AllowanceReason;
