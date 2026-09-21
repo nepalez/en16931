@@ -1,6 +1,6 @@
 use crate::{
-    Decimal, Invoice, Item, LineAdjustment, NonEmptyString, ObjectReference, Period, Price,
-    Quantity, VatTreatment,
+    Decimal, Item, LineAdjustment, NonEmptyString, ObjectReference, Period, Price, Quantity,
+    VatTreatment,
 };
 
 /// An invoice line (`BG-25`): one charged position of the invoice.
@@ -15,6 +15,8 @@ pub struct InvoiceLine {
     pub object: Option<ObjectReference>,
     /// Invoiced quantity (`BT-129`+`BT-130`).
     pub quantity: Option<Quantity>,
+    /// Line net amount (`BT-131`).
+    pub net_amount: Option<Decimal>,
     /// Referenced purchase order line reference (`BT-132`).
     pub order_line_reference: Option<NonEmptyString>,
     /// Buyer accounting reference (`BT-133`).
@@ -29,91 +31,4 @@ pub struct InvoiceLine {
     pub vat: Option<VatTreatment>,
     /// Item information (`BG-31`).
     pub item: Option<Item>,
-}
-
-impl InvoiceLine {
-    /// The line net amount (`BT-131`): the rounded quantity-times-net-price, plus the signed line
-    /// allowances and charges, or `None` when any of these inputs is absent.
-    /// The `invoice` the line belongs to rounds the amount.
-    pub fn net_amount(&self, invoice: &Invoice) -> Option<Decimal> {
-        let quantity = self.quantity.as_ref()?;
-        let price = self.price.as_ref()?;
-        let base = price
-            .base_quantity
-            .as_ref()
-            .map(|quantity| quantity.value)
-            .unwrap_or(Decimal::ONE);
-        let line = invoice.round(quantity.value * price.net()? / base);
-        let adjustments: Decimal = self
-            .adjustments
-            .iter()
-            .map(|adjustment| adjustment.signed_amount(invoice))
-            .sum::<Option<Decimal>>()?;
-        Some(line + adjustments)
-    }
-}
-
-#[cfg(test)]
-mod test {
-    use super::*;
-    use crate::{AdjustmentAmount, AdjustmentReason, Quantity, Unit};
-
-    fn line(quantity: i64, gross: i64, adjustments: Vec<LineAdjustment>) -> InvoiceLine {
-        InvoiceLine {
-            quantity: Some(Quantity {
-                unit: Unit::from_code("C62").expect("C62 is a unit"),
-                value: Decimal::new(quantity, 0),
-            }),
-            adjustments,
-            price: Some(Price {
-                gross: Some(Decimal::new(gross, 2)),
-                ..Default::default()
-            }),
-            ..Default::default()
-        }
-    }
-
-    #[test]
-    fn nets_the_quantity_times_the_net_price() {
-        assert_eq!(
-            line(10, 500, Vec::new()).net_amount(&Invoice::default()),
-            Some(Decimal::new(5000, 2))
-        );
-    }
-
-    #[test]
-    fn nets_after_the_line_allowances_and_charges() {
-        let adjustments = vec![
-            LineAdjustment {
-                amount: Some(AdjustmentAmount::Absolute(Decimal::new(200, 2))),
-                reason: Some(AdjustmentReason::Allowance {
-                    code: None,
-                    text: None,
-                }),
-            },
-            LineAdjustment {
-                amount: Some(AdjustmentAmount::Absolute(Decimal::new(50, 2))),
-                reason: Some(AdjustmentReason::Charge {
-                    code: None,
-                    text: None,
-                }),
-            },
-        ];
-
-        // 10 * 5.00 - 2.00 + 0.50 = 48.50
-        assert_eq!(
-            line(10, 500, adjustments).net_amount(&Invoice::default()),
-            Some(Decimal::new(4850, 2))
-        );
-    }
-
-    #[test]
-    fn nets_nothing_without_a_price() {
-        let line = InvoiceLine {
-            price: None,
-            ..line(10, 500, Vec::new())
-        };
-
-        assert_eq!(line.net_amount(&Invoice::default()), None);
-    }
 }

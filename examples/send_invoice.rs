@@ -14,7 +14,7 @@ use en16931_core::{
     BusinessProcess, Buyer, Contact, CreditTransfer, Document, DocumentBuilder, ElectronicAddress,
     ElectronicAddressScheme, Invoice, InvoiceLine, Item, LegalEntity, PaymentDetails,
     PaymentInstructions, PaymentMeans, Percentage, Period, PostalAddress, Price, Profile, Quantity,
-    RawReport, Seller, Ubl, VatTreatment,
+    RawReport, Seller, Ubl, VatBreakdown, VatTreatment,
 };
 use en16931_iso::Iso;
 use en16931_kosit::Kosit;
@@ -128,14 +128,28 @@ fn prepare_invoice() -> Result<Invoice, Box<dyn std::error::Error>> {
             }])),
             ..Default::default()
         }),
+        // The issuer states every amount: the library computes none of them.
+        line_net_total: Some(Decimal::new(20000, 2)),
+        net_total: Some(Decimal::new(20000, 2)),
+        vat_total: Some(Decimal::new(3800, 2)),
+        gross_total: Some(Decimal::new(23800, 2)),
+        due: Some(Decimal::new(23800, 2)),
+        vat_breakdown: vec![VatBreakdown {
+            treatment: Some(VatTreatment::Standard {
+                rate: Percentage::try_from(Decimal::from(19))?,
+            }),
+            taxable: Some(Decimal::new(20000, 2)),
+            tax: Some(Decimal::new(3800, 2)),
+        }],
         lines: vec![InvoiceLine {
             id: Some("1".parse()?),
             quantity: Some(Quantity {
                 unit: "C62".parse()?,
                 value: Decimal::from(2),
             }),
+            net_amount: Some(Decimal::new(20000, 2)),
             price: Some(Price {
-                gross: Some(Decimal::new(10000, 2)),
+                net: Some(Decimal::new(10000, 2)),
                 ..Default::default()
             }),
             vat: Some(VatTreatment::Standard {

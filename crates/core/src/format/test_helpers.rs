@@ -2,14 +2,14 @@
 
 use crate::prelude::*;
 use crate::{
-    Adjustment, AdjustmentAmount, AdjustmentReason, AllowanceReason, BusinessProcess, Buyer,
-    Classification, Contact, CreditTransfer, Delivery, DirectDebit, DocumentBuilder,
+    Adjustment, AdjustmentAmount, AdjustmentReason, AllowanceReason, Binding, BusinessProcess,
+    Buyer, Classification, Contact, CreditTransfer, Delivery, DirectDebit, DocumentBuilder,
     ElectronicAddress, ElectronicAddressScheme, Invoice, InvoiceLine, IssuingAgency, Item,
     ItemAttribute, ItemClassification, ItemReference, LegalEntity, LineAdjustment,
     LocationReference, Namespace, Note, ObjectReference, OperationalEntity, Path, Payee,
     PaymentCard, PaymentDetails, PaymentInstructions, PaymentMeans, Percentage, Period,
     PostalAddress, PrecedingInvoice, Price, Profile, Quantity, Seller, Step, SupportingDocument,
-    TaxRepresentative, Unit, VatIdentifier, VatPoint, VatTreatment,
+    TaxRepresentative, Unit, VatBreakdown, VatIdentifier, VatPoint, VatTreatment,
 };
 
 // Builds a non-empty string, panicking on an empty input.
@@ -43,9 +43,11 @@ fn units(value: i64) -> Quantity {
 /// A rich `DocumentBuilder` under the base EN-16931 profile, shared by the tests.
 ///
 /// The base profile forbids no term, so it serializes and parses back unchanged.
-pub(crate) fn builder() -> DocumentBuilder<Invoice> {
+/// The fixture follows the `binding` it is written to: UBL carries no gross price
+/// without a price discount, so only the CII fixture states one for such a line.
+pub(crate) fn builder(binding: Binding) -> DocumentBuilder<Invoice> {
     DocumentBuilder {
-        invoice: invoice(),
+        invoice: invoice(binding),
         profile: Profile::En16931,
         business_process: Some(BusinessProcess::PEPPOL_BILLING),
     }
@@ -56,11 +58,11 @@ pub(crate) fn builder() -> DocumentBuilder<Invoice> {
 /// It flips the mutually-exclusive choices `builder` never reaches: a direct-debit
 /// payment, an event VAT point, relative and charge adjustments, an exempt line, an
 /// object scheme, a price discount, and start-only or end-only periods. Every choice
-/// survives both bindings, so each codec parses the document back unchanged.
-pub(crate) fn variant_builder() -> DocumentBuilder<Invoice> {
+/// survives the `binding` it is written to, so its codec parses the document back unchanged.
+pub(crate) fn variant_builder(binding: Binding) -> DocumentBuilder<Invoice> {
     DocumentBuilder {
-        invoice: variant_invoice(),
-        ..builder()
+        invoice: variant_invoice(binding),
+        ..builder(binding)
     }
 }
 
@@ -68,14 +70,14 @@ pub(crate) fn variant_builder() -> DocumentBuilder<Invoice> {
 ///
 /// It overrides the payment of the rich invoice, so the card details reach the
 /// branch neither `builder` (credit transfer) nor `variant_builder` (direct
-/// debit) exercises. The document round-trips through both bindings.
-pub(crate) fn card_builder() -> DocumentBuilder<Invoice> {
+/// debit) exercises. The document round-trips through the `binding` it is written to.
+pub(crate) fn card_builder(binding: Binding) -> DocumentBuilder<Invoice> {
     DocumentBuilder {
         invoice: Invoice {
             payment: Some(card_payment()),
-            ..invoice()
+            ..invoice(binding)
         },
-        ..builder()
+        ..builder(binding)
     }
 }
 
@@ -89,7 +91,7 @@ pub(crate) fn empty_builder() -> DocumentBuilder<Invoice> {
 }
 
 // The base invoice with its alternative-branch fields overridden.
-fn variant_invoice() -> Invoice {
+fn variant_invoice(binding: Binding) -> Invoice {
     Invoice {
         payment: Some(variant_payment()),
         vat_point: Some(VatPoint::try_from(35u16).expect("a vat point event")),
@@ -98,9 +100,31 @@ fn variant_invoice() -> Invoice {
             scheme: Some("AAA".parse().expect("an object type")),
         }),
         adjustments: vec![variant_allowance(), variant_charge()],
+        line_net_total: Some(Decimal::new(33700, 2)),
+        allowances_total: Some(Decimal::new(2000, 2)),
+        charges_total: Some(Decimal::new(1500, 2)),
+        net_total: Some(Decimal::new(33200, 2)),
+        vat_total: Some(Decimal::new(817, 2)),
+        gross_total: Some(Decimal::new(34017, 2)),
+        due: Some(Decimal::new(29014, 2)),
+        vat_breakdown: vec![
+            VatBreakdown {
+                treatment: Some(VatTreatment::Exempt {
+                    code: Some("VATEX-EU-132".parse().expect("an exemption reason")),
+                    text: text("Exempt supply"),
+                }),
+                taxable: Some(Decimal::new(28900, 2)),
+                tax: Some(Decimal::new(0, 2)),
+            },
+            VatBreakdown {
+                treatment: Some(VatTreatment::Standard { rate: rate(19) }),
+                taxable: Some(Decimal::new(4300, 2)),
+                tax: Some(Decimal::new(817, 2)),
+            },
+        ],
         invoicing_period: Some(Period::Until(date(2026, Month::January, 31))),
-        lines: vec![variant_line(), line("2", 1, 5000)],
-        ..invoice()
+        lines: vec![variant_line(), line(binding, "2", 1, 5000, 4800)],
+        ..invoice(binding)
     }
 }
 
@@ -135,6 +159,7 @@ fn card_payment() -> PaymentInstructions {
 fn variant_allowance() -> Adjustment {
     Adjustment {
         amount: Some(AdjustmentAmount::Relative {
+            amount: Decimal::new(2000, 2),
             rate: rate(10),
             base: Decimal::new(20000, 2),
         }),
@@ -168,10 +193,12 @@ fn variant_line() -> InvoiceLine {
             scheme: Some("AAB".parse().expect("an object type")),
         }),
         quantity: Some(units(3)),
+        net_amount: Some(Decimal::new(28900, 2)),
         period: Some(Period::From(date(2026, Month::January, 1))),
         adjustments: vec![
             LineAdjustment {
                 amount: Some(AdjustmentAmount::Relative {
+                    amount: Decimal::new(1500, 2),
                     rate: rate(5),
                     base: Decimal::new(30000, 2),
                 }),
@@ -189,6 +216,7 @@ fn variant_line() -> InvoiceLine {
             },
         ],
         price: Some(Price {
+            net: Some(Decimal::new(10000, 2)),
             gross: Some(Decimal::new(12000, 2)),
             discount: Some(Decimal::new(2000, 2)),
             base_quantity: Some(units(1)),
@@ -206,7 +234,7 @@ fn variant_line() -> InvoiceLine {
 }
 
 // The invoice the fixture carries.
-fn invoice() -> Invoice {
+fn invoice(binding: Binding) -> Invoice {
     Invoice {
         number: text("INV-2026-001"),
         issue_date: Some(date(2026, Month::January, 15)),
@@ -245,11 +273,25 @@ fn invoice() -> Invoice {
             end: date(2026, Month::January, 31),
         }),
         adjustments: vec![allowance()],
+        line_net_total: Some(Decimal::new(24600, 2)),
+        allowances_total: Some(Decimal::new(1000, 2)),
+        net_total: Some(Decimal::new(23600, 2)),
+        vat_total: Some(Decimal::new(4484, 2)),
+        gross_total: Some(Decimal::new(28084, 2)),
         rounding: Some(Decimal::new(-3, 2)),
         payment: Some(payment()),
         paid: Some(Decimal::new(5000, 2)),
+        due: Some(Decimal::new(23081, 2)),
+        vat_breakdown: vec![VatBreakdown {
+            treatment: Some(VatTreatment::Standard { rate: rate(19) }),
+            taxable: Some(Decimal::new(23600, 2)),
+            tax: Some(Decimal::new(4484, 2)),
+        }],
         supporting_documents: vec![supporting_document()],
-        lines: vec![line("1", 2, 10000), line("2", 1, 5000)],
+        lines: vec![
+            line(binding, "1", 2, 10000, 19800),
+            line(binding, "2", 1, 5000, 4800),
+        ],
         ..Default::default()
     }
 }
@@ -375,13 +417,16 @@ fn supporting_document() -> SupportingDocument {
     }
 }
 
-// A standard-rated line of `quantity` units at `price` cents each, identified by `id`.
-fn line(id: &str, quantity: i64, price: i64) -> InvoiceLine {
+// A standard-rated line of `quantity` units at `price` cents each, identified by `id`
+// and stating a net amount of `net` cents.
+// Only CII carries a gross price without a price discount, so only its fixture states one.
+fn line(binding: Binding, id: &str, quantity: i64, price: i64, net: i64) -> InvoiceLine {
     InvoiceLine {
         id: text(id),
         note: text("line note"),
         object: None,
         quantity: Some(units(quantity)),
+        net_amount: Some(Decimal::new(net, 2)),
         order_line_reference: text("OL-1"),
         buyer_accounting_reference: text("LINE-ACC-1"),
         period: Some(Period::Range {
@@ -396,7 +441,11 @@ fn line(id: &str, quantity: i64, price: i64) -> InvoiceLine {
             }),
         }],
         price: Some(Price {
-            gross: Some(Decimal::new(price, 2)),
+            net: Some(Decimal::new(price, 2)),
+            gross: match binding {
+                Binding::Cii => Some(Decimal::new(price, 2)),
+                Binding::Ubl => None,
+            },
             ..Default::default()
         }),
         vat: Some(VatTreatment::Standard { rate: rate(19) }),

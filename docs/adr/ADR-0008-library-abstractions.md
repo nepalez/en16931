@@ -12,11 +12,11 @@ What abstractions does the library offer to a consumer?
 
 > The library separates the business entity, the form the consumer fills, and the public artifact. Several types model the lifecycle.
 
-`Invoice` is the business entity. It carries every business fact — parties, lines, dates, amounts. The amounts are inputs only, since serialization computes the derived totals. It is the superset model of all profiles (ADR-0003). Every field but the type code is optional, so it implements `Default`. Regulatory-flow fields (like `BT-23`) do not live here.
+`Invoice` is the business entity. It carries every business fact — parties, lines, dates, amounts. The issuer states every amount, since the library computes none. It is the superset model of all profiles (ADR-0003). Every field but the type code is optional, so it implements `Default`. Regulatory-flow fields (like `BT-23`) do not live here.
 
 `DocumentBuilder<P>` is the staging form that serialization reads. It is a public struct with the `invoice` and the regulatory-flow data. The parameter `P` names the profile and its binding, so neither takes a field. No validation runs here.
 
-`Serializable` and `Deserializable` are the core (de)serializers (ADR-0005). They are traits of an invoice type, parameterized by the binding and the namespace set. Each one fills the document in place, computing the derived amounts and the dictionary in lockstep.
+`Serializable` and `Deserializable` are the core (de)serializers (ADR-0005). They are traits of an invoice type, parameterized by the binding and the namespace set. Each one fills the document in place, building the dictionary in lockstep. Neither computes an amount.
 
 `Document<P>` is the public artifact. It holds a private `builder`, the `xml`, and the `dictionary` from record-form paths to `Context`-s. `TryFrom<DocumentBuilder<P>>` serializes into it, and `Document::parse_as::<P>` reconstructs it. That parse rejects a document whose `BT-24` belongs to another profile. It converts into the `Invoice` through `From<Document<P>>`. A received document must become a business object. An `Invoice` never parses from XML alone.
 

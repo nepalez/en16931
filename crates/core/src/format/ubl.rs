@@ -74,7 +74,10 @@ mod test {
     use crate::format::test_helpers::{
         builder, card_builder, empty_builder, path, pretty, step, variant_builder,
     };
-    use crate::{Binding, Context, Document, DocumentBuilder, Error, Invoice, Profile, Segment};
+    use crate::{
+        Binding, Context, Document, DocumentBuilder, Error, Invoice, InvoiceLine, Price, Profile,
+        Segment,
+    };
 
     fn written(builder: DocumentBuilder<Invoice>) -> Document<Invoice, Ubl> {
         Document::try_from(builder).expect("a serialized document")
@@ -129,7 +132,7 @@ mod test {
 
     #[test]
     fn detects_its_own_output_as_ubl() {
-        let document = written(builder());
+        let document = written(builder(Binding::Ubl));
 
         assert_eq!(
             Binding::detect(document.xml()).expect("a UBL document"),
@@ -139,7 +142,7 @@ mod test {
 
     #[test]
     fn rebuilds_the_same_dictionary_on_parse() {
-        let document = written(builder());
+        let document = written(builder(Binding::Ubl));
 
         let parsed = read(document.xml()).expect("a valid UBL document");
 
@@ -148,7 +151,7 @@ mod test {
 
     #[test]
     fn binds_the_abbreviations_it_writes() {
-        let abbreviations = written(builder()).abbreviations;
+        let abbreviations = written(builder(Binding::Ubl)).abbreviations;
 
         // The root carries the default namespace, so its abbreviation is empty.
         assert_eq!(abbreviations.resolve(""), Some(Namespace::Inv));
@@ -158,7 +161,7 @@ mod test {
 
     #[test]
     fn rebuilds_the_same_abbreviations_on_parse() {
-        let document = written(builder());
+        let document = written(builder(Binding::Ubl));
 
         let parsed = read(document.xml()).expect("a valid UBL document");
 
@@ -178,15 +181,15 @@ mod test {
     #[test]
     fn emit_fixtures() {
         let base = concat!(env!("CARGO_MANIFEST_DIR"), "/src/format/ubl/fixtures");
-        let rich = written(builder());
-        let variant = written(variant_builder());
+        let rich = written(builder(Binding::Ubl));
+        let variant = written(variant_builder(Binding::Ubl));
         std::fs::write(format!("{base}/1.xml"), pretty(rich.xml())).expect("write");
         std::fs::write(format!("{base}/2.xml"), pretty(variant.xml())).expect("write");
     }
 
     #[test]
     fn serializes_the_document_to_ubl() {
-        let document = written(builder());
+        let document = written(builder(Binding::Ubl));
 
         assert_eq!(pretty(document.xml()), include_str!("ubl/fixtures/1.xml"));
     }
@@ -195,12 +198,12 @@ mod test {
     fn deserializes_the_document_from_ubl() {
         let parsed = read(include_str!("ubl/fixtures/1.xml")).expect("a valid UBL document");
 
-        assert_eq!(parsed.builder, builder());
+        assert_eq!(parsed.builder, builder(Binding::Ubl));
     }
 
     #[test]
     fn serializes_the_variant_document_to_ubl() {
-        let document = written(variant_builder());
+        let document = written(variant_builder(Binding::Ubl));
 
         assert_eq!(pretty(document.xml()), include_str!("ubl/fixtures/2.xml"));
     }
@@ -209,12 +212,12 @@ mod test {
     fn deserializes_the_variant_document_from_ubl() {
         let parsed = read(include_str!("ubl/fixtures/2.xml")).expect("a valid UBL document");
 
-        assert_eq!(parsed.builder, variant_builder());
+        assert_eq!(parsed.builder, variant_builder(Binding::Ubl));
     }
 
     #[test]
     fn round_trips_the_card_document_through_ubl() {
-        let source = card_builder();
+        let source = card_builder(Binding::Ubl);
         let document = written(source.clone());
 
         let parsed = read(document.xml()).expect("a valid UBL document");
@@ -224,7 +227,7 @@ mod test {
 
     #[test]
     fn maps_nodes_to_their_contexts() {
-        let dictionary = written(builder()).dictionary;
+        let dictionary = written(builder(Binding::Ubl)).dictionary;
 
         let root = path(vec![step(Namespace::Inv, "Invoice", 1)]);
         let seller_name = path(vec![
@@ -243,6 +246,11 @@ mod test {
             step(Namespace::Cac, "LegalMonetaryTotal", 1),
             step(Namespace::Cbc, "PayableAmount", 1),
         ]);
+        let second_line_net = path(vec![
+            step(Namespace::Inv, "Invoice", 1),
+            step(Namespace::Cac, "InvoiceLine", 2),
+            step(Namespace::Cbc, "LineExtensionAmount", 1),
+        ]);
 
         // The root, a term-less node, resolves to the root context.
         assert_eq!(dictionary.get(&root), Some(&context(Vec::new())));
@@ -256,14 +264,19 @@ mod test {
             dictionary.get(&second_line),
             Some(&context(vec![instance("lines", 2)]))
         );
-        // A derived total maps to the root, like every term-less node.
-        assert_eq!(dictionary.get(&payable), Some(&context(Vec::new())));
+        // A stated total maps to its own field.
+        assert_eq!(dictionary.get(&payable), Some(&context(vec![field("due")])));
+        // The net amount of a line maps to the field of its instance.
+        assert_eq!(
+            dictionary.get(&second_line_net),
+            Some(&context(vec![instance("lines", 2), field("net_amount")]))
+        );
     }
 
     #[test]
     fn drops_a_term_the_profile_forbids() {
         // Peppol BIS forbids the note subject code (BT-21).
-        let mut source = builder();
+        let mut source = builder(Binding::Ubl);
         source.profile = Profile::PeppolBisBilling30;
         let document = written(source);
         let xml = document.xml();
@@ -274,7 +287,7 @@ mod test {
     }
 
     #[test]
-    fn serializes_an_empty_invoice_with_zero_totals() {
+    fn serializes_an_empty_invoice_without_totals() {
         let source = empty_builder();
         let document = written(source.clone());
 
@@ -283,14 +296,61 @@ mod test {
                 .xml()
                 .contains("<cbc:InvoiceTypeCode>380</cbc:InvoiceTypeCode>")
         );
+        assert!(!document.xml().contains("LegalMonetaryTotal"));
+        assert!(!document.xml().contains("TaxTotal"));
+        let parsed = read(document.xml()).expect("a valid UBL document");
+        assert_eq!(parsed.builder, source);
+    }
+
+    #[test]
+    fn serializes_a_stated_zero_total() {
+        let mut source = empty_builder();
+        source.invoice.allowances_total = Some(Decimal::ZERO);
+
+        let document = written(source);
+
         assert!(
             document
                 .xml()
-                .contains("<cbc:PayableAmount>0.00</cbc:PayableAmount>")
+                .contains("<cbc:AllowanceTotalAmount>0.00</cbc:AllowanceTotalAmount>")
         );
-        assert!(!document.xml().contains("TaxSubtotal"));
-        let parsed = read(document.xml()).expect("a valid UBL document");
-        assert_eq!(parsed.builder, source);
+    }
+
+    #[test]
+    fn rounds_an_amount_to_two_decimals_on_serialization() {
+        let mut source = empty_builder();
+        source.invoice.due = Some(Decimal::new(10505, 3));
+        source.invoice.rounding = Some(Decimal::new(-10505, 3));
+        source.invoice.paid = Some(Decimal::new(105, 1));
+
+        let document = written(source.clone());
+        let xml = document.xml();
+
+        assert!(xml.contains("<cbc:PayableAmount>10.51</cbc:PayableAmount>"));
+        assert!(xml.contains("<cbc:PayableRoundingAmount>-10.51</cbc:PayableRoundingAmount>"));
+        assert!(xml.contains("<cbc:PrepaidAmount>10.50</cbc:PrepaidAmount>"));
+        // The model keeps the amount as the issuer stated it.
+        assert_eq!(Invoice::from(document).due, Some(Decimal::new(10505, 3)));
+    }
+
+    #[test]
+    fn serializes_a_price_with_its_own_scale() {
+        let mut source = empty_builder();
+        source.invoice.lines = vec![InvoiceLine {
+            price: Some(Price {
+                net: Some(Decimal::new(5, 3)),
+                ..Default::default()
+            }),
+            ..Default::default()
+        }];
+
+        let document = written(source);
+
+        assert!(
+            document
+                .xml()
+                .contains("<cbc:PriceAmount>0.005</cbc:PriceAmount>")
+        );
     }
 
     #[test]

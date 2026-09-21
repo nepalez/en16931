@@ -16,7 +16,7 @@ use en16931_core::{
     ElectronicAddress, ElectronicAddressScheme, Format, InvalidDocument, Invoice, InvoiceLine,
     Item, LegalEntity, PaymentDetails, PaymentInstructions, PaymentMeans, Percentage, Period,
     PostalAddress, Price, Profile, Quantity, RawReport, Seller, Ubl, Unit, ValidDocument,
-    VatIdentifier, VatTreatment, Wrapper,
+    VatBreakdown, VatIdentifier, VatTreatment, Wrapper,
 };
 use en16931_iso::Iso;
 use en16931_kosit::Kosit;
@@ -45,8 +45,25 @@ fn invoice() -> Invoice {
             end: Date::from_calendar_date(2026, Month::January, 31).expect("a date"),
         }),
         payment: Some(payment()),
+        line_net_total: Some(Decimal::new(20000, 2)),
+        net_total: Some(Decimal::new(20000, 2)),
+        vat_total: Some(Decimal::new(3800, 2)),
+        gross_total: Some(Decimal::new(23800, 2)),
+        due: Some(Decimal::new(23800, 2)),
+        vat_breakdown: vec![VatBreakdown {
+            treatment: Some(vat()),
+            taxable: Some(Decimal::new(20000, 2)),
+            tax: Some(Decimal::new(3800, 2)),
+        }],
         lines: vec![line()],
         ..Default::default()
+    }
+}
+
+// The standard VAT rate the line and its breakdown group share.
+fn vat() -> VatTreatment {
+    VatTreatment::Standard {
+        rate: Percentage::try_from(Decimal::from(19)).expect("a rate"),
     }
 }
 
@@ -102,13 +119,13 @@ fn line() -> InvoiceLine {
             unit: Unit::from_code("C62").expect("a unit"),
             value: Decimal::from(2),
         }),
+        net_amount: Some(Decimal::new(20000, 2)),
         price: Some(Price {
+            net: Some(Decimal::new(10000, 2)),
             gross: Some(Decimal::new(10000, 2)),
             ..Default::default()
         }),
-        vat: Some(VatTreatment::Standard {
-            rate: Percentage::try_from(Decimal::from(19)).expect("a rate"),
-        }),
+        vat: Some(vat()),
         item: Some(Item {
             name: Some("Item name".parse().expect("a name")),
             ..Default::default()

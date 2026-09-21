@@ -160,7 +160,7 @@ mod test {
 
     // A serialized document of the rich UBL fixture.
     fn document() -> Document<Invoice, Ubl> {
-        Document::try_from(builder()).expect("a serialized document")
+        Document::try_from(builder(Binding::Ubl)).expect("a serialized document")
     }
 
     // The same document with `cbc` renamed to `foo`, an abbreviation of its own.
@@ -277,12 +277,21 @@ mod test {
     }
 
     #[test]
-    fn binds_an_address_of_a_term_less_node_to_the_root() {
+    fn binds_an_address_of_a_stated_amount_to_its_field() {
         let location = location(&[
             ("ubl", "Invoice", 1),
             ("cac", "LegalMonetaryTotal", 1),
             ("cbc", "PayableAmount", 1),
         ]);
+
+        let bound = document().resolve(&location);
+
+        assert_eq!(bound, Some(context(vec![field("due")])));
+    }
+
+    #[test]
+    fn binds_an_address_of_a_term_less_node_to_the_root() {
+        let location = location(&[("ubl", "Invoice", 1), ("cac", "LegalMonetaryTotal", 1)]);
 
         let bound = document().resolve(&location);
 
@@ -449,8 +458,8 @@ mod test {
 
     #[test]
     fn round_trips_a_builder_through_the_cii_document() {
-        let document =
-            Document::<Invoice, Cii>::try_from(builder()).expect("a serialized document");
+        let document = Document::<Invoice, Cii>::try_from(builder(Binding::Cii))
+            .expect("a serialized document");
 
         let parsed = Document::<Invoice, Cii>::parse(&document.xml).expect("a parsed document");
 
@@ -459,7 +468,7 @@ mod test {
 
     #[test]
     fn yields_the_request_parts() {
-        let source = builder();
+        let source = builder(Binding::Ubl);
         let document = document();
 
         let target = Target {
@@ -474,7 +483,7 @@ mod test {
 
     #[test]
     fn yields_the_request_parts_of_each_profile_of_one_invoice() {
-        let source = builder();
+        let source = builder(Binding::Ubl);
 
         for profile in [Profile::Nlcius10, Profile::PeppolBisBilling30] {
             let document = Document::<Invoice, Ubl>::try_from(DocumentBuilder {
@@ -495,7 +504,7 @@ mod test {
 
     #[test]
     fn yields_its_invoice_by_value() {
-        let source = builder();
+        let source = builder(Binding::Ubl);
 
         assert_eq!(Invoice::from(document()), source.invoice);
     }

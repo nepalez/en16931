@@ -30,35 +30,35 @@ fn date(value: Date) -> String {
     )
 }
 
-// Renders a monetary amount with two fraction digits, the EN-16931 form.
+// Renders a monetary amount rounded to two fraction digits, the EN-16931 form.
+// It is the only place where the library rounds an amount.
 fn money(value: Decimal) -> String {
-    format!("{value:.2}")
+    let rounded = value.round_dp_with_strategy(2, RoundingStrategy::MidpointAwayFromZero);
+    format!("{rounded:.2}")
 }
 
-// Renders a plain decimal (quantity, rate, factor) with its own scale.
+// Renders a plain decimal (quantity, rate, factor, price) with its own scale.
 fn plain(value: Decimal) -> String {
     value.to_string()
 }
 
 /// The stateful CII writer: an XML sink plus the trace that builds the dictionary.
-struct Serializer<'a> {
+struct Serializer {
     inner: Writer<Vec<u8>>,
     trace: Trace<cii::Namespace>,
     abbreviations: Abbreviations<cii::Namespace>,
     forbidden: &'static [Term],
     currency: Option<&'static str>,
-    invoice: &'a Invoice,
 }
 
-impl<'a> Serializer<'a> {
-    fn new(builder: &'a DocumentBuilder<Invoice>) -> Self {
+impl Serializer {
+    fn new(builder: &DocumentBuilder<Invoice>) -> Self {
         Self {
             inner: Writer::new(Vec::new()),
             trace: Trace::new(),
             abbreviations: <Cii as Format>::Namespace::default_abbreviations(),
             forbidden: builder.profile.forbidden_terms(),
             currency: builder.invoice.currency.as_ref().map(Currency::code),
-            invoice: &builder.invoice,
         }
     }
 
@@ -427,48 +427,57 @@ impl<'a> Serializer<'a> {
         );
     }
 
-    // Serializes the gross and net prices of a line (`BG-29`).
+    // Serializes the gross and net prices of a line (`BG-29`), every price with its own scale.
+    // The gross price group is absent without the gross price and the discount.
     fn line_price(&mut self, price: &Price) {
-        self.field_group(
-            cii::Namespace::Ram,
-            "GrossPriceProductTradePrice",
-            "price",
-            |serializer| {
-                if let Some(gross) = price.gross {
-                    serializer.derived(cii::Namespace::Ram, "ChargeAmount", &[], &money(gross));
-                }
-                if let Some(base) = price.base_quantity {
-                    serializer.derived(
-                        cii::Namespace::Ram,
-                        "BasisQuantity",
-                        &[("unitCode", base.unit.code())],
-                        &plain(base.value),
-                    );
-                }
-                if let Some(discount) = price.discount {
-                    serializer.nested(
-                        cii::Namespace::Ram,
-                        "AppliedTradeAllowanceCharge",
-                        |serializer| {
-                            serializer.indicator(false);
-                            serializer.derived(
-                                cii::Namespace::Ram,
-                                "ActualAmount",
-                                &[],
-                                &money(discount),
-                            );
-                        },
-                    );
-                }
-            },
-        );
+        if price.gross.is_some() || price.discount.is_some() {
+            self.field_group(
+                cii::Namespace::Ram,
+                "GrossPriceProductTradePrice",
+                "price",
+                |serializer| {
+                    if let Some(gross) = price.gross {
+                        serializer.derived(cii::Namespace::Ram, "ChargeAmount", &[], &plain(gross));
+                    }
+                    if let Some(base) = price.base_quantity {
+                        serializer.derived(
+                            cii::Namespace::Ram,
+                            "BasisQuantity",
+                            &[("unitCode", base.unit.code())],
+                            &plain(base.value),
+                        );
+                    }
+                    if let Some(discount) = price.discount {
+                        serializer.nested(
+                            cii::Namespace::Ram,
+                            "AppliedTradeAllowanceCharge",
+                            |serializer| {
+                                serializer.indicator(false);
+                                serializer.derived(
+                                    cii::Namespace::Ram,
+                                    "ActualAmount",
+                                    &[],
+                                    &plain(discount),
+                                );
+                            },
+                        );
+                    }
+                },
+            );
+        }
         self.field_group(
             cii::Namespace::Ram,
             "NetPriceProductTradePrice",
             "price",
             |serializer| {
-                if let Some(net) = price.net() {
-                    serializer.derived(cii::Namespace::Ram, "ChargeAmount", &[], &money(net));
+                if let Some(net) = price.net {
+                    serializer.leaf(
+                        cii::Namespace::Ram,
+                        "ChargeAmount",
+                        "net",
+                        Term::BT(146),
+                        &plain(net),
+                    );
                 }
                 if let Some(base) = price.base_quantity {
                     serializer.derived(
@@ -498,15 +507,16 @@ impl<'a> Serializer<'a> {
                     let instance = index(position);
                     serializer.line_adjustment(adjustment, instance);
                 }
-                if let Some(net) = line.net_amount(serializer.invoice) {
+                if let Some(net) = line.net_amount {
                     serializer.structural(
                         cii::Namespace::Ram,
                         "SpecifiedTradeSettlementLineMonetarySummation",
                         |serializer| {
-                            serializer.derived(
+                            serializer.leaf(
                                 cii::Namespace::Ram,
                                 "LineTotalAmount",
-                                &[],
+                                "net_amount",
+                                Term::BT(131),
                                 &money(net),
                             );
                         },
@@ -1342,64 +1352,83 @@ impl<'a> Serializer<'a> {
         );
     }
 
-    // Serializes the VAT breakdown (`BG-23`), all derived and mapped to the root.
-    // The breakdown is absent when a line or an adjustment lacks an input.
+    // Serializes the VAT breakdown (`BG-23`), each group an instance mapped to its own fields.
     fn tax_breakdown(&mut self, invoice: &Invoice) {
         let event = match invoice.vat_point {
             Some(VatPoint::Event(event)) => Some(u16::from(event).to_string()),
             _ => None,
         };
-        let Some(groups) = invoice.vat_breakdown() else {
-            return;
-        };
-        for group in groups {
-            self.structural(cii::Namespace::Ram, "ApplicableTradeTax", |serializer| {
-                serializer.derived(
-                    cii::Namespace::Ram,
-                    "CalculatedAmount",
-                    &[],
-                    &money(group.tax),
-                );
-                serializer.derived(cii::Namespace::Ram, "TypeCode", &[], "VAT");
-                if let VatTreatment::Exempt {
-                    text: Some(text), ..
-                } = &group.treatment
-                {
-                    serializer.derived(cii::Namespace::Ram, "ExemptionReason", &[], text.as_ref());
-                }
-                serializer.derived(
-                    cii::Namespace::Ram,
-                    "BasisAmount",
-                    &[],
-                    &money(group.taxable),
-                );
-                serializer.derived(
-                    cii::Namespace::Ram,
-                    "CategoryCode",
-                    &[],
-                    &group.treatment.category().to_string(),
-                );
-                if let VatTreatment::Exempt {
-                    code: Some(code), ..
-                } = &group.treatment
-                {
-                    serializer.derived(
-                        cii::Namespace::Ram,
-                        "ExemptionReasonCode",
-                        &[],
-                        &code.to_string(),
-                    );
-                }
-                if let Some(event) = &event {
-                    serializer.derived(cii::Namespace::Ram, "DueDateTypeCode", &[], event);
-                }
-                serializer.derived(
-                    cii::Namespace::Ram,
-                    "RateApplicablePercent",
-                    &[],
-                    &plain(group.treatment.rate()),
-                );
-            });
+        for (position, group) in invoice.vat_breakdown.iter().enumerate() {
+            let instance = index(position);
+            self.repeatable(
+                cii::Namespace::Ram,
+                "ApplicableTradeTax",
+                "vat_breakdown",
+                Term::BG(23),
+                instance,
+                |serializer| {
+                    if let Some(tax) = group.tax {
+                        serializer.leaf(
+                            cii::Namespace::Ram,
+                            "CalculatedAmount",
+                            "tax",
+                            Term::BT(117),
+                            &money(tax),
+                        );
+                    }
+                    serializer.derived(cii::Namespace::Ram, "TypeCode", &[], "VAT");
+                    if let Some(VatTreatment::Exempt {
+                        text: Some(text), ..
+                    }) = &group.treatment
+                    {
+                        serializer.field_leaf(
+                            cii::Namespace::Ram,
+                            "ExemptionReason",
+                            "treatment",
+                            text.as_ref(),
+                        );
+                    }
+                    if let Some(taxable) = group.taxable {
+                        serializer.leaf(
+                            cii::Namespace::Ram,
+                            "BasisAmount",
+                            "taxable",
+                            Term::BT(116),
+                            &money(taxable),
+                        );
+                    }
+                    if let Some(treatment) = &group.treatment {
+                        serializer.field_leaf(
+                            cii::Namespace::Ram,
+                            "CategoryCode",
+                            "treatment",
+                            &treatment.category().to_string(),
+                        );
+                    }
+                    if let Some(VatTreatment::Exempt {
+                        code: Some(code), ..
+                    }) = &group.treatment
+                    {
+                        serializer.field_leaf(
+                            cii::Namespace::Ram,
+                            "ExemptionReasonCode",
+                            "treatment",
+                            &code.to_string(),
+                        );
+                    }
+                    if let Some(event) = &event {
+                        serializer.derived(cii::Namespace::Ram, "DueDateTypeCode", &[], event);
+                    }
+                    if let Some(treatment) = &group.treatment {
+                        serializer.field_leaf(
+                            cii::Namespace::Ram,
+                            "RateApplicablePercent",
+                            "treatment",
+                            &plain(treatment.rate()),
+                        );
+                    }
+                },
+            );
         }
     }
 
@@ -1472,22 +1501,26 @@ impl<'a> Serializer<'a> {
         }
     }
 
-    // Serializes the amount of an adjustment, mapped to the enclosing adjustment.
+    // Serializes the amount of an adjustment, mapped to the amount field.
     fn adjustment_amount(&mut self, amount: &AdjustmentAmount) {
-        if let AdjustmentAmount::Relative { rate, base } = amount {
-            self.derived(
-                cii::Namespace::Ram,
-                "CalculationPercent",
-                &[],
-                &plain(Decimal::from(*rate)),
-            );
-            self.derived(cii::Namespace::Ram, "BasisAmount", &[], &money(*base));
-        }
-        self.derived(
+        let actual = match amount {
+            AdjustmentAmount::Relative { amount, rate, base } => {
+                self.field_leaf(
+                    cii::Namespace::Ram,
+                    "CalculationPercent",
+                    "amount",
+                    &plain(Decimal::from(*rate)),
+                );
+                self.field_leaf(cii::Namespace::Ram, "BasisAmount", "amount", &money(*base));
+                amount
+            }
+            AdjustmentAmount::Absolute(amount) => amount,
+        };
+        self.field_leaf(
             cii::Namespace::Ram,
             "ActualAmount",
-            &[],
-            &money(amount.value(self.invoice)),
+            "amount",
+            &money(*actual),
         );
     }
 
@@ -1545,74 +1578,86 @@ impl<'a> Serializer<'a> {
         );
     }
 
-    // Serializes the header monetary summation, all derived and mapped to the root.
-    // A derived amount is absent when an input it needs is absent,
-    // and the whole group is absent when nothing remains to write.
+    // Serializes the header monetary summation, each amount mapped to its own field.
+    // The whole group is absent when the invoice states none of its amounts.
     fn monetary_summation(&mut self, invoice: &Invoice, currency: &[(&str, &str)]) {
-        let line_net = invoice.line_net_total();
-        if line_net.is_none() && invoice.paid.is_none() && invoice.rounding.is_none() {
+        let totals: [(_, _, _, &[(&str, &str)], _); 9] = [
+            (
+                "LineTotalAmount",
+                "line_net_total",
+                Term::BT(106),
+                &[],
+                invoice.line_net_total,
+            ),
+            (
+                "ChargeTotalAmount",
+                "charges_total",
+                Term::BT(108),
+                &[],
+                invoice.charges_total,
+            ),
+            (
+                "AllowanceTotalAmount",
+                "allowances_total",
+                Term::BT(107),
+                &[],
+                invoice.allowances_total,
+            ),
+            (
+                "TaxBasisTotalAmount",
+                "net_total",
+                Term::BT(109),
+                &[],
+                invoice.net_total,
+            ),
+            (
+                "TaxTotalAmount",
+                "vat_total",
+                Term::BT(110),
+                currency,
+                invoice.vat_total,
+            ),
+            (
+                "RoundingAmount",
+                "rounding",
+                Term::BT(114),
+                &[],
+                invoice.rounding,
+            ),
+            (
+                "GrandTotalAmount",
+                "gross_total",
+                Term::BT(112),
+                &[],
+                invoice.gross_total,
+            ),
+            (
+                "TotalPrepaidAmount",
+                "paid",
+                Term::BT(113),
+                &[],
+                invoice.paid,
+            ),
+            ("DuePayableAmount", "due", Term::BT(115), &[], invoice.due),
+        ];
+        if totals.iter().all(|(_, _, _, _, value)| value.is_none()) {
             return;
         }
         self.structural(
             cii::Namespace::Ram,
             "SpecifiedTradeSettlementHeaderMonetarySummation",
             |serializer| {
-                if let Some(total) = line_net {
-                    serializer.derived(cii::Namespace::Ram, "LineTotalAmount", &[], &money(total));
-                }
-                if let Some(total) = invoice.charges_total().filter(|total| !total.is_zero()) {
-                    serializer.derived(
-                        cii::Namespace::Ram,
-                        "ChargeTotalAmount",
-                        &[],
-                        &money(total),
-                    );
-                }
-                if let Some(total) = invoice.allowances_total().filter(|total| !total.is_zero()) {
-                    serializer.derived(
-                        cii::Namespace::Ram,
-                        "AllowanceTotalAmount",
-                        &[],
-                        &money(total),
-                    );
-                }
-                if let Some(total) = invoice.net_total() {
-                    serializer.derived(
-                        cii::Namespace::Ram,
-                        "TaxBasisTotalAmount",
-                        &[],
-                        &money(total),
-                    );
-                }
-                if let Some(total) = invoice.vat_total() {
-                    serializer.derived(
-                        cii::Namespace::Ram,
-                        "TaxTotalAmount",
-                        currency,
-                        &money(total),
-                    );
-                }
-                if let Some(rounding) = invoice.rounding {
-                    serializer.derived(
-                        cii::Namespace::Ram,
-                        "RoundingAmount",
-                        &[],
-                        &money(rounding),
-                    );
-                }
-                if let Some(total) = invoice.gross_total() {
-                    serializer.derived(cii::Namespace::Ram, "GrandTotalAmount", &[], &money(total));
-                }
-                if let Some(paid) = invoice.paid {
-                    serializer.derived(
-                        cii::Namespace::Ram,
-                        "TotalPrepaidAmount",
-                        &[],
-                        &money(paid),
-                    );
-                }
-                if let Some(due) = invoice.due() {
-                    serializer.derived(cii::Namespace::Ram, "DuePayableAmount", &[], &money(due));
+                for (name, field, term, attributes, value) in totals {
+                    if let Some(value) = value {
+                        serializer.leaf_attr(
+                            cii::Namespace::Ram,
+                            name,
+                            field,
+                            term,
+                            attributes,
+                            &money(value),
+                        );
+                    }
                 }
             },
         );

@@ -43,14 +43,13 @@ mod quantity;
 mod seller;
 mod supporting_document;
 mod tax_representative;
+mod vat_breakdown;
 mod vat_category;
 mod vat_identifier;
 mod vat_point;
 mod vat_treatment;
 
-pub use crate::prelude::{
-    CountryCode, Currency, Date, Decimal, EmailAddress, RoundingStrategy, UnitOfMeasure, Url,
-};
+pub use crate::prelude::{CountryCode, Currency, Date, Decimal, EmailAddress, UnitOfMeasure, Url};
 pub use account_number::AccountNumber;
 pub use adjustment::{Adjustment, AdjustmentAmount, AdjustmentReason, LineAdjustment};
 pub use allowance_reason::AllowanceReason;
@@ -96,6 +95,7 @@ pub use quantity::{Quantity, Unit};
 pub use seller::Seller;
 pub use supporting_document::SupportingDocument;
 pub use tax_representative::TaxRepresentative;
+pub use vat_breakdown::VatBreakdown;
 pub use vat_category::VatCategory;
 pub use vat_identifier::VatIdentifier;
 pub use vat_point::{VatPoint, VatPointEvent};

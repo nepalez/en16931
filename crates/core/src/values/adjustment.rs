@@ -1,6 +1,4 @@
-use crate::{
-    AllowanceReason, ChargeReason, Decimal, Invoice, NonEmptyString, Percentage, VatTreatment,
-};
+use crate::{AllowanceReason, ChargeReason, Decimal, NonEmptyString, Percentage, VatTreatment};
 
 /// A document-level adjustment (`BG-20` allowance, `BG-21` charge):
 /// a deduction or addition applied to the whole invoice.
@@ -30,46 +28,22 @@ pub struct LineAdjustment {
     pub reason: Option<AdjustmentReason>,
 }
 
-impl LineAdjustment {
-    /// The amount signed by direction: positive for a charge, negative for an allowance,
-    /// or `None` without the amount or the direction.
-    /// The `invoice` the adjustment belongs to rounds the amount.
-    pub fn signed_amount(&self, invoice: &Invoice) -> Option<Decimal> {
-        let value = self.amount.as_ref()?.value(invoice);
-        match self.reason.as_ref()? {
-            AdjustmentReason::Charge { .. } => Some(value),
-            AdjustmentReason::Allowance { .. } => Some(-value),
-        }
-    }
-}
-
-/// The amount of an adjustment: a fixed sum, or a percentage of a base.
+/// The amount of an adjustment: a fixed sum, or a sum stated as a percentage of a base.
+/// The issuer states the sum in both forms: the library does not derive it from the base.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum AdjustmentAmount {
     /// A fixed amount (`BT-92`/`BT-99`/`BT-136`/`BT-141`).
     Absolute(Decimal),
-    /// A percentage of a base
+    /// An amount stated as a percentage of a base
     /// (`BT-94`/`BT-101`/`BT-138`/`BT-143` of `BT-93`/`BT-100`/`BT-137`/ `BT-142`).
     Relative {
+        /// The adjustment amount (`BT-92`/`BT-99`/`BT-136`/`BT-141`).
+        amount: Decimal,
         /// The percentage rate applied to the base.
         rate: Percentage,
         /// The base the rate is applied to.
         base: Decimal,
     },
-}
-
-impl AdjustmentAmount {
-    /// The adjustment amount (`BT-92`/`BT-99`/`BT-136`/`BT-141`):
-    /// the fixed sum, or the base times the rate.
-    /// The `invoice` the adjustment belongs to rounds the amount.
-    pub fn value(&self, invoice: &Invoice) -> Decimal {
-        match self {
-            Self::Absolute(value) => *value,
-            Self::Relative { rate, base } => {
-                invoice.round(base * Decimal::from(*rate) / Decimal::from(100))
-            }
-        }
-    }
 }
 
 /// The reason for an adjustment, keyed by its direction: an allowance or a charge.
@@ -91,30 +65,4 @@ pub enum AdjustmentReason {
         /// Reason text (`BT-104`/`BT-144`).
         text: Option<NonEmptyString>,
     },
-}
-
-#[cfg(test)]
-mod test {
-    use super::*;
-
-    #[test]
-    fn values_a_relative_amount_as_the_base_times_the_rate() {
-        let amount = AdjustmentAmount::Relative {
-            rate: Percentage::try_from(Decimal::new(15, 1)).expect("a valid rate"),
-            base: Decimal::new(20000, 2),
-        };
-
-        assert_eq!(amount.value(&Invoice::default()), Decimal::new(300, 2));
-    }
-
-    #[test]
-    fn rounds_a_relative_amount_half_away_from_zero() {
-        let amount = AdjustmentAmount::Relative {
-            rate: Percentage::try_from(Decimal::new(75, 1)).expect("a valid rate"),
-            base: Decimal::new(1003, 2),
-        };
-
-        // 10.03 * 7.5% = 0.75225 -> 0.75
-        assert_eq!(amount.value(&Invoice::default()), Decimal::new(75, 2));
-    }
 }

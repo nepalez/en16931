@@ -86,6 +86,8 @@ let invoice = Invoice {
         },
         // ...
     },
+    // The issuer states every amount: the library computes none of them.
+    due: Some("238.00".parse()?),
     // ...
 };
 

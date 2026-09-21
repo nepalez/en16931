@@ -8,8 +8,9 @@ use crate::{
     ElectronicAddress, Error, ExemptionReason, Format, Invoice, InvoiceLine, Item, ItemAttribute,
     LegalEntity, LineAdjustment, LocationReference, MimeCode, NonEmptyString, Note,
     ObjectReference, OperationalEntity, Payee, PaymentCard, PaymentDetails, PaymentInstructions,
-    Period, PostalAddress, PrecedingInvoice, Price, Quantity, Seller, SupportingDocument,
-    TaxRepresentative, Ubl, Unit, VatCategory, VatPoint, VatTreatment,
+    Percentage, Period, PostalAddress, PrecedingInvoice, Price, Quantity, Seller,
+    SupportingDocument, TaxRepresentative, Ubl, Unit, VatBreakdown, VatCategory, VatPoint,
+    VatTreatment,
 };
 
 impl Deserializable<Ubl> for Invoice {
@@ -193,18 +194,22 @@ impl Parser {
             adjustments.push(self.parse_adjustment(instance)?);
         }
 
-        let mut exemptions = ExemptionMap::new();
+        let mut tax_total = TaxTotal {
+            exemptions: ExemptionMap::new(),
+            vat_total: None,
+            breakdown: Vec::new(),
+        };
         let mut accounting_value = None;
         if self.is_open(ubl::Namespace::Cac, "TaxTotal") {
-            exemptions = self.parse_tax_total()?;
+            tax_total = self.parse_tax_total()?;
         }
         if self.is_open(ubl::Namespace::Cac, "TaxTotal") {
             accounting_value = self.parse_accounting_tax_total()?;
         }
-        let (paid, rounding) = if self.is_open(ubl::Namespace::Cac, "LegalMonetaryTotal") {
+        let monetary_total = if self.is_open(ubl::Namespace::Cac, "LegalMonetaryTotal") {
             self.parse_legal_monetary_total()?
         } else {
-            (None, None)
+            MonetaryTotal::default()
         };
 
         let mut lines = Vec::new();
@@ -249,14 +254,21 @@ impl Parser {
             delivery,
             invoicing_period,
             adjustments,
-            rounding,
+            line_net_total: monetary_total.line_net_total,
+            allowances_total: monetary_total.allowances_total,
+            charges_total: monetary_total.charges_total,
+            net_total: monetary_total.net_total,
+            vat_total: tax_total.vat_total,
+            gross_total: monetary_total.gross_total,
+            rounding: monetary_total.rounding,
             payment,
-            paid,
+            paid: monetary_total.paid,
+            due: monetary_total.due,
+            vat_breakdown: tax_total.breakdown,
             supporting_documents,
             lines,
-            rounding_strategy: None,
         };
-        exemptions.apply(&mut invoice);
+        tax_total.exemptions.apply(&mut invoice);
 
         Ok(DocumentBuilder {
             invoice,
@@ -718,19 +730,19 @@ impl Parser {
 
     // Parses the amount of an adjustment, absolute or relative, absent without the amount.
     fn parse_adjustment_amount(&mut self) -> Result<Option<AdjustmentAmount>, Error> {
-        let factor = self
-            .optional_derived(ubl::Namespace::Cbc, "MultiplierFactorNumeric")?
-            .map(|(_, text)| text);
+        let factor =
+            self.optional_text(ubl::Namespace::Cbc, "MultiplierFactorNumeric", "amount")?;
         let amount = self
-            .optional_derived(ubl::Namespace::Cbc, "Amount")?
-            .map(|(_, text)| parse_decimal(&text))
+            .optional_text(ubl::Namespace::Cbc, "Amount", "amount")?
+            .map(|text| parse_decimal(&text))
             .transpose()?;
         let base = self
-            .optional_derived(ubl::Namespace::Cbc, "BaseAmount")?
-            .map(|(_, text)| parse_decimal(&text))
+            .optional_text(ubl::Namespace::Cbc, "BaseAmount", "amount")?
+            .map(|text| parse_decimal(&text))
             .transpose()?;
         Ok(match (factor, amount, base) {
-            (Some(factor), Some(_), Some(base)) => Some(AdjustmentAmount::Relative {
+            (Some(factor), Some(amount), Some(base)) => Some(AdjustmentAmount::Relative {
+                amount,
                 rate: factor.parse()?,
                 base,
             }),
@@ -751,80 +763,137 @@ impl Parser {
         Ok(VatTreatment::from_category(category, rate))
     }
 
-    // Parses the tax total (`BG-23`), collecting exemption reasons per category.
-    fn parse_tax_total(&mut self) -> Result<ExemptionMap, Error> {
+    // Parses the tax total: the VAT total (`BT-110`) and the breakdown (`BG-23`),
+    // collecting exemption reasons per category.
+    fn parse_tax_total(&mut self) -> Result<TaxTotal, Error> {
         let mut exemptions = ExemptionMap::new();
+        let mut breakdown = Vec::new();
         self.enter_structural(ubl::Namespace::Cac, "TaxTotal")?;
-        self.optional_derived(ubl::Namespace::Cbc, "TaxAmount")?;
+        let vat_total = self
+            .optional_text(ubl::Namespace::Cbc, "TaxAmount", "vat_total")?
+            .map(|text| parse_decimal(&text))
+            .transpose()?;
         while self.is_open(ubl::Namespace::Cac, "TaxSubtotal") {
-            self.enter_structural(ubl::Namespace::Cac, "TaxSubtotal")?;
-            self.optional_derived(ubl::Namespace::Cbc, "TaxableAmount")?;
-            self.optional_derived(ubl::Namespace::Cbc, "TaxAmount")?;
-            self.enter_structural(ubl::Namespace::Cac, "TaxCategory")?;
-            let category: Option<VatCategory> = self
-                .optional_derived(ubl::Namespace::Cbc, "ID")?
-                .map(|(_, text)| text.parse())
+            let instance = index(breakdown.len());
+            self.enter_repeatable(
+                ubl::Namespace::Cac,
+                "TaxSubtotal",
+                "vat_breakdown",
+                instance,
+            )?;
+            let taxable = self
+                .optional_text(ubl::Namespace::Cbc, "TaxableAmount", "taxable")?
+                .map(|text| parse_decimal(&text))
                 .transpose()?;
-            self.optional_derived(ubl::Namespace::Cbc, "Percent")?;
-            let mut code = None;
-            let mut text = None;
-            if self.is_open(ubl::Namespace::Cbc, "TaxExemptionReasonCode") {
-                code = Some(
-                    self.derived(ubl::Namespace::Cbc, "TaxExemptionReasonCode")?
-                        .1
-                        .parse()?,
-                );
+            let tax = self
+                .optional_text(ubl::Namespace::Cbc, "TaxAmount", "tax")?
+                .map(|text| parse_decimal(&text))
+                .transpose()?;
+            let treatment = if self.is_open(ubl::Namespace::Cac, "TaxCategory") {
+                self.parse_breakdown_category()?
+            } else {
+                None
+            };
+            self.leave_repeatable()?;
+            if let Some(VatTreatment::Exempt { code, text }) = &treatment {
+                exemptions.set(*code, text.clone());
             }
-            if self.is_open(ubl::Namespace::Cbc, "TaxExemptionReason") {
-                text = Some(
-                    self.derived(ubl::Namespace::Cbc, "TaxExemptionReason")?
-                        .1
-                        .parse()?,
-                );
-            }
-            if self.is_open(ubl::Namespace::Cac, "TaxScheme") {
-                self.enter_structural(ubl::Namespace::Cac, "TaxScheme")?;
-                self.optional_derived(ubl::Namespace::Cbc, "ID")?;
-                self.leave_structural()?;
-            }
-            self.leave_structural()?;
-            self.leave_structural()?;
-            if category == Some(VatCategory::Exempt) {
-                exemptions.set(code, text);
-            }
+            breakdown.push(VatBreakdown {
+                treatment,
+                taxable,
+                tax,
+            });
         }
         self.leave_structural()?;
-        Ok(exemptions)
+        Ok(TaxTotal {
+            exemptions,
+            vat_total,
+            breakdown,
+        })
+    }
+
+    // Parses the VAT category of a breakdown group, absent without the category code.
+    fn parse_breakdown_category(&mut self) -> Result<Option<VatTreatment>, Error> {
+        self.enter_group(ubl::Namespace::Cac, "TaxCategory", "treatment")?;
+        let category: Option<VatCategory> = self
+            .optional_derived(ubl::Namespace::Cbc, "ID")?
+            .map(|(_, text)| text.parse())
+            .transpose()?;
+        let rate: Option<Percentage> = self
+            .optional_derived(ubl::Namespace::Cbc, "Percent")?
+            .map(|(_, text)| text.parse())
+            .transpose()?;
+        let mut code = None;
+        let mut text = None;
+        if self.is_open(ubl::Namespace::Cbc, "TaxExemptionReasonCode") {
+            code = Some(
+                self.derived(ubl::Namespace::Cbc, "TaxExemptionReasonCode")?
+                    .1
+                    .parse()?,
+            );
+        }
+        if self.is_open(ubl::Namespace::Cbc, "TaxExemptionReason") {
+            text = Some(
+                self.derived(ubl::Namespace::Cbc, "TaxExemptionReason")?
+                    .1
+                    .parse()?,
+            );
+        }
+        if self.is_open(ubl::Namespace::Cac, "TaxScheme") {
+            self.enter_nested(ubl::Namespace::Cac, "TaxScheme")?;
+            self.optional_derived(ubl::Namespace::Cbc, "ID")?;
+            self.leave_nested()?;
+        }
+        self.leave_group()?;
+        let Some(category) = category else {
+            return Ok(None);
+        };
+        let rate = match rate {
+            Some(rate) => rate,
+            None => Percentage::try_from(Decimal::ZERO)?,
+        };
+        Ok(Some(match VatTreatment::from_category(category, rate) {
+            VatTreatment::Exempt { .. } => VatTreatment::Exempt { code, text },
+            treatment => treatment,
+        }))
     }
 
     // Parses the accounting-currency tax total, returning its amount (`BT-111`) when present.
     fn parse_accounting_tax_total(&mut self) -> Result<Option<Decimal>, Error> {
         self.enter_structural(ubl::Namespace::Cac, "TaxTotal")?;
         let value = self
-            .optional_derived(ubl::Namespace::Cbc, "TaxAmount")?
-            .map(|(_, text)| parse_decimal(&text))
+            .optional_text(ubl::Namespace::Cbc, "TaxAmount", "vat_accounting_total")?
+            .map(|text| parse_decimal(&text))
             .transpose()?;
         self.leave_structural()?;
         Ok(value)
     }
 
-    // Walks the legal monetary total, keeping the paid (`BT-113`) and rounding (`BT-114`)
-    // amounts and discarding the derived totals.
-    fn parse_legal_monetary_total(&mut self) -> Result<(Option<Decimal>, Option<Decimal>), Error> {
+    // Walks the legal monetary total, keeping every amount the document states.
+    fn parse_legal_monetary_total(&mut self) -> Result<MonetaryTotal, Error> {
         self.enter_structural(ubl::Namespace::Cac, "LegalMonetaryTotal")?;
-        let mut paid = None;
-        let mut rounding = None;
+        let mut total = MonetaryTotal::default();
         while self.is_open_namespace(ubl::Namespace::Cbc) {
             let (_, name) = self.head()?;
-            let (_, text) = self.derived(ubl::Namespace::Cbc, &name)?;
-            match name.as_str() {
-                "PrepaidAmount" => paid = Some(parse_decimal(&text)?),
-                "PayableRoundingAmount" => rounding = Some(parse_decimal(&text)?),
-                _ => {}
-            }
+            let (field, slot) = match name.as_str() {
+                "LineExtensionAmount" => ("line_net_total", &mut total.line_net_total),
+                "TaxExclusiveAmount" => ("net_total", &mut total.net_total),
+                "TaxInclusiveAmount" => ("gross_total", &mut total.gross_total),
+                "AllowanceTotalAmount" => ("allowances_total", &mut total.allowances_total),
+                "ChargeTotalAmount" => ("charges_total", &mut total.charges_total),
+                "PrepaidAmount" => ("paid", &mut total.paid),
+                "PayableRoundingAmount" => ("rounding", &mut total.rounding),
+                "PayableAmount" => ("due", &mut total.due),
+                _ => {
+                    self.derived(ubl::Namespace::Cbc, &name)?;
+                    continue;
+                }
+            };
+            let text = self.leaf(ubl::Namespace::Cbc, &name, field)?;
+            *slot = Some(parse_decimal(&text)?);
         }
         self.leave_structural()?;
-        Ok((paid, rounding))
+        Ok(total)
     }
 
     // Parses one invoice line.
@@ -836,7 +905,10 @@ impl Parser {
             .optional_leaf_attr(ubl::Namespace::Cbc, "InvoicedQuantity", "quantity")?
             .map(|(attributes, text)| parse_quantity(&attributes, &text))
             .transpose()?;
-        self.optional_derived(ubl::Namespace::Cbc, "LineExtensionAmount")?;
+        let net_amount = self
+            .optional_text(ubl::Namespace::Cbc, "LineExtensionAmount", "net_amount")?
+            .map(|text| parse_decimal(&text))
+            .transpose()?;
         let buyer_accounting_reference = self.optional_leaf(
             ubl::Namespace::Cbc,
             "AccountingCost",
@@ -899,6 +971,7 @@ impl Parser {
             note,
             object,
             quantity,
+            net_amount,
             order_line_reference,
             buyer_accounting_reference,
             period,
@@ -1043,8 +1116,8 @@ impl Parser {
     fn parse_price(&mut self) -> Result<Price, Error> {
         self.enter_group(ubl::Namespace::Cac, "Price", "price")?;
         let net = self
-            .optional_derived(ubl::Namespace::Cbc, "PriceAmount")?
-            .map(|(_, text)| parse_decimal(&text))
+            .optional_text(ubl::Namespace::Cbc, "PriceAmount", "net")?
+            .map(|text| parse_decimal(&text))
             .transpose()?;
         let base_quantity = self
             .optional_leaf_attr(ubl::Namespace::Cbc, "BaseQuantity", "price")?
@@ -1064,10 +1137,11 @@ impl Parser {
             self.leave_structural()?;
             (base, amount)
         } else {
-            (net, None)
+            (None, None)
         };
         self.leave_group()?;
         Ok(Price {
+            net,
             gross,
             discount,
             base_quantity,
@@ -1652,6 +1726,26 @@ enum PartyTaxScheme {
 // The exemption reason of the single exempt VAT group, applied back to the model.
 struct ExemptionMap {
     exempt: Option<(Option<ExemptionReason>, Option<NonEmptyString>)>,
+}
+
+// The content of the tax total: the VAT total, the breakdown, and the exemption reasons.
+struct TaxTotal {
+    exemptions: ExemptionMap,
+    vat_total: Option<Decimal>,
+    breakdown: Vec<VatBreakdown>,
+}
+
+// The amounts of the legal monetary total, as the document states them.
+#[derive(Default)]
+struct MonetaryTotal {
+    line_net_total: Option<Decimal>,
+    allowances_total: Option<Decimal>,
+    charges_total: Option<Decimal>,
+    net_total: Option<Decimal>,
+    gross_total: Option<Decimal>,
+    paid: Option<Decimal>,
+    rounding: Option<Decimal>,
+    due: Option<Decimal>,
 }
 
 impl ExemptionMap {

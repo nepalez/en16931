@@ -33,12 +33,14 @@ fn date(value: Date) -> String {
     )
 }
 
-// Renders a monetary amount with two fraction digits, the EN-16931 form.
+// Renders a monetary amount rounded to two fraction digits, the EN-16931 form.
+// It is the only place where the library rounds an amount.
 fn money(value: Decimal) -> String {
-    format!("{value:.2}")
+    let rounded = value.round_dp_with_strategy(2, RoundingStrategy::MidpointAwayFromZero);
+    format!("{rounded:.2}")
 }
 
-// Renders a plain decimal (quantity, rate, factor) with its own scale.
+// Renders a plain decimal (quantity, rate, factor, price) with its own scale.
 fn plain(value: Decimal) -> String {
     value.to_string()
 }
@@ -54,24 +56,22 @@ fn note_text(note: &Note, drop_subject: bool) -> Option<String> {
 }
 
 /// The stateful UBL writer: an XML sink plus the trace that builds the dictionary in lockstep.
-struct Serializer<'a> {
+struct Serializer {
     inner: Writer<Vec<u8>>,
     trace: Trace<ubl::Namespace>,
     abbreviations: Abbreviations<ubl::Namespace>,
     forbidden: &'static [Term],
     currency: Option<&'static str>,
-    invoice: &'a Invoice,
 }
 
-impl<'a> Serializer<'a> {
-    fn new(builder: &'a DocumentBuilder<Invoice>) -> Self {
+impl Serializer {
+    fn new(builder: &DocumentBuilder<Invoice>) -> Self {
         Self {
             inner: Writer::new(Vec::new()),
             trace: Trace::new(),
             abbreviations: <Ubl as Format>::Namespace::default_abbreviations(),
             forbidden: builder.profile.forbidden_terms(),
             currency: builder.invoice.currency.as_ref().map(Currency::code),
-            invoice: &builder.invoice,
         }
     }
 
@@ -1188,91 +1188,95 @@ impl<'a> Serializer<'a> {
         }
     }
 
-    // Serializes the amount of an adjustment, absolute or relative, mapped to the adjustment.
+    // Serializes the amount of an adjustment, absolute or relative, mapped to the amount field.
     fn adjustment_amount(&mut self, amount: &AdjustmentAmount) {
         let currency = self.currency_attribute();
-        if let AdjustmentAmount::Relative { rate, base } = amount {
-            self.derived(
-                ubl::Namespace::Cbc,
-                "MultiplierFactorNumeric",
-                &[],
-                &plain(Decimal::from(*rate)),
-            );
-            self.derived(
-                ubl::Namespace::Cbc,
-                "Amount",
-                &currency,
-                &money(amount.value(self.invoice)),
-            );
-            self.derived(ubl::Namespace::Cbc, "BaseAmount", &currency, &money(*base));
-        } else {
-            self.derived(
-                ubl::Namespace::Cbc,
-                "Amount",
-                &currency,
-                &money(amount.value(self.invoice)),
-            );
+        match amount {
+            AdjustmentAmount::Relative { amount, rate, base } => {
+                self.field_leaf(
+                    ubl::Namespace::Cbc,
+                    "MultiplierFactorNumeric",
+                    "amount",
+                    &plain(Decimal::from(*rate)),
+                );
+                self.field_leaf_attr(
+                    ubl::Namespace::Cbc,
+                    "Amount",
+                    "amount",
+                    &currency,
+                    &money(*amount),
+                );
+                self.field_leaf_attr(
+                    ubl::Namespace::Cbc,
+                    "BaseAmount",
+                    "amount",
+                    &currency,
+                    &money(*base),
+                );
+            }
+            AdjustmentAmount::Absolute(amount) => {
+                self.field_leaf_attr(
+                    ubl::Namespace::Cbc,
+                    "Amount",
+                    "amount",
+                    &currency,
+                    &money(*amount),
+                );
+            }
         }
     }
 
-    // Serializes the tax total (`BG-23`) and the accounting-currency tax total (`BT-111`).
-    // The breakdown is absent when a line or an adjustment lacks an input.
+    // Serializes the tax total (`BT-110`, `BG-23`) and the accounting-currency tax total
+    // (`BT-111`). The first total is absent without the VAT total and the breakdown.
     fn tax_total(&mut self, invoice: &Invoice) {
         let currency = self.currency_attribute();
-        if let Some(groups) = invoice.vat_breakdown() {
-            let total: Decimal = groups.iter().map(|group| group.tax).sum();
+        if invoice.vat_total.is_some() || !invoice.vat_breakdown.is_empty() {
             self.structural(ubl::Namespace::Cac, "TaxTotal", |serializer| {
-                serializer.derived(ubl::Namespace::Cbc, "TaxAmount", &currency, &money(total));
-                for group in groups {
-                    serializer.structural(ubl::Namespace::Cac, "TaxSubtotal", |serializer| {
-                        serializer.derived(
-                            ubl::Namespace::Cbc,
-                            "TaxableAmount",
-                            &currency,
-                            &money(group.taxable),
-                        );
-                        serializer.derived(
-                            ubl::Namespace::Cbc,
-                            "TaxAmount",
-                            &currency,
-                            &money(group.tax),
-                        );
-                        serializer.structural(ubl::Namespace::Cac, "TaxCategory", |serializer| {
-                            serializer.derived(
-                                ubl::Namespace::Cbc,
-                                "ID",
-                                &[],
-                                &group.treatment.category().to_string(),
-                            );
-                            serializer.derived(
-                                ubl::Namespace::Cbc,
-                                "Percent",
-                                &[],
-                                &plain(group.treatment.rate()),
-                            );
-                            if let VatTreatment::Exempt { code, text } = &group.treatment {
-                                if let Some(code) = code {
-                                    serializer.derived(
-                                        ubl::Namespace::Cbc,
-                                        "TaxExemptionReasonCode",
-                                        &[],
-                                        &code.to_string(),
-                                    );
-                                }
-                                if let Some(text) = text {
-                                    serializer.derived(
-                                        ubl::Namespace::Cbc,
-                                        "TaxExemptionReason",
-                                        &[],
-                                        text.as_ref(),
-                                    );
-                                }
+                if let Some(total) = invoice.vat_total {
+                    serializer.leaf_attr(
+                        ubl::Namespace::Cbc,
+                        "TaxAmount",
+                        "vat_total",
+                        Term::BT(110),
+                        &currency,
+                        &money(total),
+                    );
+                }
+                for (position, group) in invoice.vat_breakdown.iter().enumerate() {
+                    let instance =
+                        NonZeroUsize::new(position + 1).expect("a positive breakdown index");
+                    serializer.repeatable(
+                        ubl::Namespace::Cac,
+                        "TaxSubtotal",
+                        "vat_breakdown",
+                        Term::BG(23),
+                        instance,
+                        |serializer| {
+                            if let Some(taxable) = group.taxable {
+                                serializer.leaf_attr(
+                                    ubl::Namespace::Cbc,
+                                    "TaxableAmount",
+                                    "taxable",
+                                    Term::BT(116),
+                                    &currency,
+                                    &money(taxable),
+                                );
                             }
-                            serializer.structural(ubl::Namespace::Cac, "TaxScheme", |serializer| {
-                                serializer.derived(ubl::Namespace::Cbc, "ID", &[], "VAT");
-                            });
-                        });
-                    });
+                            if let Some(tax) = group.tax {
+                                serializer.leaf_attr(
+                                    ubl::Namespace::Cbc,
+                                    "TaxAmount",
+                                    "tax",
+                                    Term::BT(117),
+                                    &currency,
+                                    &money(tax),
+                                );
+                            }
+                            if let Some(treatment) = &group.treatment {
+                                serializer.breakdown_category(treatment);
+                            }
+                        },
+                    );
                 }
             });
         }
@@ -1280,9 +1284,11 @@ impl<'a> Serializer<'a> {
             let accounting_currency = accounting.currency.code();
             let value = money(accounting.value);
             self.structural(ubl::Namespace::Cac, "TaxTotal", |serializer| {
-                serializer.derived(
+                serializer.leaf_attr(
                     ubl::Namespace::Cbc,
                     "TaxAmount",
+                    "vat_accounting_total",
+                    Term::BT(111),
                     &[("currencyID", accounting_currency)],
                     &value,
                 );
@@ -1290,69 +1296,110 @@ impl<'a> Serializer<'a> {
         }
     }
 
-    // Serializes the legal monetary total, all derived amounts mapped to the root.
-    // A derived amount is absent when an input it needs is absent,
-    // and the whole group is absent when nothing remains to write.
+    // Serializes the VAT category of a breakdown group, mapped to its treatment field.
+    fn breakdown_category(&mut self, treatment: &VatTreatment) {
+        self.group(
+            ubl::Namespace::Cac,
+            "TaxCategory",
+            "treatment",
+            Term::BT(118),
+            |serializer| {
+                serializer.derived(
+                    ubl::Namespace::Cbc,
+                    "ID",
+                    &[],
+                    &treatment.category().to_string(),
+                );
+                serializer.derived(
+                    ubl::Namespace::Cbc,
+                    "Percent",
+                    &[],
+                    &plain(treatment.rate()),
+                );
+                if let VatTreatment::Exempt { code, text } = treatment {
+                    if let Some(code) = code {
+                        serializer.derived(
+                            ubl::Namespace::Cbc,
+                            "TaxExemptionReasonCode",
+                            &[],
+                            &code.to_string(),
+                        );
+                    }
+                    if let Some(text) = text {
+                        serializer.derived(
+                            ubl::Namespace::Cbc,
+                            "TaxExemptionReason",
+                            &[],
+                            text.as_ref(),
+                        );
+                    }
+                }
+                serializer.nested(ubl::Namespace::Cac, "TaxScheme", |serializer| {
+                    serializer.derived(ubl::Namespace::Cbc, "ID", &[], "VAT");
+                });
+            },
+        );
+    }
+
+    // Serializes the legal monetary total, each amount mapped to its own field.
+    // The whole group is absent when the invoice states none of its amounts.
     fn legal_monetary_total(&mut self, invoice: &Invoice) {
         let attr = self.currency_attribute();
-        let line_net = invoice.line_net_total();
-        if line_net.is_none() && invoice.paid.is_none() && invoice.rounding.is_none() {
+        let totals = [
+            (
+                "LineExtensionAmount",
+                "line_net_total",
+                Term::BT(106),
+                invoice.line_net_total,
+            ),
+            (
+                "TaxExclusiveAmount",
+                "net_total",
+                Term::BT(109),
+                invoice.net_total,
+            ),
+            (
+                "TaxInclusiveAmount",
+                "gross_total",
+                Term::BT(112),
+                invoice.gross_total,
+            ),
+            (
+                "AllowanceTotalAmount",
+                "allowances_total",
+                Term::BT(107),
+                invoice.allowances_total,
+            ),
+            (
+                "ChargeTotalAmount",
+                "charges_total",
+                Term::BT(108),
+                invoice.charges_total,
+            ),
+            ("PrepaidAmount", "paid", Term::BT(113), invoice.paid),
+            (
+                "PayableRoundingAmount",
+                "rounding",
+                Term::BT(114),
+                invoice.rounding,
+            ),
+            ("PayableAmount", "due", Term::BT(115), invoice.due),
+        ];
+        if totals.iter().all(|(_, _, _, value)| value.is_none()) {
             return;
         }
         self.structural(ubl::Namespace::Cac, "LegalMonetaryTotal", |serializer| {
-            if let Some(total) = line_net {
-                serializer.derived(
-                    ubl::Namespace::Cbc,
-                    "LineExtensionAmount",
-                    &attr,
-                    &money(total),
-                );
-            }
-            if let Some(total) = invoice.net_total() {
-                serializer.derived(
-                    ubl::Namespace::Cbc,
-                    "TaxExclusiveAmount",
-                    &attr,
-                    &money(total),
-                );
-            }
-            if let Some(total) = invoice.gross_total() {
-                serializer.derived(
-                    ubl::Namespace::Cbc,
-                    "TaxInclusiveAmount",
-                    &attr,
-                    &money(total),
-                );
-            }
-            if let Some(total) = invoice.allowances_total().filter(|total| !total.is_zero()) {
-                serializer.derived(
-                    ubl::Namespace::Cbc,
-                    "AllowanceTotalAmount",
-                    &attr,
-                    &money(total),
-                );
-            }
-            if let Some(total) = invoice.charges_total().filter(|total| !total.is_zero()) {
-                serializer.derived(
-                    ubl::Namespace::Cbc,
-                    "ChargeTotalAmount",
-                    &attr,
-                    &money(total),
-                );
-            }
-            if let Some(paid) = invoice.paid {
-                serializer.derived(ubl::Namespace::Cbc, "PrepaidAmount", &attr, &money(paid));
-            }
-            if let Some(rounding) = invoice.rounding {
-                serializer.derived(
-                    ubl::Namespace::Cbc,
-                    "PayableRoundingAmount",
-                    &attr,
-                    &money(rounding),
-                );
-            }
-            if let Some(due) = invoice.due() {
-                serializer.derived(ubl::Namespace::Cbc, "PayableAmount", &attr, &money(due));
+            for (name, field, term, value) in totals {
+                if let Some(value) = value {
+                    serializer.leaf_attr(
+                        ubl::Namespace::Cbc,
+                        name,
+                        field,
+                        term,
+                        &attr,
+                        &money(value),
+                    );
+                }
             }
         });
     }
@@ -1399,10 +1446,12 @@ impl<'a> Serializer<'a> {
                 &plain(quantity.value),
             );
         }
-        if let Some(net) = line.net_amount(self.invoice) {
-            self.derived(
+        if let Some(net) = line.net_amount {
+            self.leaf_attr(
                 ubl::Namespace::Cbc,
                 "LineExtensionAmount",
+                "net_amount",
+                Term::BT(131),
                 &currency,
                 &money(net),
             );
@@ -1686,7 +1735,7 @@ impl<'a> Serializer<'a> {
         );
     }
 
-    // Serializes the line price (`BG-29`), its derived net amount mapped to the price group.
+    // Serializes the line price (`BG-29`), every price with its own scale.
     fn line_price(&mut self, price: &Price) {
         let currency = self.currency_attribute();
         self.group(
@@ -1695,8 +1744,15 @@ impl<'a> Serializer<'a> {
             "price",
             Term::BG(29),
             |serializer| {
-                if let Some(net) = price.net() {
-                    serializer.derived(ubl::Namespace::Cbc, "PriceAmount", &currency, &money(net));
+                if let Some(net) = price.net {
+                    serializer.leaf_attr(
+                        ubl::Namespace::Cbc,
+                        "PriceAmount",
+                        "net",
+                        Term::BT(146),
+                        &currency,
+                        &plain(net),
+                    );
                 }
                 if let Some(base) = price.base_quantity {
                     serializer.field_leaf_attr(
@@ -1720,7 +1776,7 @@ impl<'a> Serializer<'a> {
                             "Amount",
                             "price",
                             &currency,
-                            &money(discount),
+                            &plain(discount),
                         );
                         if let Some(gross) = price.gross {
                             serializer.field_leaf_attr(
@@ -1728,7 +1784,7 @@ impl<'a> Serializer<'a> {
                                 "BaseAmount",
                                 "price",
                                 &currency,
-                                &money(gross),
+                                &plain(gross),
                             );
                         }
                     });

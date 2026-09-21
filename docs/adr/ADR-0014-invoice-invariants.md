@@ -2,11 +2,13 @@
 
 ## Context
 
-The semantic model holds the monetary amounts of an invoice. [EN-16931] ties them by the `BR-CO` calculation rules. A small set of inputs determines the rest. Quantities, prices, rates, and allowance bases are free. Line nets, sums, totals, and the VAT breakdown follow by arithmetic.
+The semantic model holds the monetary amounts of an invoice. [EN-16931] ties them by the `BR-CO` calculation rules. Quantities, prices, and rates are free inputs. Line nets, totals, and the VAT breakdown follow from them by arithmetic.
 
-The XML form must carry every amount, including the derived ones. The report binding (ADR-0009, ADR-0010) maps each [SVRL] location to a model node.
+The arithmetic involves rounding, and the document carries no rounding strategy. A receiver cannot reproduce the amounts of a sender by recomputation.
 
-The domain folds already break a one-to-one match between fields and terms. A folded VAT treatment spans several terms. The model shape and the term layout diverge.
+The rule sets check the sums for exact equality over two-decimal amounts. They check the products with a tolerance of one currency unit.
+
+The report binding (ADR-0009, ADR-0010) maps each [SVRL] location to a model node.
 
 ## Problem
 
@@ -14,36 +16,39 @@ Should the model enforce the invariants of an invoice, or leave them to the vali
 
 Does the model store the derived amounts, or compute them?
 
-How does a report locate a derived term with no stored field?
-
 ## Decision
 
-> The model holds the business inputs only. The serialization computes every derived amount.
+> The model stores every amount as the issuer states it. The library computes none.
 
-`Invoice` carries the free inputs. The inputs are quantities, prices, rates, allowance and charge bases, paid and rounding amounts. It holds no line net, no document total, and no VAT breakdown.
+`Invoice` carries the inputs and the amounts derived from them alike. It holds the line nets, the document totals, the VAT breakdown, and the net price. A relative allowance or charge holds its amount next to the base and the rate.
 
-The serialization applies the `BR-CO` rules when it writes the document. The rounding follows [EN-16931], half up per VAT category. Every term reaches the XML from a model node or from a computed value. A derived amount is written only when every input is present. Otherwise the element is omitted, and the validator reports it.
+The issuer computes the amounts and picks the rounding. The validator checks the `BR-CO` rules. The library reports no inconsistency of its own.
 
-The dictionary binds a derived term to its nearest stored node. A line net resolves to its line. A document total resolves to the `Document` root. The serialization records these targets on its pass (ADR-0009).
+The serialization writes an amount only when its field is filled. It rounds each amount to two decimals, half away from zero. A price keeps the scale the issuer gave it. No other place of the library rounds.
+
+The parsing keeps every amount of the document. Every amount has a field of its own, so a finding binds to that field.
 
 ## Alternatives Considered
 
-* **Materialized amounts.** The model stores every term, and a build step fills the derived ones. Rejected because the redundant fields admit inconsistent input and drift from the domain.
+* **Computed amounts.** The model holds the inputs, and the serialization computes the rest. Rejected because the document carries no rounding strategy. A parsed invoice also loses the amounts the sender stated.
 
-* **Caller-supplied amounts.** The model carries every amount as plain input without computation. Rejected because the caller must compute the whole graph and keep it consistent.
+* **An amount type limited to two decimals.** The type rejects a value with more decimals. Rejected because the validator already reports such a value.
+
+* **Materialized amounts.** The model stores every term, and a build step fills the derived ones. Rejected because the build step is the same calculation inside the library.
 
 ## Consequences
 
 ### Pros
 
-* The model states the domain truth once, with no derivable field.
-* A consumer supplies the inputs, and the library produces consistent amounts.
+* A parsed document reproduces the amounts of its sender.
+* The core carries no calculation logic.
+* A finding on an amount binds to a dedicated field.
 
 ### Cons
 
-* The core carries the calculation logic and its rounding rules.
-* A parsed invoice loses the sender's stated amounts, since the serialization recomputes them.
-* A derived-term finding resolves to a group or the root, not to a dedicated field.
+* The consumer computes the whole graph of amounts.
+* The model admits inconsistent amounts.
+* The independent rounding on serialization may break an exact equality of sums.
 
 ## References
 

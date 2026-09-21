@@ -8,8 +8,8 @@ use crate::{
     ElectronicAddress, Error, ExemptionReason, Format, Invoice, InvoiceLine, Item, ItemAttribute,
     ItemReference, LegalEntity, LineAdjustment, LocationReference, NonEmptyString, Note,
     ObjectReference, OperationalEntity, Payee, PaymentCard, PaymentDetails, PaymentInstructions,
-    Period, PostalAddress, PrecedingInvoice, Price, Quantity, Seller, SupportingDocument,
-    TaxRepresentative, Unit, VatCategory, VatPoint, VatTreatment,
+    Percentage, Period, PostalAddress, PrecedingInvoice, Price, Quantity, Seller,
+    SupportingDocument, TaxRepresentative, Unit, VatBreakdown, VatCategory, VatPoint, VatTreatment,
 };
 
 impl Deserializable<Cii> for Invoice {
@@ -91,12 +91,19 @@ impl Parser {
             delivery: delivery.delivery,
             invoicing_period: settlement.invoicing_period,
             adjustments: settlement.adjustments,
-            rounding: settlement.rounding,
+            line_net_total: settlement.summation.line_net_total,
+            allowances_total: settlement.summation.allowances_total,
+            charges_total: settlement.summation.charges_total,
+            net_total: settlement.summation.net_total,
+            vat_total: settlement.summation.vat_total,
+            gross_total: settlement.summation.gross_total,
+            rounding: settlement.summation.rounding,
             payment: settlement.payment,
-            paid: settlement.paid,
+            paid: settlement.summation.paid,
+            due: settlement.summation.due,
+            vat_breakdown: settlement.vat_breakdown,
             supporting_documents: agreement.supporting_documents,
             lines,
-            rounding_strategy: None,
         };
         settlement.exemptions.apply(&mut invoice);
 
@@ -226,11 +233,11 @@ impl Parser {
             self.leave_structural()?;
         }
 
-        let (vat, period, adjustments, object, buyer_accounting_reference) =
+        let (vat, period, adjustments, net_amount, object, buyer_accounting_reference) =
             if self.is_open(cii::Namespace::Ram, "SpecifiedLineTradeSettlement") {
                 self.parse_line_settlement()?
             } else {
-                (None, None, Vec::new(), None, None)
+                (None, None, Vec::new(), None, None, None)
             };
 
         self.leave_repeatable()?;
@@ -239,6 +246,7 @@ impl Parser {
             note,
             object,
             quantity,
+            net_amount,
             order_line_reference,
             buyer_accounting_reference,
             period,
@@ -363,6 +371,7 @@ impl Parser {
             };
             self.leave_group()?;
             price = Some(Price {
+                net: None,
                 gross,
                 discount,
                 base_quantity,
@@ -372,21 +381,23 @@ impl Parser {
         if self.is_open(cii::Namespace::Ram, "NetPriceProductTradePrice") {
             self.enter_group(cii::Namespace::Ram, "NetPriceProductTradePrice", "price")?;
             let net = self
-                .optional_derived(cii::Namespace::Ram, "ChargeAmount")?
-                .map(|(_, text)| parse_decimal(&text))
+                .optional_text(cii::Namespace::Ram, "ChargeAmount", "net")?
+                .map(|text| parse_decimal(&text))
                 .transpose()?;
             let base_quantity = self
                 .optional_derived(cii::Namespace::Ram, "BasisQuantity")?
                 .map(|(attributes, text)| parse_quantity(&attributes, &text))
                 .transpose()?;
             self.leave_group()?;
-            if price.is_none() {
-                price = Some(Price {
-                    gross: net,
+            price = Some(match price {
+                Some(price) => Price { net, ..price },
+                None => Price {
+                    net,
+                    gross: None,
                     discount: None,
                     base_quantity,
-                });
-            }
+                },
+            });
         }
 
         self.leave_structural()?;
@@ -402,6 +413,7 @@ impl Parser {
             Option<VatTreatment>,
             Option<Period>,
             Vec<LineAdjustment>,
+            Option<Decimal>,
             Option<ObjectReference>,
             Option<NonEmptyString>,
         ),
@@ -423,6 +435,7 @@ impl Parser {
             let instance = index(adjustments.len());
             adjustments.push(self.parse_line_adjustment(instance)?);
         }
+        let mut net_amount = None;
         if self.is_open(
             cii::Namespace::Ram,
             "SpecifiedTradeSettlementLineMonetarySummation",
@@ -431,7 +444,10 @@ impl Parser {
                 cii::Namespace::Ram,
                 "SpecifiedTradeSettlementLineMonetarySummation",
             )?;
-            self.optional_derived(cii::Namespace::Ram, "LineTotalAmount")?;
+            net_amount = self
+                .optional_text(cii::Namespace::Ram, "LineTotalAmount", "net_amount")?
+                .map(|text| parse_decimal(&text))
+                .transpose()?;
             self.leave_structural()?;
         }
         let object = if self.is_open(cii::Namespace::Ram, "AdditionalReferencedDocument") {
@@ -456,7 +472,14 @@ impl Parser {
         };
         let buyer_accounting_reference = self.optional_accounting_account()?;
         self.leave_structural()?;
-        Ok((vat, period, adjustments, object, buyer_accounting_reference))
+        Ok((
+            vat,
+            period,
+            adjustments,
+            net_amount,
+            object,
+            buyer_accounting_reference,
+        ))
     }
 
     // Parses the receivable accounting account (`BT-19`/`BT-133`), when present.
@@ -1033,7 +1056,7 @@ impl Parser {
             (None, None, None)
         };
 
-        let (exemptions, vat_point) = self.parse_tax_breakdown()?;
+        let (exemptions, vat_point, vat_breakdown) = self.parse_tax_breakdown()?;
         let invoicing_period = if self.is_open(cii::Namespace::Ram, "BillingSpecifiedPeriod") {
             Some(self.billing_period("invoicing_period")?)
         } else {
@@ -1050,7 +1073,9 @@ impl Parser {
             } else {
                 (None, None, None)
             };
-        let (paid, rounding, accounting_value) = self.parse_monetary_summation()?;
+        let summation = self.parse_monetary_summation()?;
+        // The summation carries no accounting-currency VAT total (`BT-111`) the parser reads.
+        let accounting_value: Option<Decimal> = None;
         let mut preceding_invoices = Vec::new();
         while self.is_open(cii::Namespace::Ram, "InvoiceReferencedDocument") {
             let instance = index(preceding_invoices.len());
@@ -1086,8 +1111,8 @@ impl Parser {
             invoicing_period,
             adjustments,
             payment_terms,
-            paid,
-            rounding,
+            summation,
+            vat_breakdown,
             preceding_invoices,
             buyer_accounting_reference,
         })
@@ -1229,46 +1254,78 @@ impl Parser {
         Ok((means, means_text, details))
     }
 
-    // Parses the VAT breakdown, collecting exemption reasons and the VAT point event.
-    fn parse_tax_breakdown(&mut self) -> Result<(ExemptionMap, Option<VatPoint>), Error> {
+    // Parses the VAT breakdown (`BG-23`), collecting exemption reasons and the VAT point event.
+    #[allow(clippy::type_complexity)]
+    fn parse_tax_breakdown(
+        &mut self,
+    ) -> Result<(ExemptionMap, Option<VatPoint>, Vec<VatBreakdown>), Error> {
         let mut exemptions = ExemptionMap::new();
         let mut vat_point = None;
+        let mut breakdown = Vec::new();
         while self.is_open(cii::Namespace::Ram, "ApplicableTradeTax") {
-            self.enter_structural(cii::Namespace::Ram, "ApplicableTradeTax")?;
-            self.optional_derived(cii::Namespace::Ram, "CalculatedAmount")?;
-            self.optional_derived(cii::Namespace::Ram, "TypeCode")?;
-            let mut text = None;
-            if self.is_open(cii::Namespace::Ram, "ExemptionReason") {
-                text = Some(
-                    self.derived(cii::Namespace::Ram, "ExemptionReason")?
-                        .1
-                        .parse()?,
-                );
-            }
-            self.optional_derived(cii::Namespace::Ram, "BasisAmount")?;
-            let category: Option<VatCategory> = self
-                .optional_derived(cii::Namespace::Ram, "CategoryCode")?
-                .map(|(_, text)| text.parse())
+            let instance = index(breakdown.len());
+            self.enter_repeatable(
+                cii::Namespace::Ram,
+                "ApplicableTradeTax",
+                "vat_breakdown",
+                instance,
+            )?;
+            let tax = self
+                .optional_text(cii::Namespace::Ram, "CalculatedAmount", "tax")?
+                .map(|text| parse_decimal(&text))
                 .transpose()?;
-            let mut code: Option<ExemptionReason> = None;
-            if self.is_open(cii::Namespace::Ram, "ExemptionReasonCode") {
-                code = Some(
-                    self.derived(cii::Namespace::Ram, "ExemptionReasonCode")?
-                        .1
-                        .parse()?,
-                );
-            }
+            self.optional_derived(cii::Namespace::Ram, "TypeCode")?;
+            let text: Option<NonEmptyString> = self
+                .optional_text(cii::Namespace::Ram, "ExemptionReason", "treatment")?
+                .map(|text| text.parse())
+                .transpose()?;
+            let taxable = self
+                .optional_text(cii::Namespace::Ram, "BasisAmount", "taxable")?
+                .map(|text| parse_decimal(&text))
+                .transpose()?;
+            let category: Option<VatCategory> = self
+                .optional_text(cii::Namespace::Ram, "CategoryCode", "treatment")?
+                .map(|text| text.parse())
+                .transpose()?;
+            let code: Option<ExemptionReason> = self
+                .optional_text(cii::Namespace::Ram, "ExemptionReasonCode", "treatment")?
+                .map(|text| text.parse())
+                .transpose()?;
             if self.is_open(cii::Namespace::Ram, "DueDateTypeCode") {
                 let event = self.derived(cii::Namespace::Ram, "DueDateTypeCode")?.1;
                 vat_point = Some(VatPoint::Event(event.parse()?));
             }
-            self.optional_derived(cii::Namespace::Ram, "RateApplicablePercent")?;
-            self.leave_structural()?;
+            let rate: Option<Percentage> = self
+                .optional_text(cii::Namespace::Ram, "RateApplicablePercent", "treatment")?
+                .map(|text| text.parse())
+                .transpose()?;
+            self.leave_repeatable()?;
+            let treatment = match category {
+                Some(category) => {
+                    let rate = match rate {
+                        Some(rate) => rate,
+                        None => Percentage::try_from(Decimal::ZERO)?,
+                    };
+                    Some(match VatTreatment::from_category(category, rate) {
+                        VatTreatment::Exempt { .. } => VatTreatment::Exempt {
+                            code,
+                            text: text.clone(),
+                        },
+                        treatment => treatment,
+                    })
+                }
+                None => None,
+            };
             if category == Some(VatCategory::Exempt) {
                 exemptions.set(code, text);
             }
+            breakdown.push(VatBreakdown {
+                treatment,
+                taxable,
+                tax,
+            });
         }
-        Ok((exemptions, vat_point))
+        Ok((exemptions, vat_point, breakdown))
     }
 
     fn parse_adjustment(&mut self, instance: NonZeroUsize) -> Result<Adjustment, Error> {
@@ -1307,19 +1364,18 @@ impl Parser {
 
     // Parses the amount of an adjustment, absolute or relative, absent without the amount.
     fn parse_adjustment_amount(&mut self) -> Result<Option<AdjustmentAmount>, Error> {
-        let rate = self
-            .optional_derived(cii::Namespace::Ram, "CalculationPercent")?
-            .map(|(_, text)| text);
+        let rate = self.optional_text(cii::Namespace::Ram, "CalculationPercent", "amount")?;
         let base = self
-            .optional_derived(cii::Namespace::Ram, "BasisAmount")?
-            .map(|(_, text)| parse_decimal(&text))
+            .optional_text(cii::Namespace::Ram, "BasisAmount", "amount")?
+            .map(|text| parse_decimal(&text))
             .transpose()?;
         let amount = self
-            .optional_derived(cii::Namespace::Ram, "ActualAmount")?
-            .map(|(_, text)| parse_decimal(&text))
+            .optional_text(cii::Namespace::Ram, "ActualAmount", "amount")?
+            .map(|text| parse_decimal(&text))
             .transpose()?;
         Ok(match (rate, base, amount) {
-            (Some(rate), Some(base), Some(_)) => Some(AdjustmentAmount::Relative {
+            (Some(rate), Some(base), Some(amount)) => Some(AdjustmentAmount::Relative {
+                amount,
                 rate: rate.parse()?,
                 base,
             }),
@@ -1369,37 +1425,41 @@ impl Parser {
         Ok((terms, due, mandate))
     }
 
-    // Parses the header monetary summation, returning the paid and rounding amounts.
-    #[allow(clippy::type_complexity)]
-    fn parse_monetary_summation(
-        &mut self,
-    ) -> Result<(Option<Decimal>, Option<Decimal>, Option<Decimal>), Error> {
+    // Parses the header monetary summation, keeping every amount the document states.
+    fn parse_monetary_summation(&mut self) -> Result<Summation, Error> {
+        let mut summation = Summation::default();
         if !self.is_open(
             cii::Namespace::Ram,
             "SpecifiedTradeSettlementHeaderMonetarySummation",
         ) {
-            return Ok((None, None, None));
+            return Ok(summation);
         }
         self.enter_structural(
             cii::Namespace::Ram,
             "SpecifiedTradeSettlementHeaderMonetarySummation",
         )?;
-        let mut paid = None;
-        let mut rounding = None;
-        let mut tax_total = None;
         while self.is_open_namespace(cii::Namespace::Ram) {
             let (_, name) = self.head()?;
-            let (_, text) = self.derived(cii::Namespace::Ram, &name)?;
-            match name.as_str() {
-                "TotalPrepaidAmount" => paid = Some(parse_decimal(&text)?),
-                "RoundingAmount" => rounding = Some(parse_decimal(&text)?),
-                "TaxTotalAmount" => tax_total = Some(parse_decimal(&text)?),
-                _ => {}
-            }
+            let (field, slot) = match name.as_str() {
+                "LineTotalAmount" => ("line_net_total", &mut summation.line_net_total),
+                "ChargeTotalAmount" => ("charges_total", &mut summation.charges_total),
+                "AllowanceTotalAmount" => ("allowances_total", &mut summation.allowances_total),
+                "TaxBasisTotalAmount" => ("net_total", &mut summation.net_total),
+                "TaxTotalAmount" => ("vat_total", &mut summation.vat_total),
+                "RoundingAmount" => ("rounding", &mut summation.rounding),
+                "GrandTotalAmount" => ("gross_total", &mut summation.gross_total),
+                "TotalPrepaidAmount" => ("paid", &mut summation.paid),
+                "DuePayableAmount" => ("due", &mut summation.due),
+                _ => {
+                    self.derived(cii::Namespace::Ram, &name)?;
+                    continue;
+                }
+            };
+            let text = self.leaf(cii::Namespace::Ram, &name, field)?;
+            *slot = Some(parse_decimal(&text)?);
         }
         self.leave_structural()?;
-        let _ = tax_total;
-        Ok((paid, rounding, None))
+        Ok(summation)
     }
 
     fn parse_preceding_invoice(
@@ -1819,10 +1879,24 @@ struct Settlement {
     invoicing_period: Option<Period>,
     adjustments: Vec<Adjustment>,
     payment_terms: Option<NonEmptyString>,
-    paid: Option<Decimal>,
-    rounding: Option<Decimal>,
+    summation: Summation,
+    vat_breakdown: Vec<VatBreakdown>,
     preceding_invoices: Vec<PrecedingInvoice>,
     buyer_accounting_reference: Option<NonEmptyString>,
+}
+
+// The amounts of the header monetary summation, as the document states them.
+#[derive(Default)]
+struct Summation {
+    line_net_total: Option<Decimal>,
+    allowances_total: Option<Decimal>,
+    charges_total: Option<Decimal>,
+    net_total: Option<Decimal>,
+    vat_total: Option<Decimal>,
+    gross_total: Option<Decimal>,
+    paid: Option<Decimal>,
+    rounding: Option<Decimal>,
+    due: Option<Decimal>,
 }
 
 enum Additional {

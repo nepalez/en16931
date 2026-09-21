@@ -84,7 +84,7 @@ mod test {
     use crate::format::test_helpers::{
         builder, card_builder, empty_builder, pretty, variant_builder,
     };
-    use crate::{Binding, Document, DocumentBuilder, Error, Invoice};
+    use crate::{Binding, Document, DocumentBuilder, Error, Invoice, InvoiceLine, Price};
 
     fn written(builder: DocumentBuilder<Invoice>) -> Document<Invoice, Cii> {
         Document::try_from(builder).expect("a serialized document")
@@ -120,7 +120,7 @@ mod test {
 
     #[test]
     fn detects_its_own_output_as_cii() {
-        let document = written(builder());
+        let document = written(builder(Binding::Cii));
 
         assert_eq!(
             Binding::detect(document.xml()).expect("a CII document"),
@@ -130,7 +130,7 @@ mod test {
 
     #[test]
     fn rebuilds_the_same_dictionary_on_parse() {
-        let document = written(builder());
+        let document = written(builder(Binding::Cii));
 
         let parsed = read(document.xml()).expect("a valid CII document");
 
@@ -139,7 +139,7 @@ mod test {
 
     #[test]
     fn binds_the_abbreviations_it_writes() {
-        let abbreviations = written(builder()).abbreviations;
+        let abbreviations = written(builder(Binding::Cii)).abbreviations;
 
         assert_eq!(abbreviations.resolve("rsm"), Some(Namespace::Rsm));
         assert_eq!(abbreviations.resolve("ram"), Some(Namespace::Ram));
@@ -149,7 +149,7 @@ mod test {
 
     #[test]
     fn rebuilds_the_same_abbreviations_on_parse() {
-        let document = written(builder());
+        let document = written(builder(Binding::Cii));
 
         let parsed = read(document.xml()).expect("a valid CII document");
 
@@ -169,15 +169,15 @@ mod test {
     #[test]
     fn emit_fixtures() {
         let base = concat!(env!("CARGO_MANIFEST_DIR"), "/src/format/cii/fixtures");
-        let rich = written(builder());
-        let variant = written(variant_builder());
+        let rich = written(builder(Binding::Cii));
+        let variant = written(variant_builder(Binding::Cii));
         std::fs::write(format!("{base}/1.xml"), pretty(rich.xml())).expect("write");
         std::fs::write(format!("{base}/2.xml"), pretty(variant.xml())).expect("write");
     }
 
     #[test]
     fn serializes_the_document_to_cii() {
-        let document = written(builder());
+        let document = written(builder(Binding::Cii));
 
         assert_eq!(pretty(document.xml()), include_str!("cii/fixtures/1.xml"));
     }
@@ -186,12 +186,12 @@ mod test {
     fn deserializes_the_document_from_cii() {
         let parsed = read(include_str!("cii/fixtures/1.xml")).expect("a valid CII document");
 
-        assert_eq!(parsed.builder, builder());
+        assert_eq!(parsed.builder, builder(Binding::Cii));
     }
 
     #[test]
     fn serializes_the_variant_document_to_cii() {
-        let document = written(variant_builder());
+        let document = written(variant_builder(Binding::Cii));
 
         assert_eq!(pretty(document.xml()), include_str!("cii/fixtures/2.xml"));
     }
@@ -200,12 +200,12 @@ mod test {
     fn deserializes_the_variant_document_from_cii() {
         let parsed = read(include_str!("cii/fixtures/2.xml")).expect("a valid CII document");
 
-        assert_eq!(parsed.builder, variant_builder());
+        assert_eq!(parsed.builder, variant_builder(Binding::Cii));
     }
 
     #[test]
     fn round_trips_the_card_document_through_cii() {
-        let source = card_builder();
+        let source = card_builder(Binding::Cii);
         let document = written(source.clone());
 
         let parsed = read(document.xml()).expect("a valid CII document");
@@ -221,19 +221,50 @@ mod test {
     }
 
     #[test]
-    fn serializes_an_empty_invoice_with_zero_totals() {
+    fn serializes_an_empty_invoice_without_totals() {
         let source = empty_builder();
         let document = written(source.clone());
 
         assert!(document.xml().contains("<ram:TypeCode>380</ram:TypeCode>"));
-        assert!(
-            document
-                .xml()
-                .contains("<ram:DuePayableAmount>0.00</ram:DuePayableAmount>")
-        );
+        assert!(!document.xml().contains("MonetarySummation"));
         assert!(!document.xml().contains("ApplicableTradeTax"));
         let parsed = read(document.xml()).expect("a valid CII document");
         assert_eq!(parsed.builder, source);
+    }
+
+    #[test]
+    fn rounds_an_amount_to_two_decimals_on_serialization() {
+        let mut source = empty_builder();
+        source.invoice.due = Some(Decimal::new(10505, 3));
+        source.invoice.rounding = Some(Decimal::new(-10505, 3));
+        source.invoice.paid = Some(Decimal::new(105, 1));
+
+        let document = written(source);
+        let xml = document.xml();
+
+        assert!(xml.contains("<ram:DuePayableAmount>10.51</ram:DuePayableAmount>"));
+        assert!(xml.contains("<ram:RoundingAmount>-10.51</ram:RoundingAmount>"));
+        assert!(xml.contains("<ram:TotalPrepaidAmount>10.50</ram:TotalPrepaidAmount>"));
+    }
+
+    #[test]
+    fn serializes_a_price_with_its_own_scale() {
+        let mut source = empty_builder();
+        source.invoice.lines = vec![InvoiceLine {
+            price: Some(Price {
+                net: Some(Decimal::new(5, 3)),
+                ..Default::default()
+            }),
+            ..Default::default()
+        }];
+
+        let document = written(source);
+
+        assert!(
+            document
+                .xml()
+                .contains("<ram:ChargeAmount>0.005</ram:ChargeAmount>")
+        );
     }
 
     #[test]

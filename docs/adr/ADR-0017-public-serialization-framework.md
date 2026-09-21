@@ -8,7 +8,7 @@ The first class holds native syntax elements outside the semantic model. Example
 
 The second class holds elements of a namespace of its own. Every found case writes them in the document-level `ext:UBLExtensions` block.
 
-No found extension writes a whole document from scratch. None changes a formula of the standard either. Each one adds nodes to the document the core writes, and varies the rounding and the inputs.
+No found extension writes a whole document from scratch. None changes a formula of the standard either. Each one adds nodes to the document the core writes.
 
 ## Problem
 
@@ -25,8 +25,6 @@ A `Slot` names a position in the terms of the record form (ADR-0004). One form p
 A `Scope` writes into a slot. It takes single nodes, nested subtrees, namespace declarations, and dictionary entries (ADR-0009).
 
 The parse is symmetric. An element unknown to the base walk reaches the extension with its slot.
-
-The core also publishes the base calculations as public functions. They give the net of a line, the VAT groups, and the document totals. Each one takes the rounding as an argument, whose default follows [EN-16931].
 
 ## Alternatives Considered
 
