@@ -1,9 +1,10 @@
 use crate::prelude::*;
 use crate::{
-    Abbreviations, Context, Deserializable, Dictionary, DocumentBuilder, Error, Format,
-    InvalidDocument, Invoice, Location, Namespace, Path, Problem, Profile, RawNamespace, RawReport,
-    Report, Serializable, Step, Target, ValidDocument,
+    Abbreviations, Context, Dictionary, DocumentBuilder, Error, InvalidDocument, Invoice, Location,
+    Parser, Path, Problem, Profile, RawNamespace, RawReport, Report, Serializer, Step, Target,
+    ValidDocument,
 };
+use crate::{Deserializable, Format, Namespace, Serializable};
 
 /// The public reporting artifact of the library.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -29,7 +30,11 @@ impl<I: Deserializable<F> + Default, F: Format> Document<I, F> {
             business_process: None,
         });
         document.xml = xml.to_owned();
-        I::deserialize(&mut document)?;
+        let (tokens, abbreviations) = F::tokenize(&document.xml)?;
+        let mut parser = Parser::new(tokens);
+        document.builder = I::deserialize(&mut parser)?;
+        document.dictionary = parser.finish();
+        document.abbreviations = abbreviations;
         Ok(document)
     }
 }
@@ -136,7 +141,12 @@ impl<I: Serializable<F>, F: Format> TryFrom<DocumentBuilder<I>> for Document<I, 
     /// The pass renders the XML and fills the dictionary in lockstep.
     fn try_from(builder: DocumentBuilder<I>) -> Result<Self, Self::Error> {
         let mut document = Self::empty(builder);
-        I::serialize(&mut document);
+        let mut serializer = Serializer::new(document.builder.profile.forbidden_terms());
+        I::serialize(&mut serializer, &document.builder);
+        let (xml, dictionary, abbreviations) = serializer.finish();
+        document.xml = xml;
+        document.dictionary = dictionary;
+        document.abbreviations = abbreviations;
         Ok(document)
     }
 }

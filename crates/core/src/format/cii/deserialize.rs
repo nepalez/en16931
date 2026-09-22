@@ -1,67 +1,43 @@
-use crate::format::Token;
-use crate::format::cii;
-use crate::format::trace::Trace;
-use crate::prelude::*;
+use super::{Namespace, Token};
+use crate::prelude::{
+    CountryCode, Currency, Date, Decimal, EmailAddress, Month, NonZeroUsize, Url,
+};
 use crate::{
     Adjustment, AdjustmentAmount, AdjustmentReason, Amount, Buyer, Cii, Classification, Contact,
-    CreditTransfer, Delivery, Deserializable, DirectDebit, Document, DocumentBuilder,
-    ElectronicAddress, Error, ExemptionReason, Format, Invoice, InvoiceLine, Item, ItemAttribute,
-    ItemReference, LegalEntity, LineAdjustment, LocationReference, NonEmptyString, Note,
-    ObjectReference, OperationalEntity, Payee, PaymentCard, PaymentDetails, PaymentInstructions,
-    Percentage, Period, PostalAddress, PrecedingInvoice, Price, Quantity, Seller,
-    SupportingDocument, TaxRepresentative, Unit, VatBreakdown, VatCategory, VatPoint, VatTreatment,
+    CreditTransfer, Delivery, DirectDebit, DocumentBuilder, ElectronicAddress, Error,
+    ExemptionReason, Invoice, InvoiceLine, Item, ItemAttribute, ItemReference, LegalEntity,
+    LineAdjustment, LocationReference, NonEmptyString, Note, ObjectReference, OperationalEntity,
+    Parser, Payee, PaymentCard, PaymentDetails, PaymentInstructions, Percentage, Period,
+    PostalAddress, PrecedingInvoice, Price, Quantity, Seller, SupportingDocument,
+    TaxRepresentative, Unit, VatBreakdown, VatCategory, VatPoint, VatTreatment,
 };
+use crate::{Deserializable, Format};
 
 impl Deserializable<Cii> for Invoice {
-    fn deserialize(document: &mut Document<Self, Cii>) -> Result<(), Error> {
-        let (tokens, abbreviations) = Cii::tokenize(&document.xml)?;
-        let mut parser = Parser {
-            tokens,
-            cursor: 0,
-            trace: Trace::new(),
-        };
-        document.builder = parser.document()?;
-        document.dictionary = parser.trace.into_dictionary();
-        document.abbreviations = abbreviations;
-        Ok(())
-    }
-}
+    // Parses the whole document under the CII root element.
+    fn deserialize(parser: &mut Parser<Cii>) -> Result<DocumentBuilder<Invoice>, Error> {
+        parser.enter_structural(Cii::root_namespace(), Cii::ROOT_ELEMENT)?;
 
-// ---- parser --------------------------------------------------------------
-
-struct Parser {
-    tokens: Vec<Token<cii::Namespace>>,
-    cursor: usize,
-    trace: Trace<cii::Namespace>,
-}
-
-impl Parser {
-    fn document(&mut self) -> Result<DocumentBuilder<Invoice>, Error> {
-        self.take_open(Cii::root_namespace(), Cii::ROOT_ELEMENT)?;
-        self.trace.enter(Cii::root_namespace(), Cii::ROOT_ELEMENT);
-        self.trace.record_root();
-
-        let (profile, business_process) = self.exchanged_document_context()?;
-        let (number, type_code, issue_date, notes) = self.exchanged_document()?;
+        let (profile, business_process) = parser.exchanged_document_context()?;
+        let (number, type_code, issue_date, notes) = parser.exchanged_document()?;
 
         let mut lines = Vec::new();
         let mut agreement = Agreement::default();
         let mut delivery = DeliveryParts::default();
         let mut settlement = Settlement::default();
-        if self.is_open(cii::Namespace::Rsm, "SupplyChainTradeTransaction") {
-            self.enter_structural(cii::Namespace::Rsm, "SupplyChainTradeTransaction")?;
-            while self.is_open(cii::Namespace::Ram, "IncludedSupplyChainTradeLineItem") {
+        if parser.is_open(Namespace::Rsm, "SupplyChainTradeTransaction") {
+            parser.enter_structural(Namespace::Rsm, "SupplyChainTradeTransaction")?;
+            while parser.is_open(Namespace::Ram, "IncludedSupplyChainTradeLineItem") {
                 let instance = index(lines.len());
-                lines.push(self.parse_line(instance)?);
+                lines.push(parser.parse_line(instance)?);
             }
-            agreement = self.header_trade_agreement()?;
-            delivery = self.header_trade_delivery()?;
-            settlement = self.header_trade_settlement()?;
-            self.leave_structural()?;
+            agreement = parser.header_trade_agreement()?;
+            delivery = parser.header_trade_delivery()?;
+            settlement = parser.header_trade_settlement()?;
+            parser.leave_structural()?;
         }
 
-        self.take_close()?;
-        self.trace.leave();
+        parser.leave_structural()?;
 
         let mut invoice = Invoice {
             number,
@@ -113,31 +89,32 @@ impl Parser {
             business_process,
         })
     }
+}
 
+// ---- parser --------------------------------------------------------------
+
+impl Parser<Cii> {
     // Parses the document context: the profile (`BT-24`) and business process (`BT-23`).
     fn exchanged_document_context(
         &mut self,
     ) -> Result<(crate::Profile, Option<crate::BusinessProcess>), Error> {
-        self.enter_structural(cii::Namespace::Rsm, "ExchangedDocumentContext")?;
+        self.enter_structural(Namespace::Rsm, "ExchangedDocumentContext")?;
         let business_process = if self.is_open(
-            cii::Namespace::Ram,
+            Namespace::Ram,
             "BusinessProcessSpecifiedDocumentContextParameter",
         ) {
             self.enter_structural(
-                cii::Namespace::Ram,
+                Namespace::Ram,
                 "BusinessProcessSpecifiedDocumentContextParameter",
             )?;
-            let value = self.rooted(cii::Namespace::Ram, "ID")?.parse()?;
+            let value = self.rooted(Namespace::Ram, "ID")?.parse()?;
             self.leave_structural()?;
             Some(value)
         } else {
             None
         };
-        self.enter_structural(
-            cii::Namespace::Ram,
-            "GuidelineSpecifiedDocumentContextParameter",
-        )?;
-        let profile = self.rooted(cii::Namespace::Ram, "ID")?.parse()?;
+        self.enter_structural(Namespace::Ram, "GuidelineSpecifiedDocumentContextParameter")?;
+        let profile = self.rooted(Namespace::Ram, "ID")?.parse()?;
         self.leave_structural()?;
         self.leave_structural()?;
         Ok((profile, business_process))
@@ -156,26 +133,22 @@ impl Parser {
         ),
         Error,
     > {
-        self.enter_structural(cii::Namespace::Rsm, "ExchangedDocument")?;
-        let number = self.optional_leaf(cii::Namespace::Ram, "ID", "number")?;
+        self.enter_structural(Namespace::Rsm, "ExchangedDocument")?;
+        let number = self.optional_leaf(Namespace::Ram, "ID", "number")?;
         let type_code = self
-            .leaf(cii::Namespace::Ram, "TypeCode", "type_code")?
+            .leaf(Namespace::Ram, "TypeCode", "type_code")?
             .parse()?;
         let issue_date = self.optional_datetime("IssueDateTime", "issue_date")?;
         let mut notes = Vec::new();
-        while self.is_open(cii::Namespace::Ram, "IncludedNote") {
+        while self.is_open(Namespace::Ram, "IncludedNote") {
             let instance = index(notes.len());
-            self.enter_repeatable(cii::Namespace::Ram, "IncludedNote", "notes", instance)?;
+            self.enter_repeatable(Namespace::Ram, "IncludedNote", "notes", instance)?;
             let text = self
-                .optional_derived(cii::Namespace::Ram, "Content")?
+                .optional_derived(Namespace::Ram, "Content")?
                 .map(|(_, text)| text.parse())
                 .transpose()?;
-            let subject_code = if self.is_open(cii::Namespace::Ram, "SubjectCode") {
-                Some(
-                    self.derived(cii::Namespace::Ram, "SubjectCode")?
-                        .1
-                        .parse()?,
-                )
+            let subject_code = if self.is_open(Namespace::Ram, "SubjectCode") {
+                Some(self.derived(Namespace::Ram, "SubjectCode")?.1.parse()?)
             } else {
                 None
             };
@@ -189,7 +162,7 @@ impl Parser {
     // Parses one invoice line.
     fn parse_line(&mut self, instance: NonZeroUsize) -> Result<InvoiceLine, Error> {
         self.enter_repeatable(
-            cii::Namespace::Ram,
+            Namespace::Ram,
             "IncludedSupplyChainTradeLineItem",
             "lines",
             instance,
@@ -197,13 +170,13 @@ impl Parser {
 
         let mut id = None;
         let mut note = None;
-        if self.is_open(cii::Namespace::Ram, "AssociatedDocumentLineDocument") {
-            self.enter_structural(cii::Namespace::Ram, "AssociatedDocumentLineDocument")?;
-            id = self.optional_leaf(cii::Namespace::Ram, "LineID", "id")?;
-            if self.is_open(cii::Namespace::Ram, "IncludedNote") {
-                self.enter_group(cii::Namespace::Ram, "IncludedNote", "note")?;
+        if self.is_open(Namespace::Ram, "AssociatedDocumentLineDocument") {
+            self.enter_structural(Namespace::Ram, "AssociatedDocumentLineDocument")?;
+            id = self.optional_leaf(Namespace::Ram, "LineID", "id")?;
+            if self.is_open(Namespace::Ram, "IncludedNote") {
+                self.enter_group(Namespace::Ram, "IncludedNote", "note")?;
                 note = self
-                    .optional_derived(cii::Namespace::Ram, "Content")?
+                    .optional_derived(Namespace::Ram, "Content")?
                     .map(|(_, text)| text.parse())
                     .transpose()?;
                 self.leave_group()?;
@@ -211,30 +184,30 @@ impl Parser {
             self.leave_structural()?;
         }
 
-        let item = if self.is_open(cii::Namespace::Ram, "SpecifiedTradeProduct") {
+        let item = if self.is_open(Namespace::Ram, "SpecifiedTradeProduct") {
             Some(self.parse_product()?)
         } else {
             None
         };
         let (order_line_reference, price) =
-            if self.is_open(cii::Namespace::Ram, "SpecifiedLineTradeAgreement") {
+            if self.is_open(Namespace::Ram, "SpecifiedLineTradeAgreement") {
                 self.parse_agreement()?
             } else {
                 (None, None)
             };
 
         let mut quantity = None;
-        if self.is_open(cii::Namespace::Ram, "SpecifiedLineTradeDelivery") {
-            self.enter_structural(cii::Namespace::Ram, "SpecifiedLineTradeDelivery")?;
+        if self.is_open(Namespace::Ram, "SpecifiedLineTradeDelivery") {
+            self.enter_structural(Namespace::Ram, "SpecifiedLineTradeDelivery")?;
             quantity = self
-                .optional_leaf_attr(cii::Namespace::Ram, "BilledQuantity", "quantity")?
+                .optional_leaf_attr(Namespace::Ram, "BilledQuantity", "quantity")?
                 .map(|(attributes, text)| parse_quantity(&attributes, &text))
                 .transpose()?;
             self.leave_structural()?;
         }
 
         let (vat, period, adjustments, net_amount, object, buyer_accounting_reference) =
-            if self.is_open(cii::Namespace::Ram, "SpecifiedLineTradeSettlement") {
+            if self.is_open(Namespace::Ram, "SpecifiedLineTradeSettlement") {
                 self.parse_line_settlement()?
             } else {
                 (None, None, Vec::new(), None, None, None)
@@ -259,14 +232,10 @@ impl Parser {
 
     // Parses the line product into an item.
     fn parse_product(&mut self) -> Result<Item, Error> {
-        self.take_open(cii::Namespace::Ram, "SpecifiedTradeProduct")?;
-        self.trace
-            .enter(cii::Namespace::Ram, "SpecifiedTradeProduct");
-        self.trace.push_field("item");
-        self.trace.record_context();
+        self.enter_group(Namespace::Ram, "SpecifiedTradeProduct", "item")?;
 
         let standard_id = self
-            .optional_leaf_attr(cii::Namespace::Ram, "GlobalID", "standard_id")?
+            .optional_leaf_attr(Namespace::Ram, "GlobalID", "standard_id")?
             .map(|(attributes, id)| {
                 Ok::<_, Error>(ItemReference {
                     id: Some(id.parse()?),
@@ -276,24 +245,24 @@ impl Parser {
                 })
             })
             .transpose()?;
-        let seller_id = self.optional_leaf(cii::Namespace::Ram, "SellerAssignedID", "seller_id")?;
-        let buyer_id = self.optional_leaf(cii::Namespace::Ram, "BuyerAssignedID", "buyer_id")?;
-        let name = self.optional_leaf(cii::Namespace::Ram, "Name", "name")?;
-        let description = self.optional_leaf(cii::Namespace::Ram, "Description", "description")?;
+        let seller_id = self.optional_leaf(Namespace::Ram, "SellerAssignedID", "seller_id")?;
+        let buyer_id = self.optional_leaf(Namespace::Ram, "BuyerAssignedID", "buyer_id")?;
+        let name = self.optional_leaf(Namespace::Ram, "Name", "name")?;
+        let description = self.optional_leaf(Namespace::Ram, "Description", "description")?;
         let mut attributes = Vec::new();
-        while self.is_open(cii::Namespace::Ram, "ApplicableProductCharacteristic") {
-            self.enter_structural(cii::Namespace::Ram, "ApplicableProductCharacteristic")?;
-            let name = self.optional_leaf(cii::Namespace::Ram, "Description", "attributes")?;
-            let value = self.optional_leaf(cii::Namespace::Ram, "Value", "attributes")?;
+        while self.is_open(Namespace::Ram, "ApplicableProductCharacteristic") {
+            self.enter_structural(Namespace::Ram, "ApplicableProductCharacteristic")?;
+            let name = self.optional_leaf(Namespace::Ram, "Description", "attributes")?;
+            let value = self.optional_leaf(Namespace::Ram, "Value", "attributes")?;
             self.leave_structural()?;
             attributes.push(ItemAttribute { name, value });
         }
         let mut classifications = Vec::new();
-        while self.is_open(cii::Namespace::Ram, "DesignatedProductClassification") {
-            self.enter_structural(cii::Namespace::Ram, "DesignatedProductClassification")?;
+        while self.is_open(Namespace::Ram, "DesignatedProductClassification") {
+            self.enter_structural(Namespace::Ram, "DesignatedProductClassification")?;
             let mut classification = Classification::default();
             if let Some((class_attrs, id)) =
-                self.optional_leaf_attr(cii::Namespace::Ram, "ClassCode", "classifications")?
+                self.optional_leaf_attr(Namespace::Ram, "ClassCode", "classifications")?
             {
                 classification.id = Some(id.parse()?);
                 classification.scheme = attr(&class_attrs, "listID")
@@ -307,18 +276,16 @@ impl Parser {
             self.leave_structural()?;
             classifications.push(classification);
         }
-        let country_of_origin = if self.is_open(cii::Namespace::Ram, "OriginTradeCountry") {
-            self.enter_structural(cii::Namespace::Ram, "OriginTradeCountry")?;
-            let code = self.optional_text(cii::Namespace::Ram, "ID", "country_of_origin")?;
+        let country_of_origin = if self.is_open(Namespace::Ram, "OriginTradeCountry") {
+            self.enter_structural(Namespace::Ram, "OriginTradeCountry")?;
+            let code = self.optional_text(Namespace::Ram, "ID", "country_of_origin")?;
             self.leave_structural()?;
             code.map(|code| parse_country(&code)).transpose()?
         } else {
             None
         };
 
-        self.take_close()?;
-        self.trace.pop_context();
-        self.trace.leave();
+        self.leave_group()?;
 
         Ok(Item {
             name,
@@ -334,34 +301,32 @@ impl Parser {
 
     // Parses the line trade agreement, returning the order line reference and the price.
     fn parse_agreement(&mut self) -> Result<(Option<NonEmptyString>, Option<Price>), Error> {
-        self.enter_structural(cii::Namespace::Ram, "SpecifiedLineTradeAgreement")?;
-        let order_line_reference =
-            if self.is_open(cii::Namespace::Ram, "BuyerOrderReferencedDocument") {
-                self.enter_structural(cii::Namespace::Ram, "BuyerOrderReferencedDocument")?;
-                let reference =
-                    self.optional_leaf(cii::Namespace::Ram, "LineID", "order_line_reference")?;
-                self.leave_structural()?;
-                reference
-            } else {
-                None
-            };
+        self.enter_structural(Namespace::Ram, "SpecifiedLineTradeAgreement")?;
+        let order_line_reference = if self.is_open(Namespace::Ram, "BuyerOrderReferencedDocument") {
+            self.enter_structural(Namespace::Ram, "BuyerOrderReferencedDocument")?;
+            let reference = self.optional_leaf(Namespace::Ram, "LineID", "order_line_reference")?;
+            self.leave_structural()?;
+            reference
+        } else {
+            None
+        };
 
         let mut price = None;
-        if self.is_open(cii::Namespace::Ram, "GrossPriceProductTradePrice") {
-            self.enter_group(cii::Namespace::Ram, "GrossPriceProductTradePrice", "price")?;
+        if self.is_open(Namespace::Ram, "GrossPriceProductTradePrice") {
+            self.enter_group(Namespace::Ram, "GrossPriceProductTradePrice", "price")?;
             let gross = self
-                .optional_derived(cii::Namespace::Ram, "ChargeAmount")?
+                .optional_derived(Namespace::Ram, "ChargeAmount")?
                 .map(|(_, text)| parse_decimal(&text))
                 .transpose()?;
             let base_quantity = self
-                .optional_derived(cii::Namespace::Ram, "BasisQuantity")?
+                .optional_derived(Namespace::Ram, "BasisQuantity")?
                 .map(|(attributes, text)| parse_quantity(&attributes, &text))
                 .transpose()?;
-            let discount = if self.is_open(cii::Namespace::Ram, "AppliedTradeAllowanceCharge") {
-                self.enter_nested(cii::Namespace::Ram, "AppliedTradeAllowanceCharge")?;
+            let discount = if self.is_open(Namespace::Ram, "AppliedTradeAllowanceCharge") {
+                self.enter_nested(Namespace::Ram, "AppliedTradeAllowanceCharge")?;
                 self.optional_indicator()?;
                 let amount = self
-                    .optional_derived(cii::Namespace::Ram, "ActualAmount")?
+                    .optional_derived(Namespace::Ram, "ActualAmount")?
                     .map(|(_, text)| parse_decimal(&text))
                     .transpose()?;
                 self.leave_nested()?;
@@ -378,14 +343,14 @@ impl Parser {
             });
         }
 
-        if self.is_open(cii::Namespace::Ram, "NetPriceProductTradePrice") {
-            self.enter_group(cii::Namespace::Ram, "NetPriceProductTradePrice", "price")?;
+        if self.is_open(Namespace::Ram, "NetPriceProductTradePrice") {
+            self.enter_group(Namespace::Ram, "NetPriceProductTradePrice", "price")?;
             let net = self
-                .optional_text(cii::Namespace::Ram, "ChargeAmount", "net")?
+                .optional_text(Namespace::Ram, "ChargeAmount", "net")?
                 .map(|text| parse_decimal(&text))
                 .transpose()?;
             let base_quantity = self
-                .optional_derived(cii::Namespace::Ram, "BasisQuantity")?
+                .optional_derived(Namespace::Ram, "BasisQuantity")?
                 .map(|(attributes, text)| parse_quantity(&attributes, &text))
                 .transpose()?;
             self.leave_group()?;
@@ -419,50 +384,46 @@ impl Parser {
         ),
         Error,
     > {
-        self.enter_structural(cii::Namespace::Ram, "SpecifiedLineTradeSettlement")?;
-        let vat = if self.is_open(cii::Namespace::Ram, "ApplicableTradeTax") {
+        self.enter_structural(Namespace::Ram, "SpecifiedLineTradeSettlement")?;
+        let vat = if self.is_open(Namespace::Ram, "ApplicableTradeTax") {
             Some(self.parse_line_tax()?)
         } else {
             None
         };
-        let period = if self.is_open(cii::Namespace::Ram, "BillingSpecifiedPeriod") {
+        let period = if self.is_open(Namespace::Ram, "BillingSpecifiedPeriod") {
             Some(self.billing_period("period")?)
         } else {
             None
         };
         let mut adjustments = Vec::new();
-        while self.is_open(cii::Namespace::Ram, "SpecifiedTradeAllowanceCharge") {
+        while self.is_open(Namespace::Ram, "SpecifiedTradeAllowanceCharge") {
             let instance = index(adjustments.len());
             adjustments.push(self.parse_line_adjustment(instance)?);
         }
         let mut net_amount = None;
         if self.is_open(
-            cii::Namespace::Ram,
+            Namespace::Ram,
             "SpecifiedTradeSettlementLineMonetarySummation",
         ) {
             self.enter_structural(
-                cii::Namespace::Ram,
+                Namespace::Ram,
                 "SpecifiedTradeSettlementLineMonetarySummation",
             )?;
             net_amount = self
-                .optional_text(cii::Namespace::Ram, "LineTotalAmount", "net_amount")?
+                .optional_text(Namespace::Ram, "LineTotalAmount", "net_amount")?
                 .map(|text| parse_decimal(&text))
                 .transpose()?;
             self.leave_structural()?;
         }
-        let object = if self.is_open(cii::Namespace::Ram, "AdditionalReferencedDocument") {
-            self.enter_group(
-                cii::Namespace::Ram,
-                "AdditionalReferencedDocument",
-                "object",
-            )?;
+        let object = if self.is_open(Namespace::Ram, "AdditionalReferencedDocument") {
+            self.enter_group(Namespace::Ram, "AdditionalReferencedDocument", "object")?;
             let id = self
-                .optional_derived(cii::Namespace::Ram, "IssuerAssignedID")?
+                .optional_derived(Namespace::Ram, "IssuerAssignedID")?
                 .map(|(_, text)| text.parse())
                 .transpose()?;
-            self.optional_derived(cii::Namespace::Ram, "TypeCode")?;
+            self.optional_derived(Namespace::Ram, "TypeCode")?;
             let scheme = self
-                .optional_derived(cii::Namespace::Ram, "ReferenceTypeCode")?
+                .optional_derived(Namespace::Ram, "ReferenceTypeCode")?
                 .map(|(_, text)| text.parse())
                 .transpose()?;
             self.leave_group()?;
@@ -484,19 +445,16 @@ impl Parser {
 
     // Parses the receivable accounting account (`BT-19`/`BT-133`), when present.
     fn optional_accounting_account(&mut self) -> Result<Option<NonEmptyString>, Error> {
-        if !self.is_open(
-            cii::Namespace::Ram,
-            "ReceivableSpecifiedTradeAccountingAccount",
-        ) {
+        if !self.is_open(Namespace::Ram, "ReceivableSpecifiedTradeAccountingAccount") {
             return Ok(None);
         }
         self.enter_group(
-            cii::Namespace::Ram,
+            Namespace::Ram,
             "ReceivableSpecifiedTradeAccountingAccount",
             "buyer_accounting_reference",
         )?;
         let reference = self
-            .optional_derived(cii::Namespace::Ram, "ID")?
+            .optional_derived(Namespace::Ram, "ID")?
             .map(|(_, text)| text.parse())
             .transpose()?;
         self.leave_group()?;
@@ -504,14 +462,11 @@ impl Parser {
     }
 
     fn parse_line_tax(&mut self) -> Result<VatTreatment, Error> {
-        self.enter_group(cii::Namespace::Ram, "ApplicableTradeTax", "vat")?;
-        self.optional_derived(cii::Namespace::Ram, "TypeCode")?;
-        let category: VatCategory = self
-            .derived(cii::Namespace::Ram, "CategoryCode")?
-            .1
-            .parse()?;
+        self.enter_group(Namespace::Ram, "ApplicableTradeTax", "vat")?;
+        self.optional_derived(Namespace::Ram, "TypeCode")?;
+        let category: VatCategory = self.derived(Namespace::Ram, "CategoryCode")?.1.parse()?;
         let rate = self
-            .derived(cii::Namespace::Ram, "RateApplicablePercent")?
+            .derived(Namespace::Ram, "RateApplicablePercent")?
             .1
             .parse()?;
         self.leave_group()?;
@@ -520,7 +475,7 @@ impl Parser {
 
     fn parse_line_adjustment(&mut self, instance: NonZeroUsize) -> Result<LineAdjustment, Error> {
         self.enter_repeatable(
-            cii::Namespace::Ram,
+            Namespace::Ram,
             "SpecifiedTradeAllowanceCharge",
             "adjustments",
             instance,
@@ -534,64 +489,64 @@ impl Parser {
 
     // Parses the header trade agreement, when present.
     fn header_trade_agreement(&mut self) -> Result<Agreement, Error> {
-        if !self.is_open(cii::Namespace::Ram, "ApplicableHeaderTradeAgreement") {
+        if !self.is_open(Namespace::Ram, "ApplicableHeaderTradeAgreement") {
             return Ok(Agreement::default());
         }
-        self.enter_structural(cii::Namespace::Ram, "ApplicableHeaderTradeAgreement")?;
+        self.enter_structural(Namespace::Ram, "ApplicableHeaderTradeAgreement")?;
         let buyer_reference =
-            self.optional_leaf(cii::Namespace::Ram, "BuyerReference", "buyer_reference")?;
-        let seller = if self.is_open(cii::Namespace::Ram, "SellerTradeParty") {
+            self.optional_leaf(Namespace::Ram, "BuyerReference", "buyer_reference")?;
+        let seller = if self.is_open(Namespace::Ram, "SellerTradeParty") {
             Some(self.parse_seller()?)
         } else {
             None
         };
-        let buyer = if self.is_open(cii::Namespace::Ram, "BuyerTradeParty") {
+        let buyer = if self.is_open(Namespace::Ram, "BuyerTradeParty") {
             Some(self.parse_buyer()?)
         } else {
             None
         };
         let tax_representative =
-            if self.is_open(cii::Namespace::Ram, "SellerTaxRepresentativeTradeParty") {
+            if self.is_open(Namespace::Ram, "SellerTaxRepresentativeTradeParty") {
                 Some(self.parse_tax_representative()?)
             } else {
                 None
             };
         let sales_order_reference = self.optional_reference(
-            cii::Namespace::Ram,
+            Namespace::Ram,
             "SellerOrderReferencedDocument",
             "sales_order_reference",
         )?;
         let purchase_order_reference = self.optional_reference(
-            cii::Namespace::Ram,
+            Namespace::Ram,
             "BuyerOrderReferencedDocument",
             "purchase_order_reference",
         )?;
         let contract_reference = self.optional_reference(
-            cii::Namespace::Ram,
+            Namespace::Ram,
             "ContractReferencedDocument",
             "contract_reference",
         )?;
         let mut object = None;
         let mut tender_or_lot_reference = None;
         let mut supporting_documents = Vec::new();
-        while self.is_open(cii::Namespace::Ram, "AdditionalReferencedDocument") {
+        while self.is_open(Namespace::Ram, "AdditionalReferencedDocument") {
             match self.parse_additional_document(supporting_documents.len())? {
                 Additional::Object(reference) => object = Some(reference),
                 Additional::Tender(reference) => tender_or_lot_reference = reference,
                 Additional::Supporting(document) => supporting_documents.push(document),
             }
         }
-        let project_reference = if self.is_open(cii::Namespace::Ram, "SpecifiedProcuringProject") {
+        let project_reference = if self.is_open(Namespace::Ram, "SpecifiedProcuringProject") {
             self.enter_group(
-                cii::Namespace::Ram,
+                Namespace::Ram,
                 "SpecifiedProcuringProject",
                 "project_reference",
             )?;
             let id = self
-                .optional_derived(cii::Namespace::Ram, "ID")?
+                .optional_derived(Namespace::Ram, "ID")?
                 .map(|(_, text)| text.parse())
                 .transpose()?;
-            self.optional_derived(cii::Namespace::Ram, "Name")?;
+            self.optional_derived(Namespace::Ram, "Name")?;
             self.leave_group()?;
             id
         } else {
@@ -617,15 +572,11 @@ impl Parser {
         let kind = self.additional_kind();
         match kind {
             AdditionalKind::Object => {
-                self.enter_group(
-                    cii::Namespace::Ram,
-                    "AdditionalReferencedDocument",
-                    "object",
-                )?;
+                self.enter_group(Namespace::Ram, "AdditionalReferencedDocument", "object")?;
                 let id = self.optional_issuer_assigned_id()?;
-                self.optional_derived(cii::Namespace::Ram, "TypeCode")?;
+                self.optional_derived(Namespace::Ram, "TypeCode")?;
                 let scheme = self
-                    .optional_derived(cii::Namespace::Ram, "ReferenceTypeCode")?
+                    .optional_derived(Namespace::Ram, "ReferenceTypeCode")?
                     .map(|(_, text)| text.parse())
                     .transpose()?;
                 self.leave_group()?;
@@ -633,30 +584,30 @@ impl Parser {
             }
             AdditionalKind::Tender => {
                 self.enter_group(
-                    cii::Namespace::Ram,
+                    Namespace::Ram,
                     "AdditionalReferencedDocument",
                     "tender_or_lot_reference",
                 )?;
                 let id = self.optional_issuer_assigned_id()?;
-                self.optional_derived(cii::Namespace::Ram, "TypeCode")?;
+                self.optional_derived(Namespace::Ram, "TypeCode")?;
                 self.leave_group()?;
                 Ok(Additional::Tender(id))
             }
             AdditionalKind::Supporting => {
                 let instance = index(supporting);
                 self.enter_repeatable(
-                    cii::Namespace::Ram,
+                    Namespace::Ram,
                     "AdditionalReferencedDocument",
                     "supporting_documents",
                     instance,
                 )?;
                 let reference = self.optional_issuer_assigned_id()?;
                 let external_location = self
-                    .optional_text(cii::Namespace::Ram, "URIID", "external_location")?
+                    .optional_text(Namespace::Ram, "URIID", "external_location")?
                     .map(|uri| parse_url(&uri))
                     .transpose()?;
-                self.optional_derived(cii::Namespace::Ram, "TypeCode")?;
-                let description = self.optional_leaf(cii::Namespace::Ram, "Name", "description")?;
+                self.optional_derived(Namespace::Ram, "TypeCode")?;
+                let description = self.optional_leaf(Namespace::Ram, "Name", "description")?;
                 self.leave_repeatable()?;
                 Ok(Additional::Supporting(SupportingDocument {
                     reference,
@@ -670,7 +621,7 @@ impl Parser {
 
     // Reads the issuer-assigned identifier of a referenced document, when present.
     fn optional_issuer_assigned_id(&mut self) -> Result<Option<NonEmptyString>, Error> {
-        self.optional_derived(cii::Namespace::Ram, "IssuerAssignedID")?
+        self.optional_derived(Namespace::Ram, "IssuerAssignedID")?
             .map(|(_, text)| text.parse())
             .transpose()
     }
@@ -685,16 +636,16 @@ impl Parser {
     }
 
     fn parse_seller(&mut self) -> Result<Seller, Error> {
-        self.enter_group(cii::Namespace::Ram, "SellerTradeParty", "seller")?;
+        self.enter_group(Namespace::Ram, "SellerTradeParty", "seller")?;
         let identifiers = self.parse_identifiers("identifiers")?;
-        let name = self.optional_leaf(cii::Namespace::Ram, "Name", "name")?;
+        let name = self.optional_leaf(Namespace::Ram, "Name", "name")?;
         let additional_legal_information = self.optional_leaf(
-            cii::Namespace::Ram,
+            Namespace::Ram,
             "Description",
             "additional_legal_information",
         )?;
         let (legal_entity, trading_name) = self.parse_legal_organization()?;
-        let contact = if self.is_open(cii::Namespace::Ram, "DefinedTradeContact") {
+        let contact = if self.is_open(Namespace::Ram, "DefinedTradeContact") {
             Some(self.parse_contact()?)
         } else {
             None
@@ -703,7 +654,7 @@ impl Parser {
         let electronic_address = self.optional_electronic_address()?;
         let mut vat = None;
         let mut tax_registration = None;
-        while self.is_open(cii::Namespace::Ram, "SpecifiedTaxRegistration") {
+        while self.is_open(Namespace::Ram, "SpecifiedTaxRegistration") {
             match self.parse_tax_registration()? {
                 Some(TaxRegistration::Vat(value)) => vat = Some(value),
                 Some(TaxRegistration::Other(value)) => tax_registration = Some(value),
@@ -726,11 +677,11 @@ impl Parser {
     }
 
     fn parse_buyer(&mut self) -> Result<Buyer, Error> {
-        self.enter_group(cii::Namespace::Ram, "BuyerTradeParty", "buyer")?;
+        self.enter_group(Namespace::Ram, "BuyerTradeParty", "buyer")?;
         let identifiers = self.parse_identifiers("identifiers")?;
-        let name = self.optional_leaf(cii::Namespace::Ram, "Name", "name")?;
+        let name = self.optional_leaf(Namespace::Ram, "Name", "name")?;
         let (legal_entity, trading_name) = self.parse_legal_organization()?;
-        let contact = if self.is_open(cii::Namespace::Ram, "DefinedTradeContact") {
+        let contact = if self.is_open(Namespace::Ram, "DefinedTradeContact") {
             Some(self.parse_contact()?)
         } else {
             None
@@ -738,7 +689,7 @@ impl Parser {
         let address = self.optional_address()?;
         let electronic_address = self.optional_electronic_address()?;
         let mut vat = None;
-        while self.is_open(cii::Namespace::Ram, "SpecifiedTaxRegistration") {
+        while self.is_open(Namespace::Ram, "SpecifiedTaxRegistration") {
             if let Some(TaxRegistration::Vat(value)) = self.parse_tax_registration()? {
                 vat = Some(value);
             }
@@ -758,13 +709,13 @@ impl Parser {
 
     fn parse_tax_representative(&mut self) -> Result<TaxRepresentative, Error> {
         self.enter_group(
-            cii::Namespace::Ram,
+            Namespace::Ram,
             "SellerTaxRepresentativeTradeParty",
             "tax_representative",
         )?;
-        let name = self.optional_leaf(cii::Namespace::Ram, "Name", "name")?;
+        let name = self.optional_leaf(Namespace::Ram, "Name", "name")?;
         let address = self.optional_address()?;
-        let vat = if self.is_open(cii::Namespace::Ram, "SpecifiedTaxRegistration") {
+        let vat = if self.is_open(Namespace::Ram, "SpecifiedTaxRegistration") {
             match self.parse_tax_registration()? {
                 Some(TaxRegistration::Vat(value)) => Some(value),
                 Some(TaxRegistration::Other(_)) => {
@@ -782,14 +733,14 @@ impl Parser {
     fn parse_identifiers(&mut self, field: &'static str) -> Result<Vec<OperationalEntity>, Error> {
         let mut identifiers = Vec::new();
         loop {
-            if self.is_open(cii::Namespace::Ram, "ID") {
-                let id = self.leaf(cii::Namespace::Ram, "ID", field)?.parse()?;
+            if self.is_open(Namespace::Ram, "ID") {
+                let id = self.leaf(Namespace::Ram, "ID", field)?.parse()?;
                 identifiers.push(OperationalEntity {
                     id: Some(id),
                     issuer: None,
                 });
-            } else if self.is_open(cii::Namespace::Ram, "GlobalID") {
-                let (attributes, id) = self.leaf_attr(cii::Namespace::Ram, "GlobalID", field)?;
+            } else if self.is_open(Namespace::Ram, "GlobalID") {
+                let (attributes, id) = self.leaf_attr(Namespace::Ram, "GlobalID", field)?;
                 let issuer = attr(&attributes, "schemeID")
                     .map(|value| value.parse())
                     .transpose()?;
@@ -807,20 +758,20 @@ impl Parser {
     fn parse_legal_organization(
         &mut self,
     ) -> Result<(Option<LegalEntity>, Option<NonEmptyString>), Error> {
-        if !self.is_open(cii::Namespace::Ram, "SpecifiedLegalOrganization") {
+        if !self.is_open(Namespace::Ram, "SpecifiedLegalOrganization") {
             return Ok((None, None));
         }
-        self.enter_structural(cii::Namespace::Ram, "SpecifiedLegalOrganization")?;
+        self.enter_structural(Namespace::Ram, "SpecifiedLegalOrganization")?;
         let legal_entity = self.optional_legal_entity()?;
         let trading_name =
-            self.optional_leaf(cii::Namespace::Ram, "TradingBusinessName", "trading_name")?;
+            self.optional_leaf(Namespace::Ram, "TradingBusinessName", "trading_name")?;
         self.leave_structural()?;
         Ok((legal_entity, trading_name))
     }
 
     // Reads the legal registration identifier of a party, when present.
     fn optional_legal_entity(&mut self) -> Result<Option<LegalEntity>, Error> {
-        self.optional_leaf_attr(cii::Namespace::Ram, "ID", "legal_entity")?
+        self.optional_leaf_attr(Namespace::Ram, "ID", "legal_entity")?
             .map(|(attributes, id)| {
                 Ok::<_, Error>(LegalEntity {
                     id: Some(id.parse()?),
@@ -833,20 +784,20 @@ impl Parser {
     }
 
     fn parse_contact(&mut self) -> Result<Contact, Error> {
-        self.enter_group(cii::Namespace::Ram, "DefinedTradeContact", "contact")?;
-        let name = self.optional_leaf(cii::Namespace::Ram, "PersonName", "name")?;
-        let telephone = if self.is_open(cii::Namespace::Ram, "TelephoneUniversalCommunication") {
-            self.enter_structural(cii::Namespace::Ram, "TelephoneUniversalCommunication")?;
-            let number = self.optional_leaf(cii::Namespace::Ram, "CompleteNumber", "telephone")?;
+        self.enter_group(Namespace::Ram, "DefinedTradeContact", "contact")?;
+        let name = self.optional_leaf(Namespace::Ram, "PersonName", "name")?;
+        let telephone = if self.is_open(Namespace::Ram, "TelephoneUniversalCommunication") {
+            self.enter_structural(Namespace::Ram, "TelephoneUniversalCommunication")?;
+            let number = self.optional_leaf(Namespace::Ram, "CompleteNumber", "telephone")?;
             self.leave_structural()?;
             number
         } else {
             None
         };
-        let email = if self.is_open(cii::Namespace::Ram, "EmailURIUniversalCommunication") {
-            self.enter_structural(cii::Namespace::Ram, "EmailURIUniversalCommunication")?;
+        let email = if self.is_open(Namespace::Ram, "EmailURIUniversalCommunication") {
+            self.enter_structural(Namespace::Ram, "EmailURIUniversalCommunication")?;
             let address = self
-                .optional_text(cii::Namespace::Ram, "URIID", "email")?
+                .optional_text(Namespace::Ram, "URIID", "email")?
                 .map(|value| parse_email(&value))
                 .transpose()?;
             self.leave_structural()?;
@@ -863,21 +814,21 @@ impl Parser {
     }
 
     fn optional_address(&mut self) -> Result<Option<PostalAddress>, Error> {
-        if !self.is_open(cii::Namespace::Ram, "PostalTradeAddress") {
+        if !self.is_open(Namespace::Ram, "PostalTradeAddress") {
             return Ok(None);
         }
-        self.enter_group(cii::Namespace::Ram, "PostalTradeAddress", "address")?;
-        let postal_code = self.optional_leaf(cii::Namespace::Ram, "PostcodeCode", "postal_code")?;
-        let line1 = self.optional_leaf(cii::Namespace::Ram, "LineOne", "line1")?;
-        let line2 = self.optional_leaf(cii::Namespace::Ram, "LineTwo", "line2")?;
-        let line3 = self.optional_leaf(cii::Namespace::Ram, "LineThree", "line3")?;
-        let city = self.optional_leaf(cii::Namespace::Ram, "CityName", "city")?;
+        self.enter_group(Namespace::Ram, "PostalTradeAddress", "address")?;
+        let postal_code = self.optional_leaf(Namespace::Ram, "PostcodeCode", "postal_code")?;
+        let line1 = self.optional_leaf(Namespace::Ram, "LineOne", "line1")?;
+        let line2 = self.optional_leaf(Namespace::Ram, "LineTwo", "line2")?;
+        let line3 = self.optional_leaf(Namespace::Ram, "LineThree", "line3")?;
+        let city = self.optional_leaf(Namespace::Ram, "CityName", "city")?;
         let country = self
-            .optional_text(cii::Namespace::Ram, "CountryID", "country")?
+            .optional_text(Namespace::Ram, "CountryID", "country")?
             .map(|code| parse_country(&code))
             .transpose()?;
         let country_subdivision = self.optional_leaf(
-            cii::Namespace::Ram,
+            Namespace::Ram,
             "CountrySubDivisionName",
             "country_subdivision",
         )?;
@@ -894,13 +845,13 @@ impl Parser {
     }
 
     fn optional_electronic_address(&mut self) -> Result<Option<ElectronicAddress>, Error> {
-        if !self.is_open(cii::Namespace::Ram, "URIUniversalCommunication") {
+        if !self.is_open(Namespace::Ram, "URIUniversalCommunication") {
             return Ok(None);
         }
-        self.enter_structural(cii::Namespace::Ram, "URIUniversalCommunication")?;
+        self.enter_structural(Namespace::Ram, "URIUniversalCommunication")?;
         let mut address = ElectronicAddress::default();
         if let Some((attributes, id)) =
-            self.optional_leaf_attr(cii::Namespace::Ram, "URIID", "electronic_address")?
+            self.optional_leaf_attr(Namespace::Ram, "URIID", "electronic_address")?
         {
             address.id = Some(id.parse()?);
             address.scheme = attr(&attributes, "schemeID")
@@ -919,9 +870,9 @@ impl Parser {
         } else {
             "vat"
         };
-        self.enter_group(cii::Namespace::Ram, "SpecifiedTaxRegistration", field)?;
+        self.enter_group(Namespace::Ram, "SpecifiedTaxRegistration", field)?;
         let id = self
-            .optional_leaf_attr(cii::Namespace::Ram, "ID", field)?
+            .optional_leaf_attr(Namespace::Ram, "ID", field)?
             .map(|(_, id)| id);
         self.leave_group()?;
         let Some(id) = id else {
@@ -936,16 +887,16 @@ impl Parser {
 
     // Parses the header trade delivery.
     fn header_trade_delivery(&mut self) -> Result<DeliveryParts, Error> {
-        if !self.is_open(cii::Namespace::Ram, "ApplicableHeaderTradeDelivery") {
+        if !self.is_open(Namespace::Ram, "ApplicableHeaderTradeDelivery") {
             return Ok(DeliveryParts::default());
         }
-        self.enter_structural(cii::Namespace::Ram, "ApplicableHeaderTradeDelivery")?;
+        self.enter_structural(Namespace::Ram, "ApplicableHeaderTradeDelivery")?;
         let mut ship_to = None;
-        if self.is_open(cii::Namespace::Ram, "ShipToTradeParty") {
+        if self.is_open(Namespace::Ram, "ShipToTradeParty") {
             ship_to = Some(self.parse_ship_to()?);
         }
-        let date = if self.is_open(cii::Namespace::Ram, "ActualDeliverySupplyChainEvent") {
-            self.enter_structural(cii::Namespace::Ram, "ActualDeliverySupplyChainEvent")?;
+        let date = if self.is_open(Namespace::Ram, "ActualDeliverySupplyChainEvent") {
+            self.enter_structural(Namespace::Ram, "ActualDeliverySupplyChainEvent")?;
             let date = self.optional_datetime("OccurrenceDateTime", "date")?;
             self.leave_structural()?;
             date
@@ -953,12 +904,12 @@ impl Parser {
             None
         };
         let despatch_advice_reference = self.optional_reference(
-            cii::Namespace::Ram,
+            Namespace::Ram,
             "DespatchAdviceReferencedDocument",
             "despatch_advice_reference",
         )?;
         let receiving_advice_reference = self.optional_reference(
-            cii::Namespace::Ram,
+            Namespace::Ram,
             "ReceivingAdviceReferencedDocument",
             "receiving_advice_reference",
         )?;
@@ -997,9 +948,9 @@ impl Parser {
         ),
         Error,
     > {
-        self.enter_group(cii::Namespace::Ram, "ShipToTradeParty", "delivery")?;
+        self.enter_group(Namespace::Ram, "ShipToTradeParty", "delivery")?;
         let location = self
-            .optional_leaf_attr(cii::Namespace::Ram, "ID", "location")?
+            .optional_leaf_attr(Namespace::Ram, "ID", "location")?
             .map(|(attributes, id)| {
                 Ok::<_, Error>(LocationReference {
                     id: Some(id.parse()?),
@@ -1009,7 +960,7 @@ impl Parser {
                 })
             })
             .transpose()?;
-        let name = self.optional_leaf(cii::Namespace::Ram, "Name", "name")?;
+        let name = self.optional_leaf(Namespace::Ram, "Name", "name")?;
         let address = self.optional_address()?;
         self.leave_group()?;
         Ok((name, location, address))
@@ -1017,23 +968,17 @@ impl Parser {
 
     // Parses the header trade settlement, when present.
     fn header_trade_settlement(&mut self) -> Result<Settlement, Error> {
-        if !self.is_open(cii::Namespace::Ram, "ApplicableHeaderTradeSettlement") {
+        if !self.is_open(Namespace::Ram, "ApplicableHeaderTradeSettlement") {
             return Ok(Settlement::default());
         }
-        self.enter_structural(cii::Namespace::Ram, "ApplicableHeaderTradeSettlement")?;
-        let creditor = self.optional_leaf(
-            cii::Namespace::Ram,
-            "CreditorReferenceID",
-            "creditor_identifier",
-        )?;
-        let remittance = self.optional_leaf(
-            cii::Namespace::Ram,
-            "PaymentReference",
-            "remittance_information",
-        )?;
-        let accounting_currency = if self.is_open(cii::Namespace::Ram, "TaxCurrencyCode") {
+        self.enter_structural(Namespace::Ram, "ApplicableHeaderTradeSettlement")?;
+        let creditor =
+            self.optional_leaf(Namespace::Ram, "CreditorReferenceID", "creditor_identifier")?;
+        let remittance =
+            self.optional_leaf(Namespace::Ram, "PaymentReference", "remittance_information")?;
+        let accounting_currency = if self.is_open(Namespace::Ram, "TaxCurrencyCode") {
             Some(parse_currency(&self.leaf(
-                cii::Namespace::Ram,
+                Namespace::Ram,
                 "TaxCurrencyCode",
                 "vat_accounting_total",
             )?)?)
@@ -1041,15 +986,15 @@ impl Parser {
             None
         };
         let currency = self
-            .optional_text(cii::Namespace::Ram, "InvoiceCurrencyCode", "currency")?
+            .optional_text(Namespace::Ram, "InvoiceCurrencyCode", "currency")?
             .map(|code| parse_currency(&code))
             .transpose()?;
-        let payee = if self.is_open(cii::Namespace::Ram, "PayeeTradeParty") {
+        let payee = if self.is_open(Namespace::Ram, "PayeeTradeParty") {
             Some(self.parse_payee()?)
         } else {
             None
         };
-        let paid_by = self.is_open(cii::Namespace::Ram, "SpecifiedTradeSettlementPaymentMeans");
+        let paid_by = self.is_open(Namespace::Ram, "SpecifiedTradeSettlementPaymentMeans");
         let (means, means_text, mut details) = if paid_by {
             self.parse_payment_means()?
         } else {
@@ -1057,18 +1002,18 @@ impl Parser {
         };
 
         let (exemptions, vat_point, vat_breakdown) = self.parse_tax_breakdown()?;
-        let invoicing_period = if self.is_open(cii::Namespace::Ram, "BillingSpecifiedPeriod") {
+        let invoicing_period = if self.is_open(Namespace::Ram, "BillingSpecifiedPeriod") {
             Some(self.billing_period("invoicing_period")?)
         } else {
             None
         };
         let mut adjustments = Vec::new();
-        while self.is_open(cii::Namespace::Ram, "SpecifiedTradeAllowanceCharge") {
+        while self.is_open(Namespace::Ram, "SpecifiedTradeAllowanceCharge") {
             let instance = index(adjustments.len());
             adjustments.push(self.parse_adjustment(instance)?);
         }
         let (payment_terms, payment_due_date, mandate) =
-            if self.is_open(cii::Namespace::Ram, "SpecifiedTradePaymentTerms") {
+            if self.is_open(Namespace::Ram, "SpecifiedTradePaymentTerms") {
                 self.parse_payment_terms()?
             } else {
                 (None, None, None)
@@ -1077,7 +1022,7 @@ impl Parser {
         // The summation carries no accounting-currency VAT total (`BT-111`) the parser reads.
         let accounting_value: Option<Decimal> = None;
         let mut preceding_invoices = Vec::new();
-        while self.is_open(cii::Namespace::Ram, "InvoiceReferencedDocument") {
+        while self.is_open(Namespace::Ram, "InvoiceReferencedDocument") {
             let instance = index(preceding_invoices.len());
             preceding_invoices.push(self.parse_preceding_invoice(instance)?);
         }
@@ -1119,11 +1064,11 @@ impl Parser {
     }
 
     fn parse_payee(&mut self) -> Result<Payee, Error> {
-        self.enter_group(cii::Namespace::Ram, "PayeeTradeParty", "payee")?;
+        self.enter_group(Namespace::Ram, "PayeeTradeParty", "payee")?;
         let identifiers = self.parse_identifiers("identifiers")?;
-        let name = self.optional_leaf(cii::Namespace::Ram, "Name", "name")?;
-        let legal_entity = if self.is_open(cii::Namespace::Ram, "SpecifiedLegalOrganization") {
-            self.enter_structural(cii::Namespace::Ram, "SpecifiedLegalOrganization")?;
+        let name = self.optional_leaf(Namespace::Ram, "Name", "name")?;
+        let legal_entity = if self.is_open(Namespace::Ram, "SpecifiedLegalOrganization") {
+            self.enter_structural(Namespace::Ram, "SpecifiedLegalOrganization")?;
             let entity = self.optional_legal_entity()?;
             self.leave_structural()?;
             entity
@@ -1150,41 +1095,27 @@ impl Parser {
         Error,
     > {
         self.enter_group(
-            cii::Namespace::Ram,
+            Namespace::Ram,
             "SpecifiedTradeSettlementPaymentMeans",
             "payment",
         )?;
         let means = self
-            .optional_derived(cii::Namespace::Ram, "TypeCode")?
+            .optional_derived(Namespace::Ram, "TypeCode")?
             .map(|(_, text)| text.parse())
             .transpose()?;
-        let means_text = if self.is_open(cii::Namespace::Ram, "Information") {
-            Some(
-                self.derived(cii::Namespace::Ram, "Information")?
-                    .1
-                    .parse()?,
-            )
+        let means_text = if self.is_open(Namespace::Ram, "Information") {
+            Some(self.derived(Namespace::Ram, "Information")?.1.parse()?)
         } else {
             None
         };
-        let details = if self.is_open(
-            cii::Namespace::Ram,
-            "ApplicableTradeSettlementFinancialCard",
-        ) {
-            self.enter_nested(
-                cii::Namespace::Ram,
-                "ApplicableTradeSettlementFinancialCard",
-            )?;
+        let details = if self.is_open(Namespace::Ram, "ApplicableTradeSettlementFinancialCard") {
+            self.enter_nested(Namespace::Ram, "ApplicableTradeSettlementFinancialCard")?;
             let primary_account_number = self
-                .optional_derived(cii::Namespace::Ram, "ID")?
+                .optional_derived(Namespace::Ram, "ID")?
                 .map(|(_, text)| text.parse())
                 .transpose()?;
-            let holder_name = if self.is_open(cii::Namespace::Ram, "CardholderName") {
-                Some(
-                    self.derived(cii::Namespace::Ram, "CardholderName")?
-                        .1
-                        .parse()?,
-                )
+            let holder_name = if self.is_open(Namespace::Ram, "CardholderName") {
+                Some(self.derived(Namespace::Ram, "CardholderName")?.1.parse()?)
             } else {
                 None
             };
@@ -1193,10 +1124,10 @@ impl Parser {
                 primary_account_number,
                 holder_name,
             }))
-        } else if self.is_open(cii::Namespace::Ram, "PayerPartyDebtorFinancialAccount") {
-            self.enter_nested(cii::Namespace::Ram, "PayerPartyDebtorFinancialAccount")?;
+        } else if self.is_open(Namespace::Ram, "PayerPartyDebtorFinancialAccount") {
+            self.enter_nested(Namespace::Ram, "PayerPartyDebtorFinancialAccount")?;
             let account = self
-                .optional_derived(cii::Namespace::Ram, "IBANID")?
+                .optional_derived(Namespace::Ram, "IBANID")?
                 .map(|(_, text)| text.parse())
                 .transpose()?;
             self.leave_nested()?;
@@ -1205,41 +1136,35 @@ impl Parser {
                 creditor_identifier: None,
                 debited_account: account,
             }))
-        } else if self.is_open(cii::Namespace::Ram, "PayeePartyCreditorFinancialAccount") {
+        } else if self.is_open(Namespace::Ram, "PayeePartyCreditorFinancialAccount") {
             let mut transfers = Vec::new();
-            while self.is_open(cii::Namespace::Ram, "PayeePartyCreditorFinancialAccount") {
-                self.enter_nested(cii::Namespace::Ram, "PayeePartyCreditorFinancialAccount")?;
+            while self.is_open(Namespace::Ram, "PayeePartyCreditorFinancialAccount") {
+                self.enter_nested(Namespace::Ram, "PayeePartyCreditorFinancialAccount")?;
                 let account = self
-                    .optional_derived(cii::Namespace::Ram, "IBANID")?
+                    .optional_derived(Namespace::Ram, "IBANID")?
                     .map(|(_, text)| text.parse())
                     .transpose()?;
-                let account_name = if self.is_open(cii::Namespace::Ram, "AccountName") {
-                    Some(
-                        self.derived(cii::Namespace::Ram, "AccountName")?
-                            .1
-                            .parse()?,
-                    )
+                let account_name = if self.is_open(Namespace::Ram, "AccountName") {
+                    Some(self.derived(Namespace::Ram, "AccountName")?.1.parse()?)
                 } else {
                     None
                 };
                 self.leave_nested()?;
-                let provider = if self.is_open(
-                    cii::Namespace::Ram,
-                    "PayeeSpecifiedCreditorFinancialInstitution",
-                ) {
-                    self.enter_nested(
-                        cii::Namespace::Ram,
-                        "PayeeSpecifiedCreditorFinancialInstitution",
-                    )?;
-                    let bic = self
-                        .optional_derived(cii::Namespace::Ram, "BICID")?
-                        .map(|(_, text)| text.parse())
-                        .transpose()?;
-                    self.leave_nested()?;
-                    bic
-                } else {
-                    None
-                };
+                let provider =
+                    if self.is_open(Namespace::Ram, "PayeeSpecifiedCreditorFinancialInstitution") {
+                        self.enter_nested(
+                            Namespace::Ram,
+                            "PayeeSpecifiedCreditorFinancialInstitution",
+                        )?;
+                        let bic = self
+                            .optional_derived(Namespace::Ram, "BICID")?
+                            .map(|(_, text)| text.parse())
+                            .transpose()?;
+                        self.leave_nested()?;
+                        bic
+                    } else {
+                        None
+                    };
                 transfers.push(CreditTransfer {
                     account,
                     account_name,
@@ -1262,41 +1187,41 @@ impl Parser {
         let mut exemptions = ExemptionMap::new();
         let mut vat_point = None;
         let mut breakdown = Vec::new();
-        while self.is_open(cii::Namespace::Ram, "ApplicableTradeTax") {
+        while self.is_open(Namespace::Ram, "ApplicableTradeTax") {
             let instance = index(breakdown.len());
             self.enter_repeatable(
-                cii::Namespace::Ram,
+                Namespace::Ram,
                 "ApplicableTradeTax",
                 "vat_breakdown",
                 instance,
             )?;
             let tax = self
-                .optional_text(cii::Namespace::Ram, "CalculatedAmount", "tax")?
+                .optional_text(Namespace::Ram, "CalculatedAmount", "tax")?
                 .map(|text| parse_decimal(&text))
                 .transpose()?;
-            self.optional_derived(cii::Namespace::Ram, "TypeCode")?;
+            self.optional_derived(Namespace::Ram, "TypeCode")?;
             let text: Option<NonEmptyString> = self
-                .optional_text(cii::Namespace::Ram, "ExemptionReason", "treatment")?
+                .optional_text(Namespace::Ram, "ExemptionReason", "treatment")?
                 .map(|text| text.parse())
                 .transpose()?;
             let taxable = self
-                .optional_text(cii::Namespace::Ram, "BasisAmount", "taxable")?
+                .optional_text(Namespace::Ram, "BasisAmount", "taxable")?
                 .map(|text| parse_decimal(&text))
                 .transpose()?;
             let category: Option<VatCategory> = self
-                .optional_text(cii::Namespace::Ram, "CategoryCode", "treatment")?
+                .optional_text(Namespace::Ram, "CategoryCode", "treatment")?
                 .map(|text| text.parse())
                 .transpose()?;
             let code: Option<ExemptionReason> = self
-                .optional_text(cii::Namespace::Ram, "ExemptionReasonCode", "treatment")?
+                .optional_text(Namespace::Ram, "ExemptionReasonCode", "treatment")?
                 .map(|text| text.parse())
                 .transpose()?;
-            if self.is_open(cii::Namespace::Ram, "DueDateTypeCode") {
-                let event = self.derived(cii::Namespace::Ram, "DueDateTypeCode")?.1;
+            if self.is_open(Namespace::Ram, "DueDateTypeCode") {
+                let event = self.derived(Namespace::Ram, "DueDateTypeCode")?.1;
                 vat_point = Some(VatPoint::Event(event.parse()?));
             }
             let rate: Option<Percentage> = self
-                .optional_text(cii::Namespace::Ram, "RateApplicablePercent", "treatment")?
+                .optional_text(Namespace::Ram, "RateApplicablePercent", "treatment")?
                 .map(|text| text.parse())
                 .transpose()?;
             self.leave_repeatable()?;
@@ -1330,7 +1255,7 @@ impl Parser {
 
     fn parse_adjustment(&mut self, instance: NonZeroUsize) -> Result<Adjustment, Error> {
         self.enter_repeatable(
-            cii::Namespace::Ram,
+            Namespace::Ram,
             "SpecifiedTradeAllowanceCharge",
             "adjustments",
             instance,
@@ -1338,15 +1263,12 @@ impl Parser {
         let charge = self.optional_indicator()?;
         let amount = self.parse_adjustment_amount()?;
         let reason = self.parse_reason(charge)?;
-        let vat = if self.is_open(cii::Namespace::Ram, "CategoryTradeTax") {
-            self.enter_nested(cii::Namespace::Ram, "CategoryTradeTax")?;
-            self.optional_derived(cii::Namespace::Ram, "TypeCode")?;
-            let category: VatCategory = self
-                .derived(cii::Namespace::Ram, "CategoryCode")?
-                .1
-                .parse()?;
+        let vat = if self.is_open(Namespace::Ram, "CategoryTradeTax") {
+            self.enter_nested(Namespace::Ram, "CategoryTradeTax")?;
+            self.optional_derived(Namespace::Ram, "TypeCode")?;
+            let category: VatCategory = self.derived(Namespace::Ram, "CategoryCode")?.1.parse()?;
             let rate = self
-                .derived(cii::Namespace::Ram, "RateApplicablePercent")?
+                .derived(Namespace::Ram, "RateApplicablePercent")?
                 .1
                 .parse()?;
             self.leave_nested()?;
@@ -1364,13 +1286,13 @@ impl Parser {
 
     // Parses the amount of an adjustment, absolute or relative, absent without the amount.
     fn parse_adjustment_amount(&mut self) -> Result<Option<AdjustmentAmount>, Error> {
-        let rate = self.optional_text(cii::Namespace::Ram, "CalculationPercent", "amount")?;
+        let rate = self.optional_text(Namespace::Ram, "CalculationPercent", "amount")?;
         let base = self
-            .optional_text(cii::Namespace::Ram, "BasisAmount", "amount")?
+            .optional_text(Namespace::Ram, "BasisAmount", "amount")?
             .map(|text| parse_decimal(&text))
             .transpose()?;
         let amount = self
-            .optional_text(cii::Namespace::Ram, "ActualAmount", "amount")?
+            .optional_text(Namespace::Ram, "ActualAmount", "amount")?
             .map(|text| parse_decimal(&text))
             .transpose()?;
         Ok(match (rate, base, amount) {
@@ -1386,13 +1308,13 @@ impl Parser {
 
     // Parses the reason code and text of an adjustment, dropped without the direction.
     fn parse_reason(&mut self, charge: Option<bool>) -> Result<Option<AdjustmentReason>, Error> {
-        let code = if self.is_open(cii::Namespace::Ram, "ReasonCode") {
-            Some(self.derived(cii::Namespace::Ram, "ReasonCode")?.1)
+        let code = if self.is_open(Namespace::Ram, "ReasonCode") {
+            Some(self.derived(Namespace::Ram, "ReasonCode")?.1)
         } else {
             None
         };
-        let text = if self.is_open(cii::Namespace::Ram, "Reason") {
-            Some(self.derived(cii::Namespace::Ram, "Reason")?.1.parse()?)
+        let text = if self.is_open(Namespace::Ram, "Reason") {
+            Some(self.derived(Namespace::Ram, "Reason")?.1.parse()?)
         } else {
             None
         };
@@ -1413,14 +1335,11 @@ impl Parser {
     fn parse_payment_terms(
         &mut self,
     ) -> Result<(Option<NonEmptyString>, Option<Date>, Option<NonEmptyString>), Error> {
-        self.enter_structural(cii::Namespace::Ram, "SpecifiedTradePaymentTerms")?;
-        let terms = self.optional_leaf(cii::Namespace::Ram, "Description", "payment_terms")?;
+        self.enter_structural(Namespace::Ram, "SpecifiedTradePaymentTerms")?;
+        let terms = self.optional_leaf(Namespace::Ram, "Description", "payment_terms")?;
         let due = self.optional_datetime("DueDateDateTime", "payment_due_date")?;
-        let mandate = self.optional_leaf(
-            cii::Namespace::Ram,
-            "DirectDebitMandateID",
-            "mandate_reference",
-        )?;
+        let mandate =
+            self.optional_leaf(Namespace::Ram, "DirectDebitMandateID", "mandate_reference")?;
         self.leave_structural()?;
         Ok((terms, due, mandate))
     }
@@ -1429,16 +1348,16 @@ impl Parser {
     fn parse_monetary_summation(&mut self) -> Result<Summation, Error> {
         let mut summation = Summation::default();
         if !self.is_open(
-            cii::Namespace::Ram,
+            Namespace::Ram,
             "SpecifiedTradeSettlementHeaderMonetarySummation",
         ) {
             return Ok(summation);
         }
         self.enter_structural(
-            cii::Namespace::Ram,
+            Namespace::Ram,
             "SpecifiedTradeSettlementHeaderMonetarySummation",
         )?;
-        while self.is_open_namespace(cii::Namespace::Ram) {
+        while self.is_open_namespace(Namespace::Ram) {
             let (_, name) = self.head()?;
             let (field, slot) = match name.as_str() {
                 "LineTotalAmount" => ("line_net_total", &mut summation.line_net_total),
@@ -1451,11 +1370,11 @@ impl Parser {
                 "TotalPrepaidAmount" => ("paid", &mut summation.paid),
                 "DuePayableAmount" => ("due", &mut summation.due),
                 _ => {
-                    self.derived(cii::Namespace::Ram, &name)?;
+                    self.derived(Namespace::Ram, &name)?;
                     continue;
                 }
             };
-            let text = self.leaf(cii::Namespace::Ram, &name, field)?;
+            let text = self.leaf(Namespace::Ram, &name, field)?;
             *slot = Some(parse_decimal(&text)?);
         }
         self.leave_structural()?;
@@ -1467,15 +1386,15 @@ impl Parser {
         instance: NonZeroUsize,
     ) -> Result<PrecedingInvoice, Error> {
         self.enter_repeatable(
-            cii::Namespace::Ram,
+            Namespace::Ram,
             "InvoiceReferencedDocument",
             "preceding_invoices",
             instance,
         )?;
         let number = self.optional_issuer_assigned_id()?;
-        let issue_date = if self.is_open(cii::Namespace::Ram, "FormattedIssueDateTime") {
-            self.enter_nested(cii::Namespace::Ram, "FormattedIssueDateTime")?;
-            self.take_open(cii::Namespace::Qdt, "DateTimeString")?;
+        let issue_date = if self.is_open(Namespace::Ram, "FormattedIssueDateTime") {
+            self.enter_nested(Namespace::Ram, "FormattedIssueDateTime")?;
+            self.take_open(Namespace::Qdt, "DateTimeString")?;
             let date = self.take_text();
             self.take_close()?;
             self.leave_nested()?;
@@ -1489,7 +1408,7 @@ impl Parser {
 
     // Parses a billing period (`BG-14`/`BG-26`).
     fn billing_period(&mut self, field: &'static str) -> Result<Period, Error> {
-        self.enter_group(cii::Namespace::Ram, "BillingSpecifiedPeriod", field)?;
+        self.enter_group(Namespace::Ram, "BillingSpecifiedPeriod", field)?;
         let start = self.optional_datetime("StartDateTime", field)?;
         let end = self.optional_datetime("EndDateTime", field)?;
         self.leave_group()?;
@@ -1499,7 +1418,7 @@ impl Parser {
     // Reads a single-identifier reference document when present.
     fn optional_reference(
         &mut self,
-        namespace: cii::Namespace,
+        namespace: Namespace,
         element: &str,
         field: &'static str,
     ) -> Result<Option<NonEmptyString>, Error> {
@@ -1520,7 +1439,7 @@ impl Parser {
         element: &str,
         field: &'static str,
     ) -> Result<Option<Date>, Error> {
-        if self.is_open(cii::Namespace::Ram, element) {
+        if self.is_open(Namespace::Ram, element) {
             Ok(Some(self.datetime(element, field)?))
         } else {
             Ok(None)
@@ -1529,22 +1448,17 @@ impl Parser {
 
     // Reads a date wrapper whose value carrier is a `udt:DateTimeString`.
     fn datetime(&mut self, element: &str, field: &'static str) -> Result<Date, Error> {
-        self.take_open(cii::Namespace::Ram, element)?;
-        self.trace.enter(cii::Namespace::Ram, element);
-        self.trace.push_field(field);
-        self.trace.record_context();
-        self.take_open(cii::Namespace::Udt, "DateTimeString")?;
+        self.enter_group(Namespace::Ram, element, field)?;
+        self.take_open(Namespace::Udt, "DateTimeString")?;
         let text = self.take_text();
         self.take_close()?;
-        self.take_close()?;
-        self.trace.pop_context();
-        self.trace.leave();
+        self.leave_group()?;
         parse_date(&text)
     }
 
     // Reads an optional charge indicator whose value carrier is a `udt:Indicator`.
     fn optional_indicator(&mut self) -> Result<Option<bool>, Error> {
-        if self.is_open(cii::Namespace::Ram, "ChargeIndicator") {
+        if self.is_open(Namespace::Ram, "ChargeIndicator") {
             Ok(Some(self.indicator()?))
         } else {
             Ok(None)
@@ -1553,219 +1467,12 @@ impl Parser {
 
     // Reads a charge indicator whose value carrier is a `udt:Indicator`.
     fn indicator(&mut self) -> Result<bool, Error> {
-        self.take_open(cii::Namespace::Ram, "ChargeIndicator")?;
-        self.trace.enter(cii::Namespace::Ram, "ChargeIndicator");
-        self.trace.record_context();
-        self.take_open(cii::Namespace::Udt, "Indicator")?;
+        self.enter_nested(Namespace::Ram, "ChargeIndicator")?;
+        self.take_open(Namespace::Udt, "Indicator")?;
         let text = self.take_text();
         self.take_close()?;
-        self.take_close()?;
-        self.trace.leave();
+        self.leave_nested()?;
         Ok(text.trim() == "true")
-    }
-
-    // ---- mirror primitives ----------------------------------------------
-
-    fn leaf(
-        &mut self,
-        namespace: cii::Namespace,
-        name: &str,
-        field: &'static str,
-    ) -> Result<String, Error> {
-        Ok(self.leaf_attr(namespace, name, field)?.1)
-    }
-
-    fn leaf_attr(
-        &mut self,
-        namespace: cii::Namespace,
-        name: &str,
-        field: &'static str,
-    ) -> Result<(Vec<(String, String)>, String), Error> {
-        let attributes = self.take_open(namespace, name)?;
-        self.trace.enter(namespace, name);
-        self.trace.push_field(field);
-        self.trace.record_context();
-        let text = self.take_text();
-        self.take_close()?;
-        self.trace.pop_context();
-        self.trace.leave();
-        Ok((attributes, text))
-    }
-
-    fn optional_leaf(
-        &mut self,
-        namespace: cii::Namespace,
-        name: &str,
-        field: &'static str,
-    ) -> Result<Option<NonEmptyString>, Error> {
-        if self.is_open(namespace, name) {
-            Ok(Some(self.leaf(namespace, name, field)?.parse()?))
-        } else {
-            Ok(None)
-        }
-    }
-
-    // Reads the text of an optional leaf mapped to a model field.
-    fn optional_text(
-        &mut self,
-        namespace: cii::Namespace,
-        name: &str,
-        field: &'static str,
-    ) -> Result<Option<String>, Error> {
-        if self.is_open(namespace, name) {
-            Ok(Some(self.leaf(namespace, name, field)?))
-        } else {
-            Ok(None)
-        }
-    }
-
-    // Reads an optional leaf mapped to a model field, returning its attributes and text.
-    #[allow(clippy::type_complexity)]
-    fn optional_leaf_attr(
-        &mut self,
-        namespace: cii::Namespace,
-        name: &str,
-        field: &'static str,
-    ) -> Result<Option<(Vec<(String, String)>, String)>, Error> {
-        if self.is_open(namespace, name) {
-            Ok(Some(self.leaf_attr(namespace, name, field)?))
-        } else {
-            Ok(None)
-        }
-    }
-
-    // Reads an optional derived leaf with no model field, returning its attributes and text.
-    #[allow(clippy::type_complexity)]
-    fn optional_derived(
-        &mut self,
-        namespace: cii::Namespace,
-        name: &str,
-    ) -> Result<Option<(Vec<(String, String)>, String)>, Error> {
-        if self.is_open(namespace, name) {
-            Ok(Some(self.derived(namespace, name)?))
-        } else {
-            Ok(None)
-        }
-    }
-
-    fn rooted(&mut self, namespace: cii::Namespace, name: &str) -> Result<String, Error> {
-        self.take_open(namespace, name)?;
-        self.trace.enter(namespace, name);
-        self.trace.record_root();
-        let text = self.take_text();
-        self.take_close()?;
-        self.trace.leave();
-        Ok(text)
-    }
-
-    fn derived(
-        &mut self,
-        namespace: cii::Namespace,
-        name: &str,
-    ) -> Result<(Vec<(String, String)>, String), Error> {
-        let attributes = self.take_open(namespace, name)?;
-        self.trace.enter(namespace, name);
-        self.trace.record_context();
-        let text = self.take_text();
-        self.take_close()?;
-        self.trace.leave();
-        Ok((attributes, text))
-    }
-
-    fn enter_structural(&mut self, namespace: cii::Namespace, name: &str) -> Result<(), Error> {
-        self.take_open(namespace, name)?;
-        self.trace.enter(namespace, name);
-        self.trace.record_root();
-        Ok(())
-    }
-
-    fn leave_structural(&mut self) -> Result<(), Error> {
-        self.take_close()?;
-        self.trace.leave();
-        Ok(())
-    }
-
-    fn enter_nested(&mut self, namespace: cii::Namespace, name: &str) -> Result<(), Error> {
-        self.take_open(namespace, name)?;
-        self.trace.enter(namespace, name);
-        self.trace.record_context();
-        Ok(())
-    }
-
-    fn leave_nested(&mut self) -> Result<(), Error> {
-        self.take_close()?;
-        self.trace.leave();
-        Ok(())
-    }
-
-    fn enter_group(
-        &mut self,
-        namespace: cii::Namespace,
-        name: &str,
-        field: &'static str,
-    ) -> Result<(), Error> {
-        self.take_open(namespace, name)?;
-        self.trace.enter(namespace, name);
-        self.trace.push_field(field);
-        self.trace.record_context();
-        Ok(())
-    }
-
-    fn leave_group(&mut self) -> Result<(), Error> {
-        self.take_close()?;
-        self.trace.pop_context();
-        self.trace.leave();
-        Ok(())
-    }
-
-    fn enter_repeatable(
-        &mut self,
-        namespace: cii::Namespace,
-        name: &str,
-        field: &'static str,
-        instance: NonZeroUsize,
-    ) -> Result<(), Error> {
-        self.take_open(namespace, name)?;
-        self.trace.enter(namespace, name);
-        self.trace.push_instance(field, instance);
-        self.trace.record_context();
-        Ok(())
-    }
-
-    fn leave_repeatable(&mut self) -> Result<(), Error> {
-        self.take_close()?;
-        self.trace.pop_context();
-        self.trace.leave();
-        Ok(())
-    }
-
-    // ---- token cursor ---------------------------------------------------
-
-    // Peeks the text of a direct child element by local name, without consuming.
-    fn peek_child_text(&self, child: &str) -> Option<String> {
-        let mut depth = 0usize;
-        let mut cursor = self.cursor;
-        while let Some(token) = self.tokens.get(cursor) {
-            match token {
-                Token::Open { name, .. } => {
-                    if depth == 1 && name == child {
-                        if let Some(Token::Text(text)) = self.tokens.get(cursor + 1) {
-                            return Some(text.trim().to_owned());
-                        }
-                    }
-                    depth += 1;
-                }
-                Token::Close => {
-                    if depth <= 1 {
-                        return None;
-                    }
-                    depth -= 1;
-                }
-                Token::Text(_) => {}
-            }
-            cursor += 1;
-        }
-        None
     }
 
     // Peeks the scheme id of the current tax registration, without consuming.
@@ -1778,68 +1485,6 @@ impl Parser {
             }
         }
         String::new()
-    }
-
-    fn head(&self) -> Result<(cii::Namespace, String), Error> {
-        match self.tokens.get(self.cursor) {
-            Some(Token::Open {
-                namespace, name, ..
-            }) => Ok((*namespace, name.clone())),
-            _ => Err(bad("expected an element")),
-        }
-    }
-
-    fn is_open(&self, namespace: cii::Namespace, name: &str) -> bool {
-        matches!(
-            self.tokens.get(self.cursor),
-            Some(Token::Open { namespace: found, name: local, .. }) if *found == namespace && local == name
-        )
-    }
-
-    fn is_open_namespace(&self, namespace: cii::Namespace) -> bool {
-        matches!(
-            self.tokens.get(self.cursor),
-            Some(Token::Open { namespace: found, .. }) if *found == namespace
-        )
-    }
-
-    fn take_open(
-        &mut self,
-        namespace: cii::Namespace,
-        name: &str,
-    ) -> Result<Vec<(String, String)>, Error> {
-        match self.tokens.get(self.cursor) {
-            Some(Token::Open {
-                namespace: found,
-                name: local,
-                attributes,
-            }) if *found == namespace && local == name => {
-                let attributes = attributes.clone();
-                self.cursor += 1;
-                Ok(attributes)
-            }
-            _ => Err(Error::malformed_xml(format!("expected <{name}>"))),
-        }
-    }
-
-    fn take_close(&mut self) -> Result<(), Error> {
-        match self.tokens.get(self.cursor) {
-            Some(Token::Close) => {
-                self.cursor += 1;
-                Ok(())
-            }
-            _ => Err(bad("expected an end tag")),
-        }
-    }
-
-    fn take_text(&mut self) -> String {
-        if let Some(Token::Text(text)) = self.tokens.get(self.cursor) {
-            let text = text.clone();
-            self.cursor += 1;
-            text
-        } else {
-            String::new()
-        }
     }
 }
 

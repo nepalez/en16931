@@ -1,8 +1,9 @@
-use crate::{Document, Format};
+use crate::Format;
+use crate::{DocumentBuilder, Serializer};
 
 /// Renders an invoice type into the XML of the binding `F`.
 pub trait Serializable<F: Format>: Sized {
-    /// Formats a document's invoice as XML,
+    /// Writes the whole document of the builder into the serializer, from the root element down,
     /// filling the dictionary and the abbreviation table in the same pass.
-    fn serialize(document: &mut Document<Self, F>);
+    fn serialize(serializer: &mut Serializer<F>, builder: &DocumentBuilder<Self>);
 }

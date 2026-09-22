@@ -1,6 +1,9 @@
+use crate::Namespace;
 use crate::prelude::*;
-use crate::{Abbreviations, Binding, Context, Error, Namespace, Path};
+use crate::{Abbreviations, Binding, Context, Error, Path};
 
+pub(crate) mod parser;
+pub(crate) mod serializer;
 pub(crate) mod trace;
 
 #[cfg(test)]
@@ -9,7 +12,11 @@ pub(crate) mod test_helpers;
 pub mod cii;
 pub mod ubl;
 
+use trace::Trace;
+
 pub use cii::Cii;
+pub use parser::Parser;
+pub use serializer::Serializer;
 pub use ubl::Ubl;
 
 /// An XML binding of the standard, represented by a marker type.

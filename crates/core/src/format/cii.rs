@@ -1,8 +1,7 @@
 mod deserialize;
 mod serialize;
 
-use crate::Format;
-use crate::format::Sealed;
+use super::{Format, Sealed, Token};
 use crate::prelude::*;
 
 /// The marker of the UN/CEFACT Cross Industry Invoice binding.

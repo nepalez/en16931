@@ -34,7 +34,7 @@ pub use deserializable::Deserializable;
 pub use document::Document;
 pub use document_builder::DocumentBuilder;
 pub use error::Error;
-pub use format::{Cii, Dictionary, Format, Ubl, cii, ubl};
+pub use format::{Cii, Dictionary, Format, Parser, Serializer, Ubl, cii, ubl};
 pub use invalid_document::InvalidDocument;
 pub use invoice::*;
 pub use location::{Location, LocationStep, RawNamespace};

@@ -1,7 +1,7 @@
 mod deserialize;
 mod serialize;
 
-use crate::Format;
+use super::{Format, Token};
 use crate::format::Sealed;
 use crate::prelude::*;
 

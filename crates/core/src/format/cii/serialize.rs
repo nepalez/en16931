@@ -1,24 +1,13 @@
-use crate::format::cii;
-use crate::format::trace::Trace;
+use super::Namespace;
+use crate::Serializable;
 use crate::prelude::*;
 use crate::{
-    Abbreviations, Adjustment, AdjustmentAmount, AdjustmentReason, Buyer, Cii, Contact, Currency,
-    Delivery, Dictionary, Document, DocumentBuilder, ElectronicAddress, Format, Invoice,
-    InvoiceLine, Item, LegalEntity, LineAdjustment, Namespace, NonEmptyString, OperationalEntity,
-    Payee, PaymentDetails, PaymentInstructions, Period, PostalAddress, PrecedingInvoice, Price,
-    Seller, Serializable, TaxRepresentative, Term, VatPoint, VatTreatment,
+    Adjustment, AdjustmentAmount, AdjustmentReason, Buyer, Cii, Contact, Currency, Delivery,
+    DocumentBuilder, ElectronicAddress, Invoice, InvoiceLine, Item, LegalEntity, LineAdjustment,
+    NonEmptyString, OperationalEntity, Payee, PaymentDetails, PaymentInstructions, Period,
+    PostalAddress, PrecedingInvoice, Price, Seller, Serializer, TaxRepresentative, Term, VatPoint,
+    VatTreatment,
 };
-
-impl Serializable<Cii> for Invoice {
-    fn serialize(document: &mut Document<Self, Cii>) {
-        let mut serializer = Serializer::new(&document.builder);
-        serializer.document(&document.builder);
-        let (xml, dictionary, abbreviations) = serializer.finish();
-        document.xml = xml;
-        document.dictionary = dictionary;
-        document.abbreviations = abbreviations;
-    }
-}
 
 // Renders a date as an ISO-8601 basic date (`YYYYMMDD`), the CII form 102.
 fn date(value: Date) -> String {
@@ -42,139 +31,58 @@ fn plain(value: Decimal) -> String {
     value.to_string()
 }
 
-/// The stateful CII writer: an XML sink plus the trace that builds the dictionary.
-struct Serializer {
-    inner: Writer<Vec<u8>>,
-    trace: Trace<cii::Namespace>,
-    abbreviations: Abbreviations<cii::Namespace>,
-    forbidden: &'static [Term],
-    currency: Option<&'static str>,
+impl Serializable<Cii> for Invoice {
+    // Serializes the whole document under the CII root element.
+    fn serialize(serializer: &mut Serializer<Cii>, builder: &DocumentBuilder<Invoice>) {
+        let invoice = &builder.invoice;
+        serializer.root(|serializer| {
+            serializer.exchanged_document_context(builder);
+            serializer.exchanged_document(invoice);
+            serializer.structural(
+                Namespace::Rsm,
+                "SupplyChainTradeTransaction",
+                |serializer| {
+                    serializer.lines(&invoice.lines);
+                    serializer.header_trade_agreement(invoice);
+                    serializer.header_trade_delivery(invoice);
+                    serializer.header_trade_settlement(invoice);
+                },
+            );
+        });
+    }
 }
 
-impl Serializer {
-    fn new(builder: &DocumentBuilder<Invoice>) -> Self {
-        Self {
-            inner: Writer::new(Vec::new()),
-            trace: Trace::new(),
-            abbreviations: <Cii as Format>::Namespace::default_abbreviations(),
-            forbidden: builder.profile.forbidden_terms(),
-            currency: builder.invoice.currency.as_ref().map(Currency::code),
-        }
-    }
-
-    // The `currencyID` attribute of an amount, absent without the invoice currency.
-    fn currency_attribute(&self) -> Vec<(&'static str, &'static str)> {
-        self.currency
-            .map(|currency| vec![("currencyID", currency)])
-            .unwrap_or_default()
-    }
-
-    fn finish(
-        self,
-    ) -> (
-        String,
-        Dictionary<cii::Namespace>,
-        Abbreviations<cii::Namespace>,
-    ) {
-        let xml = String::from_utf8(self.inner.into_inner()).expect("quick-xml emits valid UTF-8");
-        (xml, self.trace.into_dictionary(), self.abbreviations)
-    }
-
-    fn is_forbidden(&self, term: Term) -> bool {
-        self.forbidden.contains(&term)
-    }
-
-    // Serializes the whole document under the CII root element.
-    fn document(&mut self, builder: &DocumentBuilder<Invoice>) {
-        let invoice = &builder.invoice;
-        let declarations: Vec<(String, &'static str)> = cii::Namespace::VARIANTS
-            .iter()
-            .map(|namespace| {
-                let prefix = namespace.prefix();
-                let key = if prefix.is_empty() {
-                    "xmlns".to_owned()
-                } else {
-                    format!("xmlns:{prefix}")
-                };
-                (key, namespace.uri())
-            })
-            .collect();
-        let root = BytesStart::new(qname(Cii::root_namespace(), Cii::ROOT_ELEMENT))
-            .with_attributes(declarations.iter().map(|(key, uri)| (key.as_str(), *uri)));
-        self.write(Event::Start(root));
-        for namespace in cii::Namespace::VARIANTS {
-            self.abbreviations
-                .declare(namespace.prefix(), *namespace)
-                .expect("the writer binds each abbreviation to one namespace");
-        }
-        self.trace.enter(Cii::root_namespace(), Cii::ROOT_ELEMENT);
-        self.trace.record_root();
-
-        self.exchanged_document_context(builder);
-        self.exchanged_document(invoice);
-        self.structural(
-            cii::Namespace::Rsm,
-            "SupplyChainTradeTransaction",
-            |serializer| {
-                serializer.lines(&invoice.lines);
-                serializer.header_trade_agreement(invoice);
-                serializer.header_trade_delivery(invoice);
-                serializer.header_trade_settlement(invoice);
-            },
-        );
-
-        self.trace.leave();
-        self.write(Event::End(BytesEnd::new(qname(
-            Cii::root_namespace(),
-            Cii::ROOT_ELEMENT,
-        ))));
-    }
-
+impl Serializer<Cii> {
     // Serializes the document context: the business process (BT-23) and the profile (BT-24).
     fn exchanged_document_context(&mut self, builder: &DocumentBuilder<Invoice>) {
-        self.structural(
-            cii::Namespace::Rsm,
-            "ExchangedDocumentContext",
-            |serializer| {
-                if let Some(process) = &builder.business_process {
-                    serializer.structural(
-                        cii::Namespace::Ram,
-                        "BusinessProcessSpecifiedDocumentContextParameter",
-                        |serializer| {
-                            serializer.rooted(cii::Namespace::Ram, "ID", &[], process.as_ref());
-                        },
-                    );
-                }
+        self.structural(Namespace::Rsm, "ExchangedDocumentContext", |serializer| {
+            if let Some(process) = &builder.business_process {
                 serializer.structural(
-                    cii::Namespace::Ram,
-                    "GuidelineSpecifiedDocumentContextParameter",
+                    Namespace::Ram,
+                    "BusinessProcessSpecifiedDocumentContextParameter",
                     |serializer| {
-                        serializer.rooted(
-                            cii::Namespace::Ram,
-                            "ID",
-                            &[],
-                            &builder.profile.to_string(),
-                        );
+                        serializer.rooted(Namespace::Ram, "ID", &[], process.as_ref());
                     },
                 );
-            },
-        );
+            }
+            serializer.structural(
+                Namespace::Ram,
+                "GuidelineSpecifiedDocumentContextParameter",
+                |serializer| {
+                    serializer.rooted(Namespace::Ram, "ID", &[], &builder.profile.to_string());
+                },
+            );
+        });
     }
 
     // Serializes the exchanged document header: number, type, date, and notes.
     fn exchanged_document(&mut self, invoice: &Invoice) {
-        self.structural(cii::Namespace::Rsm, "ExchangedDocument", |serializer| {
+        self.structural(Namespace::Rsm, "ExchangedDocument", |serializer| {
             if let Some(number) = &invoice.number {
-                serializer.leaf(
-                    cii::Namespace::Ram,
-                    "ID",
-                    "number",
-                    Term::BT(1),
-                    number.as_ref(),
-                );
+                serializer.leaf(Namespace::Ram, "ID", "number", Term::BT(1), number.as_ref());
             }
             serializer.leaf(
-                cii::Namespace::Ram,
+                Namespace::Ram,
                 "TypeCode",
                 "type_code",
                 Term::BT(3),
@@ -186,19 +94,19 @@ impl Serializer {
             for (position, note) in invoice.notes.iter().enumerate() {
                 let instance = index(position);
                 serializer.repeatable(
-                    cii::Namespace::Ram,
+                    Namespace::Ram,
                     "IncludedNote",
                     "notes",
                     Term::BG(1),
                     instance,
                     |serializer| {
                         if let Some(text) = &note.text {
-                            serializer.derived(cii::Namespace::Ram, "Content", &[], text.as_ref());
+                            serializer.derived(Namespace::Ram, "Content", &[], text.as_ref());
                         }
                         if let Some(code) = &note.subject_code {
-                            if !serializer.is_forbidden(Term::BT(21)) {
+                            if !serializer.forbids(Term::BT(21)) {
                                 serializer.derived(
-                                    cii::Namespace::Ram,
+                                    Namespace::Ram,
                                     "SubjectCode",
                                     &[],
                                     code.as_ref(),
@@ -216,7 +124,7 @@ impl Serializer {
         for (position, line) in lines.iter().enumerate() {
             let instance = index(position);
             self.repeatable(
-                cii::Namespace::Ram,
+                Namespace::Ram,
                 "IncludedSupplyChainTradeLineItem",
                 "lines",
                 Term::BG(25),
@@ -231,26 +139,20 @@ impl Serializer {
     // Serializes one invoice line body.
     fn line(&mut self, line: &InvoiceLine) {
         self.structural(
-            cii::Namespace::Ram,
+            Namespace::Ram,
             "AssociatedDocumentLineDocument",
             |serializer| {
                 if let Some(id) = &line.id {
-                    serializer.leaf(
-                        cii::Namespace::Ram,
-                        "LineID",
-                        "id",
-                        Term::BT(126),
-                        id.as_ref(),
-                    );
+                    serializer.leaf(Namespace::Ram, "LineID", "id", Term::BT(126), id.as_ref());
                 }
                 if let Some(note) = &line.note {
                     serializer.group(
-                        cii::Namespace::Ram,
+                        Namespace::Ram,
                         "IncludedNote",
                         "note",
                         Term::BT(127),
                         |serializer| {
-                            serializer.derived(cii::Namespace::Ram, "Content", &[], note.as_ref());
+                            serializer.derived(Namespace::Ram, "Content", &[], note.as_ref());
                         },
                     );
                 }
@@ -260,158 +162,157 @@ impl Serializer {
             self.line_product(item);
         }
         self.line_agreement(line);
-        self.structural(
-            cii::Namespace::Ram,
-            "SpecifiedLineTradeDelivery",
-            |serializer| {
-                if let Some(quantity) = &line.quantity {
-                    serializer.leaf_attr(
-                        cii::Namespace::Ram,
-                        "BilledQuantity",
-                        "quantity",
-                        Term::BT(129),
-                        &[("unitCode", quantity.unit.code())],
-                        &plain(quantity.value),
-                    );
-                }
-            },
-        );
+        self.structural(Namespace::Ram, "SpecifiedLineTradeDelivery", |serializer| {
+            if let Some(quantity) = &line.quantity {
+                serializer.leaf_attr(
+                    Namespace::Ram,
+                    "BilledQuantity",
+                    "quantity",
+                    Term::BT(129),
+                    &[("unitCode", quantity.unit.code())],
+                    &plain(quantity.value),
+                );
+            }
+        });
         self.line_settlement(line);
     }
 
     // Serializes the line product (`BG-31`), rebasing the tax onto the line VAT elsewhere.
     fn line_product(&mut self, item: &Item) {
-        self.trace
-            .enter(cii::Namespace::Ram, "SpecifiedTradeProduct");
-        self.trace.push_field("item");
-        self.trace.record_context();
-        self.write_start(cii::Namespace::Ram, "SpecifiedTradeProduct");
-
-        if let Some(standard) = &item.standard_id {
-            if let Some(id) = &standard.id {
-                match &standard.issuer {
-                    Some(issuer) => self.field_leaf_attr(
-                        cii::Namespace::Ram,
-                        "GlobalID",
-                        "standard_id",
-                        &[("schemeID", &issuer.to_string())],
-                        id.as_ref(),
-                    ),
-                    None => {
-                        self.field_leaf(cii::Namespace::Ram, "GlobalID", "standard_id", id.as_ref())
+        self.field_group(
+            Namespace::Ram,
+            "SpecifiedTradeProduct",
+            "item",
+            |serializer| {
+                if let Some(standard) = &item.standard_id {
+                    if let Some(id) = &standard.id {
+                        match &standard.issuer {
+                            Some(issuer) => serializer.field_leaf_attr(
+                                Namespace::Ram,
+                                "GlobalID",
+                                "standard_id",
+                                &[("schemeID", &issuer.to_string())],
+                                id.as_ref(),
+                            ),
+                            None => serializer.field_leaf(
+                                Namespace::Ram,
+                                "GlobalID",
+                                "standard_id",
+                                id.as_ref(),
+                            ),
+                        }
                     }
                 }
-            }
-        }
-        if let Some(id) = &item.seller_id {
-            self.field_leaf(
-                cii::Namespace::Ram,
-                "SellerAssignedID",
-                "seller_id",
-                id.as_ref(),
-            );
-        }
-        if let Some(id) = &item.buyer_id {
-            self.field_leaf(
-                cii::Namespace::Ram,
-                "BuyerAssignedID",
-                "buyer_id",
-                id.as_ref(),
-            );
-        }
-        if let Some(name) = &item.name {
-            self.field_leaf(cii::Namespace::Ram, "Name", "name", name.as_ref());
-        }
-        if let Some(description) = &item.description {
-            self.field_leaf(
-                cii::Namespace::Ram,
-                "Description",
-                "description",
-                description.as_ref(),
-            );
-        }
-        for attribute in &item.attributes {
-            self.structural(
-                cii::Namespace::Ram,
-                "ApplicableProductCharacteristic",
-                |serializer| {
-                    if let Some(name) = &attribute.name {
-                        serializer.field_leaf(
-                            cii::Namespace::Ram,
-                            "Description",
-                            "attributes",
-                            name.as_ref(),
-                        );
-                    }
-                    if let Some(value) = &attribute.value {
-                        serializer.field_leaf(
-                            cii::Namespace::Ram,
-                            "Value",
-                            "attributes",
-                            value.as_ref(),
-                        );
-                    }
-                },
-            );
-        }
-        for classification in &item.classifications {
-            self.structural(
-                cii::Namespace::Ram,
-                "DesignatedProductClassification",
-                |serializer| {
-                    let Some(id) = &classification.id else {
-                        return;
-                    };
-                    let mut attributes = Vec::new();
-                    if let Some(scheme) = &classification.scheme {
-                        attributes.push(("listID".to_owned(), scheme.to_string()));
-                    }
-                    if let Some(version) = &classification.version {
-                        attributes.push(("listVersionID".to_owned(), version.as_ref().to_owned()));
-                    }
-                    let borrowed: Vec<(&str, &str)> = attributes
-                        .iter()
-                        .map(|(key, value)| (key.as_str(), value.as_str()))
-                        .collect();
-                    serializer.field_leaf_attr(
-                        cii::Namespace::Ram,
-                        "ClassCode",
-                        "classifications",
-                        &borrowed,
+                if let Some(id) = &item.seller_id {
+                    serializer.field_leaf(
+                        Namespace::Ram,
+                        "SellerAssignedID",
+                        "seller_id",
                         id.as_ref(),
                     );
-                },
-            );
-        }
-        if let Some(country) = item.country_of_origin {
-            self.structural(cii::Namespace::Ram, "OriginTradeCountry", |serializer| {
-                serializer.field_leaf(
-                    cii::Namespace::Ram,
-                    "ID",
-                    "country_of_origin",
-                    country.alpha2(),
-                );
-            });
-        }
-
-        self.write_end(cii::Namespace::Ram, "SpecifiedTradeProduct");
-        self.trace.pop_context();
-        self.trace.leave();
+                }
+                if let Some(id) = &item.buyer_id {
+                    serializer.field_leaf(
+                        Namespace::Ram,
+                        "BuyerAssignedID",
+                        "buyer_id",
+                        id.as_ref(),
+                    );
+                }
+                if let Some(name) = &item.name {
+                    serializer.field_leaf(Namespace::Ram, "Name", "name", name.as_ref());
+                }
+                if let Some(description) = &item.description {
+                    serializer.field_leaf(
+                        Namespace::Ram,
+                        "Description",
+                        "description",
+                        description.as_ref(),
+                    );
+                }
+                for attribute in &item.attributes {
+                    serializer.structural(
+                        Namespace::Ram,
+                        "ApplicableProductCharacteristic",
+                        |serializer| {
+                            if let Some(name) = &attribute.name {
+                                serializer.field_leaf(
+                                    Namespace::Ram,
+                                    "Description",
+                                    "attributes",
+                                    name.as_ref(),
+                                );
+                            }
+                            if let Some(value) = &attribute.value {
+                                serializer.field_leaf(
+                                    Namespace::Ram,
+                                    "Value",
+                                    "attributes",
+                                    value.as_ref(),
+                                );
+                            }
+                        },
+                    );
+                }
+                for classification in &item.classifications {
+                    serializer.structural(
+                        Namespace::Ram,
+                        "DesignatedProductClassification",
+                        |serializer| {
+                            let Some(id) = &classification.id else {
+                                return;
+                            };
+                            let mut attributes = Vec::new();
+                            if let Some(scheme) = &classification.scheme {
+                                attributes.push(("listID".to_owned(), scheme.to_string()));
+                            }
+                            if let Some(version) = &classification.version {
+                                attributes.push((
+                                    "listVersionID".to_owned(),
+                                    version.as_ref().to_owned(),
+                                ));
+                            }
+                            let borrowed: Vec<(&str, &str)> = attributes
+                                .iter()
+                                .map(|(key, value)| (key.as_str(), value.as_str()))
+                                .collect();
+                            serializer.field_leaf_attr(
+                                Namespace::Ram,
+                                "ClassCode",
+                                "classifications",
+                                &borrowed,
+                                id.as_ref(),
+                            );
+                        },
+                    );
+                }
+                if let Some(country) = item.country_of_origin {
+                    serializer.structural(Namespace::Ram, "OriginTradeCountry", |serializer| {
+                        serializer.field_leaf(
+                            Namespace::Ram,
+                            "ID",
+                            "country_of_origin",
+                            country.alpha2(),
+                        );
+                    });
+                }
+            },
+        );
     }
 
     // Serializes the line trade agreement: order line reference and prices.
     fn line_agreement(&mut self, line: &InvoiceLine) {
         self.structural(
-            cii::Namespace::Ram,
+            Namespace::Ram,
             "SpecifiedLineTradeAgreement",
             |serializer| {
                 if let Some(order) = &line.order_line_reference {
                     serializer.structural(
-                        cii::Namespace::Ram,
+                        Namespace::Ram,
                         "BuyerOrderReferencedDocument",
                         |serializer| {
                             serializer.leaf(
-                                cii::Namespace::Ram,
+                                Namespace::Ram,
                                 "LineID",
                                 "order_line_reference",
                                 Term::BT(132),
@@ -432,16 +333,16 @@ impl Serializer {
     fn line_price(&mut self, price: &Price) {
         if price.gross.is_some() || price.discount.is_some() {
             self.field_group(
-                cii::Namespace::Ram,
+                Namespace::Ram,
                 "GrossPriceProductTradePrice",
                 "price",
                 |serializer| {
                     if let Some(gross) = price.gross {
-                        serializer.derived(cii::Namespace::Ram, "ChargeAmount", &[], &plain(gross));
+                        serializer.derived(Namespace::Ram, "ChargeAmount", &[], &plain(gross));
                     }
                     if let Some(base) = price.base_quantity {
                         serializer.derived(
-                            cii::Namespace::Ram,
+                            Namespace::Ram,
                             "BasisQuantity",
                             &[("unitCode", base.unit.code())],
                             &plain(base.value),
@@ -449,12 +350,12 @@ impl Serializer {
                     }
                     if let Some(discount) = price.discount {
                         serializer.nested(
-                            cii::Namespace::Ram,
+                            Namespace::Ram,
                             "AppliedTradeAllowanceCharge",
                             |serializer| {
                                 serializer.indicator(false);
                                 serializer.derived(
-                                    cii::Namespace::Ram,
+                                    Namespace::Ram,
                                     "ActualAmount",
                                     &[],
                                     &plain(discount),
@@ -466,13 +367,13 @@ impl Serializer {
             );
         }
         self.field_group(
-            cii::Namespace::Ram,
+            Namespace::Ram,
             "NetPriceProductTradePrice",
             "price",
             |serializer| {
                 if let Some(net) = price.net {
                     serializer.leaf(
-                        cii::Namespace::Ram,
+                        Namespace::Ram,
                         "ChargeAmount",
                         "net",
                         Term::BT(146),
@@ -481,7 +382,7 @@ impl Serializer {
                 }
                 if let Some(base) = price.base_quantity {
                     serializer.derived(
-                        cii::Namespace::Ram,
+                        Namespace::Ram,
                         "BasisQuantity",
                         &[("unitCode", base.unit.code())],
                         &plain(base.value),
@@ -494,7 +395,7 @@ impl Serializer {
     // Serializes the line trade settlement: tax, period, adjustments, totals, object, account.
     fn line_settlement(&mut self, line: &InvoiceLine) {
         self.structural(
-            cii::Namespace::Ram,
+            Namespace::Ram,
             "SpecifiedLineTradeSettlement",
             |serializer| {
                 if let Some(vat) = &line.vat {
@@ -509,11 +410,11 @@ impl Serializer {
                 }
                 if let Some(net) = line.net_amount {
                     serializer.structural(
-                        cii::Namespace::Ram,
+                        Namespace::Ram,
                         "SpecifiedTradeSettlementLineMonetarySummation",
                         |serializer| {
                             serializer.leaf(
-                                cii::Namespace::Ram,
+                                Namespace::Ram,
                                 "LineTotalAmount",
                                 "net_amount",
                                 Term::BT(131),
@@ -524,22 +425,22 @@ impl Serializer {
                 }
                 if let Some(object) = &line.object {
                     serializer.field_group(
-                        cii::Namespace::Ram,
+                        Namespace::Ram,
                         "AdditionalReferencedDocument",
                         "object",
                         |serializer| {
                             if let Some(id) = &object.id {
                                 serializer.derived(
-                                    cii::Namespace::Ram,
+                                    Namespace::Ram,
                                     "IssuerAssignedID",
                                     &[],
                                     id.as_ref(),
                                 );
                             }
-                            serializer.derived(cii::Namespace::Ram, "TypeCode", &[], "130");
+                            serializer.derived(Namespace::Ram, "TypeCode", &[], "130");
                             if let Some(scheme) = &object.scheme {
                                 serializer.derived(
-                                    cii::Namespace::Ram,
+                                    Namespace::Ram,
                                     "ReferenceTypeCode",
                                     &[],
                                     &scheme.to_string(),
@@ -550,11 +451,11 @@ impl Serializer {
                 }
                 if let Some(reference) = &line.buyer_accounting_reference {
                     serializer.field_group(
-                        cii::Namespace::Ram,
+                        Namespace::Ram,
                         "ReceivableSpecifiedTradeAccountingAccount",
                         "buyer_accounting_reference",
                         |serializer| {
-                            serializer.derived(cii::Namespace::Ram, "ID", &[], reference.as_ref());
+                            serializer.derived(Namespace::Ram, "ID", &[], reference.as_ref());
                         },
                     );
                 }
@@ -564,26 +465,21 @@ impl Serializer {
 
     // Serializes the line VAT as a CII applicable trade tax, mapped to the line VAT.
     fn line_tax(&mut self, vat: &VatTreatment) {
-        self.field_group(
-            cii::Namespace::Ram,
-            "ApplicableTradeTax",
-            "vat",
-            |serializer| {
-                serializer.derived(cii::Namespace::Ram, "TypeCode", &[], "VAT");
-                serializer.derived(
-                    cii::Namespace::Ram,
-                    "CategoryCode",
-                    &[],
-                    &vat.category().to_string(),
-                );
-                serializer.derived(
-                    cii::Namespace::Ram,
-                    "RateApplicablePercent",
-                    &[],
-                    &plain(vat.rate()),
-                );
-            },
-        );
+        self.field_group(Namespace::Ram, "ApplicableTradeTax", "vat", |serializer| {
+            serializer.derived(Namespace::Ram, "TypeCode", &[], "VAT");
+            serializer.derived(
+                Namespace::Ram,
+                "CategoryCode",
+                &[],
+                &vat.category().to_string(),
+            );
+            serializer.derived(
+                Namespace::Ram,
+                "RateApplicablePercent",
+                &[],
+                &plain(vat.rate()),
+            );
+        });
     }
 
     // Serializes one line-level allowance or charge.
@@ -598,7 +494,7 @@ impl Serializer {
             Term::BG(27)
         };
         self.repeatable(
-            cii::Namespace::Ram,
+            Namespace::Ram,
             "SpecifiedTradeAllowanceCharge",
             "adjustments",
             term,
@@ -620,12 +516,12 @@ impl Serializer {
     // Serializes the header trade agreement (`BG-4`, `BG-7`, references, `BG-11`).
     fn header_trade_agreement(&mut self, invoice: &Invoice) {
         self.structural(
-            cii::Namespace::Ram,
+            Namespace::Ram,
             "ApplicableHeaderTradeAgreement",
             |serializer| {
                 if let Some(reference) = &invoice.buyer_reference {
                     serializer.leaf(
-                        cii::Namespace::Ram,
+                        Namespace::Ram,
                         "BuyerReference",
                         "buyer_reference",
                         Term::BT(10),
@@ -643,7 +539,7 @@ impl Serializer {
                 }
                 if let Some(sales) = &invoice.sales_order_reference {
                     serializer.reference(
-                        cii::Namespace::Ram,
+                        Namespace::Ram,
                         "SellerOrderReferencedDocument",
                         Term::BT(14),
                         "sales_order_reference",
@@ -652,7 +548,7 @@ impl Serializer {
                 }
                 if let Some(order) = &invoice.purchase_order_reference {
                     serializer.reference(
-                        cii::Namespace::Ram,
+                        Namespace::Ram,
                         "BuyerOrderReferencedDocument",
                         Term::BT(13),
                         "purchase_order_reference",
@@ -661,7 +557,7 @@ impl Serializer {
                 }
                 if let Some(contract) = &invoice.contract_reference {
                     serializer.reference(
-                        cii::Namespace::Ram,
+                        Namespace::Ram,
                         "ContractReferencedDocument",
                         Term::BT(12),
                         "contract_reference",
@@ -671,13 +567,13 @@ impl Serializer {
                 serializer.additional_documents(invoice);
                 if let Some(project) = &invoice.project_reference {
                     serializer.group(
-                        cii::Namespace::Ram,
+                        Namespace::Ram,
                         "SpecifiedProcuringProject",
                         "project_reference",
                         Term::BT(11),
                         |serializer| {
-                            serializer.derived(cii::Namespace::Ram, "ID", &[], project.as_ref());
-                            serializer.derived(cii::Namespace::Ram, "Name", &[], "Project");
+                            serializer.derived(Namespace::Ram, "ID", &[], project.as_ref());
+                            serializer.derived(Namespace::Ram, "Name", &[], "Project");
                         },
                     );
                 }
@@ -689,23 +585,18 @@ impl Serializer {
     fn additional_documents(&mut self, invoice: &Invoice) {
         if let Some(object) = &invoice.object {
             self.group(
-                cii::Namespace::Ram,
+                Namespace::Ram,
                 "AdditionalReferencedDocument",
                 "object",
                 Term::BT(18),
                 |serializer| {
                     if let Some(id) = &object.id {
-                        serializer.derived(
-                            cii::Namespace::Ram,
-                            "IssuerAssignedID",
-                            &[],
-                            id.as_ref(),
-                        );
+                        serializer.derived(Namespace::Ram, "IssuerAssignedID", &[], id.as_ref());
                     }
-                    serializer.derived(cii::Namespace::Ram, "TypeCode", &[], "130");
+                    serializer.derived(Namespace::Ram, "TypeCode", &[], "130");
                     if let Some(scheme) = &object.scheme {
                         serializer.derived(
-                            cii::Namespace::Ram,
+                            Namespace::Ram,
                             "ReferenceTypeCode",
                             &[],
                             &scheme.to_string(),
@@ -716,25 +607,20 @@ impl Serializer {
         }
         if let Some(tender) = &invoice.tender_or_lot_reference {
             self.group(
-                cii::Namespace::Ram,
+                Namespace::Ram,
                 "AdditionalReferencedDocument",
                 "tender_or_lot_reference",
                 Term::BT(17),
                 |serializer| {
-                    serializer.derived(
-                        cii::Namespace::Ram,
-                        "IssuerAssignedID",
-                        &[],
-                        tender.as_ref(),
-                    );
-                    serializer.derived(cii::Namespace::Ram, "TypeCode", &[], "50");
+                    serializer.derived(Namespace::Ram, "IssuerAssignedID", &[], tender.as_ref());
+                    serializer.derived(Namespace::Ram, "TypeCode", &[], "50");
                 },
             );
         }
         for (position, document) in invoice.supporting_documents.iter().enumerate() {
             let instance = index(position);
             self.repeatable(
-                cii::Namespace::Ram,
+                Namespace::Ram,
                 "AdditionalReferencedDocument",
                 "supporting_documents",
                 Term::BG(24),
@@ -742,26 +628,26 @@ impl Serializer {
                 |serializer| {
                     if let Some(reference) = &document.reference {
                         serializer.derived(
-                            cii::Namespace::Ram,
+                            Namespace::Ram,
                             "IssuerAssignedID",
                             &[],
                             reference.as_ref(),
                         );
                     }
                     if let Some(location) = &document.external_location {
-                        if !serializer.is_forbidden(Term::BT(124)) {
+                        if !serializer.forbids(Term::BT(124)) {
                             serializer.field_leaf(
-                                cii::Namespace::Ram,
+                                Namespace::Ram,
                                 "URIID",
                                 "external_location",
                                 location.as_str(),
                             );
                         }
                     }
-                    serializer.derived(cii::Namespace::Ram, "TypeCode", &[], "916");
+                    serializer.derived(Namespace::Ram, "TypeCode", &[], "916");
                     if let Some(description) = &document.description {
                         serializer.field_leaf(
-                            cii::Namespace::Ram,
+                            Namespace::Ram,
                             "Name",
                             "description",
                             description.as_ref(),
@@ -775,18 +661,18 @@ impl Serializer {
     // Serializes the seller party (`BG-4`).
     fn seller_party(&mut self, seller: &Seller) {
         self.group(
-            cii::Namespace::Ram,
+            Namespace::Ram,
             "SellerTradeParty",
             "seller",
             Term::BG(4),
             |serializer| {
                 serializer.party_identifiers(&seller.identifiers, "identifiers");
                 if let Some(name) = &seller.name {
-                    serializer.field_leaf(cii::Namespace::Ram, "Name", "name", name.as_ref());
+                    serializer.field_leaf(Namespace::Ram, "Name", "name", name.as_ref());
                 }
                 if let Some(info) = &seller.additional_legal_information {
                     serializer.field_leaf(
-                        cii::Namespace::Ram,
+                        Namespace::Ram,
                         "Description",
                         "additional_legal_information",
                         info.as_ref(),
@@ -818,14 +704,14 @@ impl Serializer {
     // Serializes the buyer party (`BG-7`).
     fn buyer_party(&mut self, buyer: &Buyer) {
         self.group(
-            cii::Namespace::Ram,
+            Namespace::Ram,
             "BuyerTradeParty",
             "buyer",
             Term::BG(7),
             |serializer| {
                 serializer.party_identifiers(&buyer.identifiers, "identifiers");
                 if let Some(name) = &buyer.name {
-                    serializer.field_leaf(cii::Namespace::Ram, "Name", "name", name.as_ref());
+                    serializer.field_leaf(Namespace::Ram, "Name", "name", name.as_ref());
                 }
                 serializer.legal_organization(
                     buyer.legal_entity.as_ref(),
@@ -850,13 +736,13 @@ impl Serializer {
     // Serializes the seller tax representative (`BG-11`).
     fn tax_representative_party(&mut self, representative: &TaxRepresentative) {
         self.group(
-            cii::Namespace::Ram,
+            Namespace::Ram,
             "SellerTaxRepresentativeTradeParty",
             "tax_representative",
             Term::BG(11),
             |serializer| {
                 if let Some(name) = &representative.name {
-                    serializer.field_leaf(cii::Namespace::Ram, "Name", "name", name.as_ref());
+                    serializer.field_leaf(Namespace::Ram, "Name", "name", name.as_ref());
                 }
                 if let Some(address) = &representative.address {
                     serializer.postal_address(address);
@@ -876,13 +762,13 @@ impl Serializer {
             };
             match &identifier.issuer {
                 Some(issuer) => self.field_leaf_attr(
-                    cii::Namespace::Ram,
+                    Namespace::Ram,
                     "GlobalID",
                     field,
                     &[("schemeID", &issuer.to_string())],
                     id.as_ref(),
                 ),
-                None => self.field_leaf(cii::Namespace::Ram, "ID", field, id.as_ref()),
+                None => self.field_leaf(Namespace::Ram, "ID", field, id.as_ref()),
             }
         }
     }
@@ -892,23 +778,14 @@ impl Serializer {
         if entity.is_none() && trading_name.is_none() {
             return;
         }
-        self.structural(
-            cii::Namespace::Ram,
-            "SpecifiedLegalOrganization",
-            |serializer| {
-                if let Some(entity) = entity {
-                    serializer.legal_entity_id(entity);
-                }
-                if let Some(name) = trading_name {
-                    serializer.field_leaf(
-                        cii::Namespace::Ram,
-                        "TradingBusinessName",
-                        "trading_name",
-                        name,
-                    );
-                }
-            },
-        );
+        self.structural(Namespace::Ram, "SpecifiedLegalOrganization", |serializer| {
+            if let Some(entity) = entity {
+                serializer.legal_entity_id(entity);
+            }
+            if let Some(name) = trading_name {
+                serializer.field_leaf(Namespace::Ram, "TradingBusinessName", "trading_name", name);
+            }
+        });
     }
 
     // Serializes the legal registration id (`BT-30`/`BT-47`/`BT-61`), with its scheme when present.
@@ -918,34 +795,34 @@ impl Serializer {
         };
         match &entity.issuer {
             Some(issuer) => self.field_leaf_attr(
-                cii::Namespace::Ram,
+                Namespace::Ram,
                 "ID",
                 "legal_entity",
                 &[("schemeID", &issuer.to_string())],
                 id.as_ref(),
             ),
-            None => self.field_leaf(cii::Namespace::Ram, "ID", "legal_entity", id.as_ref()),
+            None => self.field_leaf(Namespace::Ram, "ID", "legal_entity", id.as_ref()),
         }
     }
 
     // Serializes a defined trade contact (`BG-6`).
     fn contact(&mut self, contact: &Contact) {
         self.group(
-            cii::Namespace::Ram,
+            Namespace::Ram,
             "DefinedTradeContact",
             "contact",
             Term::BG(6),
             |serializer| {
                 if let Some(name) = &contact.name {
-                    serializer.field_leaf(cii::Namespace::Ram, "PersonName", "name", name.as_ref());
+                    serializer.field_leaf(Namespace::Ram, "PersonName", "name", name.as_ref());
                 }
                 if let Some(phone) = &contact.telephone {
                     serializer.structural(
-                        cii::Namespace::Ram,
+                        Namespace::Ram,
                         "TelephoneUniversalCommunication",
                         |serializer| {
                             serializer.field_leaf(
-                                cii::Namespace::Ram,
+                                Namespace::Ram,
                                 "CompleteNumber",
                                 "telephone",
                                 phone.as_ref(),
@@ -955,15 +832,10 @@ impl Serializer {
                 }
                 if let Some(email) = &contact.email {
                     serializer.structural(
-                        cii::Namespace::Ram,
+                        Namespace::Ram,
                         "EmailURIUniversalCommunication",
                         |serializer| {
-                            serializer.field_leaf(
-                                cii::Namespace::Ram,
-                                "URIID",
-                                "email",
-                                email.as_str(),
-                            );
+                            serializer.field_leaf(Namespace::Ram, "URIID", "email", email.as_str());
                         },
                     );
                 }
@@ -974,41 +846,36 @@ impl Serializer {
     // Serializes a postal trade address.
     fn postal_address(&mut self, address: &PostalAddress) {
         self.field_group(
-            cii::Namespace::Ram,
+            Namespace::Ram,
             "PostalTradeAddress",
             "address",
             |serializer| {
                 if let Some(zip) = &address.postal_code {
                     serializer.field_leaf(
-                        cii::Namespace::Ram,
+                        Namespace::Ram,
                         "PostcodeCode",
                         "postal_code",
                         zip.as_ref(),
                     );
                 }
                 if let Some(line) = &address.line1 {
-                    serializer.field_leaf(cii::Namespace::Ram, "LineOne", "line1", line.as_ref());
+                    serializer.field_leaf(Namespace::Ram, "LineOne", "line1", line.as_ref());
                 }
                 if let Some(line) = &address.line2 {
-                    serializer.field_leaf(cii::Namespace::Ram, "LineTwo", "line2", line.as_ref());
+                    serializer.field_leaf(Namespace::Ram, "LineTwo", "line2", line.as_ref());
                 }
                 if let Some(line) = &address.line3 {
-                    serializer.field_leaf(cii::Namespace::Ram, "LineThree", "line3", line.as_ref());
+                    serializer.field_leaf(Namespace::Ram, "LineThree", "line3", line.as_ref());
                 }
                 if let Some(city) = &address.city {
-                    serializer.field_leaf(cii::Namespace::Ram, "CityName", "city", city.as_ref());
+                    serializer.field_leaf(Namespace::Ram, "CityName", "city", city.as_ref());
                 }
                 if let Some(country) = &address.country {
-                    serializer.field_leaf(
-                        cii::Namespace::Ram,
-                        "CountryID",
-                        "country",
-                        country.alpha2(),
-                    );
+                    serializer.field_leaf(Namespace::Ram, "CountryID", "country", country.alpha2());
                 }
                 if let Some(subdivision) = &address.country_subdivision {
                     serializer.field_leaf(
-                        cii::Namespace::Ram,
+                        Namespace::Ram,
                         "CountrySubDivisionName",
                         "country_subdivision",
                         subdivision.as_ref(),
@@ -1024,18 +891,18 @@ impl Serializer {
             return;
         };
         self.structural(
-            cii::Namespace::Ram,
+            Namespace::Ram,
             "URIUniversalCommunication",
             |serializer| match &address.scheme {
                 Some(scheme) => serializer.field_leaf_attr(
-                    cii::Namespace::Ram,
+                    Namespace::Ram,
                     "URIID",
                     "electronic_address",
                     &[("schemeID", &scheme.to_string())],
                     id.as_ref(),
                 ),
                 None => serializer.field_leaf(
-                    cii::Namespace::Ram,
+                    Namespace::Ram,
                     "URIID",
                     "electronic_address",
                     id.as_ref(),
@@ -1047,12 +914,12 @@ impl Serializer {
     // Serializes a specified tax registration under a scheme id.
     fn tax_registration(&mut self, id: &str, scheme: &str, field: &'static str) {
         self.field_group(
-            cii::Namespace::Ram,
+            Namespace::Ram,
             "SpecifiedTaxRegistration",
             field,
             |serializer| {
                 serializer.field_leaf_attr(
-                    cii::Namespace::Ram,
+                    Namespace::Ram,
                     "ID",
                     field,
                     &[("schemeID", scheme)],
@@ -1066,14 +933,14 @@ impl Serializer {
     // the CII schema, so it is always written, even when empty.
     fn header_trade_delivery(&mut self, invoice: &Invoice) {
         self.structural(
-            cii::Namespace::Ram,
+            Namespace::Ram,
             "ApplicableHeaderTradeDelivery",
             |serializer| {
                 if let Some(delivery) = &invoice.delivery {
                     serializer.delivery_party(delivery);
                     if let Some(date_value) = delivery.date {
                         serializer.structural(
-                            cii::Namespace::Ram,
+                            Namespace::Ram,
                             "ActualDeliverySupplyChainEvent",
                             |serializer| {
                                 serializer.datetime(
@@ -1088,7 +955,7 @@ impl Serializer {
                 }
                 if let Some(reference) = &invoice.despatch_advice_reference {
                     serializer.reference(
-                        cii::Namespace::Ram,
+                        Namespace::Ram,
                         "DespatchAdviceReferencedDocument",
                         Term::BT(16),
                         "despatch_advice_reference",
@@ -1097,7 +964,7 @@ impl Serializer {
                 }
                 if let Some(reference) = &invoice.receiving_advice_reference {
                     serializer.reference(
-                        cii::Namespace::Ram,
+                        Namespace::Ram,
                         "ReceivingAdviceReferencedDocument",
                         Term::BT(15),
                         "receiving_advice_reference",
@@ -1114,7 +981,7 @@ impl Serializer {
             return;
         }
         self.group(
-            cii::Namespace::Ram,
+            Namespace::Ram,
             "ShipToTradeParty",
             "delivery",
             Term::BG(13),
@@ -1130,22 +997,19 @@ impl Serializer {
                         .and_then(|location| location.issuer);
                     match issuer {
                         Some(issuer) => serializer.field_leaf_attr(
-                            cii::Namespace::Ram,
+                            Namespace::Ram,
                             "ID",
                             "location",
                             &[("schemeID", &issuer.to_string())],
                             id.as_ref(),
                         ),
-                        None => serializer.field_leaf(
-                            cii::Namespace::Ram,
-                            "ID",
-                            "location",
-                            id.as_ref(),
-                        ),
+                        None => {
+                            serializer.field_leaf(Namespace::Ram, "ID", "location", id.as_ref())
+                        }
                     }
                 }
                 if let Some(name) = &delivery.name {
-                    serializer.field_leaf(cii::Namespace::Ram, "Name", "name", name.as_ref());
+                    serializer.field_leaf(Namespace::Ram, "Name", "name", name.as_ref());
                 }
                 if let Some(address) = &delivery.address {
                     serializer.postal_address(address);
@@ -1156,15 +1020,17 @@ impl Serializer {
 
     // Serializes the header trade settlement.
     fn header_trade_settlement(&mut self, invoice: &Invoice) {
-        let currency = self.currency;
-        let attribute = self.currency_attribute();
+        let currency = invoice.currency.as_ref().map(Currency::code);
+        let attribute: Vec<(&str, &str)> = currency
+            .map(|currency| vec![("currencyID", currency)])
+            .unwrap_or_default();
         self.structural(
-            cii::Namespace::Ram,
+            Namespace::Ram,
             "ApplicableHeaderTradeSettlement",
             |serializer| {
                 if let Some(creditor) = invoice.payment.as_ref().and_then(direct_debit_creditor) {
                     serializer.leaf(
-                        cii::Namespace::Ram,
+                        Namespace::Ram,
                         "CreditorReferenceID",
                         "creditor_identifier",
                         Term::BT(90),
@@ -1174,7 +1040,7 @@ impl Serializer {
                 if let Some(payment) = &invoice.payment {
                     if let Some(reference) = &payment.remittance_information {
                         serializer.leaf(
-                            cii::Namespace::Ram,
+                            Namespace::Ram,
                             "PaymentReference",
                             "remittance_information",
                             Term::BT(83),
@@ -1184,7 +1050,7 @@ impl Serializer {
                 }
                 if let Some(accounting) = &invoice.vat_accounting_total {
                     serializer.leaf(
-                        cii::Namespace::Ram,
+                        Namespace::Ram,
                         "TaxCurrencyCode",
                         "vat_accounting_total",
                         Term::BT(6),
@@ -1193,7 +1059,7 @@ impl Serializer {
                 }
                 if let Some(currency) = currency {
                     serializer.leaf(
-                        cii::Namespace::Ram,
+                        Namespace::Ram,
                         "InvoiceCurrencyCode",
                         "currency",
                         Term::BT(5),
@@ -1216,11 +1082,11 @@ impl Serializer {
                 serializer.preceding_invoices(&invoice.preceding_invoices);
                 if let Some(reference) = &invoice.buyer_accounting_reference {
                     serializer.field_group(
-                        cii::Namespace::Ram,
+                        Namespace::Ram,
                         "ReceivableSpecifiedTradeAccountingAccount",
                         "buyer_accounting_reference",
                         |serializer| {
-                            serializer.derived(cii::Namespace::Ram, "ID", &[], reference.as_ref());
+                            serializer.derived(Namespace::Ram, "ID", &[], reference.as_ref());
                         },
                     );
                 }
@@ -1231,18 +1097,18 @@ impl Serializer {
     // Serializes the payee party (`BG-10`).
     fn payee_party(&mut self, payee: &Payee) {
         self.group(
-            cii::Namespace::Ram,
+            Namespace::Ram,
             "PayeeTradeParty",
             "payee",
             Term::BG(10),
             |serializer| {
                 serializer.party_identifiers(&payee.identifiers, "identifiers");
                 if let Some(name) = &payee.name {
-                    serializer.field_leaf(cii::Namespace::Ram, "Name", "name", name.as_ref());
+                    serializer.field_leaf(Namespace::Ram, "Name", "name", name.as_ref());
                 }
                 if let Some(entity) = &payee.legal_entity {
                     serializer.structural(
-                        cii::Namespace::Ram,
+                        Namespace::Ram,
                         "SpecifiedLegalOrganization",
                         |serializer| serializer.legal_entity_id(entity),
                     );
@@ -1254,34 +1120,29 @@ impl Serializer {
     // Serializes the payment means (`BG-16`).
     fn payment_means(&mut self, payment: &PaymentInstructions) {
         self.group(
-            cii::Namespace::Ram,
+            Namespace::Ram,
             "SpecifiedTradeSettlementPaymentMeans",
             "payment",
             Term::BG(16),
             |serializer| {
                 if let Some(means) = &payment.means {
-                    serializer.derived(cii::Namespace::Ram, "TypeCode", &[], &means.to_string());
+                    serializer.derived(Namespace::Ram, "TypeCode", &[], &means.to_string());
                 }
                 if let Some(text) = &payment.means_text {
-                    serializer.derived(cii::Namespace::Ram, "Information", &[], text.as_ref());
+                    serializer.derived(Namespace::Ram, "Information", &[], text.as_ref());
                 }
                 match &payment.details {
                     Some(PaymentDetails::Card(card)) => {
                         serializer.nested(
-                            cii::Namespace::Ram,
+                            Namespace::Ram,
                             "ApplicableTradeSettlementFinancialCard",
                             |serializer| {
                                 if let Some(number) = &card.primary_account_number {
-                                    serializer.derived(
-                                        cii::Namespace::Ram,
-                                        "ID",
-                                        &[],
-                                        number.as_ref(),
-                                    );
+                                    serializer.derived(Namespace::Ram, "ID", &[], number.as_ref());
                                 }
                                 if let Some(holder) = &card.holder_name {
                                     serializer.derived(
-                                        cii::Namespace::Ram,
+                                        Namespace::Ram,
                                         "CardholderName",
                                         &[],
                                         holder.as_ref(),
@@ -1293,11 +1154,11 @@ impl Serializer {
                     Some(PaymentDetails::DirectDebit(debit)) => {
                         if let Some(account) = &debit.debited_account {
                             serializer.nested(
-                                cii::Namespace::Ram,
+                                Namespace::Ram,
                                 "PayerPartyDebtorFinancialAccount",
                                 |serializer| {
                                     serializer.derived(
-                                        cii::Namespace::Ram,
+                                        Namespace::Ram,
                                         "IBANID",
                                         &[],
                                         account.as_ref(),
@@ -1309,12 +1170,12 @@ impl Serializer {
                     Some(PaymentDetails::CreditTransfers(transfers)) => {
                         for transfer in transfers {
                             serializer.nested(
-                                cii::Namespace::Ram,
+                                Namespace::Ram,
                                 "PayeePartyCreditorFinancialAccount",
                                 |serializer| {
                                     if let Some(account) = &transfer.account {
                                         serializer.derived(
-                                            cii::Namespace::Ram,
+                                            Namespace::Ram,
                                             "IBANID",
                                             &[],
                                             account.as_ref(),
@@ -1322,7 +1183,7 @@ impl Serializer {
                                     }
                                     if let Some(name) = &transfer.account_name {
                                         serializer.derived(
-                                            cii::Namespace::Ram,
+                                            Namespace::Ram,
                                             "AccountName",
                                             &[],
                                             name.as_ref(),
@@ -1332,11 +1193,11 @@ impl Serializer {
                             );
                             if let Some(provider) = &transfer.provider {
                                 serializer.nested(
-                                    cii::Namespace::Ram,
+                                    Namespace::Ram,
                                     "PayeeSpecifiedCreditorFinancialInstitution",
                                     |serializer| {
                                         serializer.derived(
-                                            cii::Namespace::Ram,
+                                            Namespace::Ram,
                                             "BICID",
                                             &[],
                                             provider.as_ref(),
@@ -1361,7 +1222,7 @@ impl Serializer {
         for (position, group) in invoice.vat_breakdown.iter().enumerate() {
             let instance = index(position);
             self.repeatable(
-                cii::Namespace::Ram,
+                Namespace::Ram,
                 "ApplicableTradeTax",
                 "vat_breakdown",
                 Term::BG(23),
@@ -1369,20 +1230,20 @@ impl Serializer {
                 |serializer| {
                     if let Some(tax) = group.tax {
                         serializer.leaf(
-                            cii::Namespace::Ram,
+                            Namespace::Ram,
                             "CalculatedAmount",
                             "tax",
                             Term::BT(117),
                             &money(tax),
                         );
                     }
-                    serializer.derived(cii::Namespace::Ram, "TypeCode", &[], "VAT");
+                    serializer.derived(Namespace::Ram, "TypeCode", &[], "VAT");
                     if let Some(VatTreatment::Exempt {
                         text: Some(text), ..
                     }) = &group.treatment
                     {
                         serializer.field_leaf(
-                            cii::Namespace::Ram,
+                            Namespace::Ram,
                             "ExemptionReason",
                             "treatment",
                             text.as_ref(),
@@ -1390,7 +1251,7 @@ impl Serializer {
                     }
                     if let Some(taxable) = group.taxable {
                         serializer.leaf(
-                            cii::Namespace::Ram,
+                            Namespace::Ram,
                             "BasisAmount",
                             "taxable",
                             Term::BT(116),
@@ -1399,7 +1260,7 @@ impl Serializer {
                     }
                     if let Some(treatment) = &group.treatment {
                         serializer.field_leaf(
-                            cii::Namespace::Ram,
+                            Namespace::Ram,
                             "CategoryCode",
                             "treatment",
                             &treatment.category().to_string(),
@@ -1410,18 +1271,18 @@ impl Serializer {
                     }) = &group.treatment
                     {
                         serializer.field_leaf(
-                            cii::Namespace::Ram,
+                            Namespace::Ram,
                             "ExemptionReasonCode",
                             "treatment",
                             &code.to_string(),
                         );
                     }
                     if let Some(event) = &event {
-                        serializer.derived(cii::Namespace::Ram, "DueDateTypeCode", &[], event);
+                        serializer.derived(Namespace::Ram, "DueDateTypeCode", &[], event);
                     }
                     if let Some(treatment) = &group.treatment {
                         serializer.field_leaf(
-                            cii::Namespace::Ram,
+                            Namespace::Ram,
                             "RateApplicablePercent",
                             "treatment",
                             &plain(treatment.rate()),
@@ -1435,7 +1296,7 @@ impl Serializer {
     // Serializes a billing period (`BG-14`/`BG-26`).
     fn billing_period(&mut self, period: Period, field: &'static str, term: Term) {
         self.group(
-            cii::Namespace::Ram,
+            Namespace::Ram,
             "BillingSpecifiedPeriod",
             field,
             term,
@@ -1464,7 +1325,7 @@ impl Serializer {
                 Term::BG(20)
             };
             self.repeatable(
-                cii::Namespace::Ram,
+                Namespace::Ram,
                 "SpecifiedTradeAllowanceCharge",
                 "adjustments",
                 term,
@@ -1480,16 +1341,16 @@ impl Serializer {
                         serializer.adjustment_reason(reason);
                     }
                     if let Some(vat) = &adjustment.vat {
-                        serializer.nested(cii::Namespace::Ram, "CategoryTradeTax", |serializer| {
-                            serializer.derived(cii::Namespace::Ram, "TypeCode", &[], "VAT");
+                        serializer.nested(Namespace::Ram, "CategoryTradeTax", |serializer| {
+                            serializer.derived(Namespace::Ram, "TypeCode", &[], "VAT");
                             serializer.derived(
-                                cii::Namespace::Ram,
+                                Namespace::Ram,
                                 "CategoryCode",
                                 &[],
                                 &vat.category().to_string(),
                             );
                             serializer.derived(
-                                cii::Namespace::Ram,
+                                Namespace::Ram,
                                 "RateApplicablePercent",
                                 &[],
                                 &plain(vat.rate()),
@@ -1506,22 +1367,17 @@ impl Serializer {
         let actual = match amount {
             AdjustmentAmount::Relative { amount, rate, base } => {
                 self.field_leaf(
-                    cii::Namespace::Ram,
+                    Namespace::Ram,
                     "CalculationPercent",
                     "amount",
                     &plain(Decimal::from(*rate)),
                 );
-                self.field_leaf(cii::Namespace::Ram, "BasisAmount", "amount", &money(*base));
+                self.field_leaf(Namespace::Ram, "BasisAmount", "amount", &money(*base));
                 amount
             }
             AdjustmentAmount::Absolute(amount) => amount,
         };
-        self.field_leaf(
-            cii::Namespace::Ram,
-            "ActualAmount",
-            "amount",
-            &money(*actual),
-        );
+        self.field_leaf(Namespace::Ram, "ActualAmount", "amount", &money(*actual));
     }
 
     // Serializes the reason code and text of an adjustment.
@@ -1535,10 +1391,10 @@ impl Serializer {
             }
         };
         if let Some(code) = code {
-            self.derived(cii::Namespace::Ram, "ReasonCode", &[], &code);
+            self.derived(Namespace::Ram, "ReasonCode", &[], &code);
         }
         if let Some(text) = text {
-            self.derived(cii::Namespace::Ram, "Reason", &[], text.as_ref());
+            self.derived(Namespace::Ram, "Reason", &[], text.as_ref());
         }
     }
 
@@ -1551,31 +1407,27 @@ impl Serializer {
         {
             return;
         }
-        self.structural(
-            cii::Namespace::Ram,
-            "SpecifiedTradePaymentTerms",
-            |serializer| {
-                if let Some(terms) = &invoice.payment_terms {
-                    serializer.field_leaf(
-                        cii::Namespace::Ram,
-                        "Description",
-                        "payment_terms",
-                        terms.as_ref(),
-                    );
-                }
-                if let Some(due) = invoice.payment_due_date {
-                    serializer.datetime("DueDateDateTime", "payment_due_date", Term::BT(9), due);
-                }
-                if let Some(mandate) = mandate {
-                    serializer.field_leaf(
-                        cii::Namespace::Ram,
-                        "DirectDebitMandateID",
-                        "mandate_reference",
-                        mandate,
-                    );
-                }
-            },
-        );
+        self.structural(Namespace::Ram, "SpecifiedTradePaymentTerms", |serializer| {
+            if let Some(terms) = &invoice.payment_terms {
+                serializer.field_leaf(
+                    Namespace::Ram,
+                    "Description",
+                    "payment_terms",
+                    terms.as_ref(),
+                );
+            }
+            if let Some(due) = invoice.payment_due_date {
+                serializer.datetime("DueDateDateTime", "payment_due_date", Term::BT(9), due);
+            }
+            if let Some(mandate) = mandate {
+                serializer.field_leaf(
+                    Namespace::Ram,
+                    "DirectDebitMandateID",
+                    "mandate_reference",
+                    mandate,
+                );
+            }
+        });
     }
 
     // Serializes the header monetary summation, each amount mapped to its own field.
@@ -1644,13 +1496,13 @@ impl Serializer {
             return;
         }
         self.structural(
-            cii::Namespace::Ram,
+            Namespace::Ram,
             "SpecifiedTradeSettlementHeaderMonetarySummation",
             |serializer| {
                 for (name, field, term, attributes, value) in totals {
                     if let Some(value) = value {
                         serializer.leaf_attr(
-                            cii::Namespace::Ram,
+                            Namespace::Ram,
                             name,
                             field,
                             term,
@@ -1668,7 +1520,7 @@ impl Serializer {
         for (position, invoice) in preceding.iter().enumerate() {
             let instance = index(position);
             self.repeatable(
-                cii::Namespace::Ram,
+                Namespace::Ram,
                 "InvoiceReferencedDocument",
                 "preceding_invoices",
                 Term::BG(3),
@@ -1676,20 +1528,16 @@ impl Serializer {
                 |serializer| {
                     if let Some(number) = &invoice.number {
                         serializer.derived(
-                            cii::Namespace::Ram,
+                            Namespace::Ram,
                             "IssuerAssignedID",
                             &[],
                             number.as_ref(),
                         );
                     }
                     if let Some(issued) = invoice.issue_date {
-                        serializer.nested(
-                            cii::Namespace::Ram,
-                            "FormattedIssueDateTime",
-                            |serializer| {
-                                serializer.write_raw_datetime(cii::Namespace::Qdt, issued);
-                            },
-                        );
+                        serializer.nested(Namespace::Ram, "FormattedIssueDateTime", |serializer| {
+                            serializer.write_raw_datetime(Namespace::Qdt, issued);
+                        });
                     }
                 },
             );
@@ -1699,14 +1547,14 @@ impl Serializer {
     // Serializes a single-identifier reference document.
     fn reference(
         &mut self,
-        namespace: cii::Namespace,
+        namespace: Namespace,
         element: &str,
         term: Term,
         field: &'static str,
         id: &str,
     ) {
         self.group(namespace, element, field, term, |serializer| {
-            serializer.derived(cii::Namespace::Ram, "IssuerAssignedID", &[], id);
+            serializer.derived(Namespace::Ram, "IssuerAssignedID", &[], id);
         });
     }
 
@@ -1714,258 +1562,32 @@ impl Serializer {
 
     // Writes a date wrapper whose value carrier is a `udt:DateTimeString`.
     fn datetime(&mut self, element: &str, field: &'static str, term: Term, value: Date) {
-        if self.is_forbidden(term) {
-            return;
-        }
-        self.trace.enter(cii::Namespace::Ram, element);
-        self.trace.push_field(field);
-        self.trace.record_context();
-        self.write_start(cii::Namespace::Ram, element);
-        self.write_raw_datetime(cii::Namespace::Udt, value);
-        self.write_end(cii::Namespace::Ram, element);
-        self.trace.pop_context();
-        self.trace.leave();
+        self.group(Namespace::Ram, element, field, term, |serializer| {
+            serializer.write_raw_datetime(Namespace::Udt, value);
+        });
     }
 
     // Writes a charge indicator whose value carrier is a `udt:Indicator`.
     fn indicator(&mut self, charge: bool) {
-        self.trace.enter(cii::Namespace::Ram, "ChargeIndicator");
-        self.trace.record_context();
-        self.write_start(cii::Namespace::Ram, "ChargeIndicator");
-        self.write_raw(
-            cii::Namespace::Udt,
-            "Indicator",
-            if charge { "true" } else { "false" },
-        );
-        self.write_end(cii::Namespace::Ram, "ChargeIndicator");
-        self.trace.leave();
+        self.nested(Namespace::Ram, "ChargeIndicator", |serializer| {
+            serializer.write_element(
+                Namespace::Udt,
+                "Indicator",
+                &[],
+                if charge { "true" } else { "false" },
+            );
+        });
     }
 
     // Writes a `DateTimeString` value carrier in the given datatype namespace.
-    fn write_raw_datetime(&mut self, namespace: cii::Namespace, value: Date) {
-        let tag = qname(namespace, "DateTimeString");
-        let start = BytesStart::new(tag.clone()).with_attributes([("format", "102")]);
-        self.write(Event::Start(start));
-        self.write(Event::Text(BytesText::new(&date(value))));
-        self.write(Event::End(BytesEnd::new(tag)));
+    fn write_raw_datetime(&mut self, namespace: Namespace, value: Date) {
+        self.write_element(
+            namespace,
+            "DateTimeString",
+            &[("format", "102")],
+            &date(value),
+        );
     }
-
-    // Writes a value-carrier element from a datatype namespace, never recorded.
-    fn write_raw(&mut self, namespace: cii::Namespace, name: &str, value: &str) {
-        let tag = qname(namespace, name);
-        self.write(Event::Start(BytesStart::new(tag.clone())));
-        self.write(Event::Text(BytesText::new(value)));
-        self.write(Event::End(BytesEnd::new(tag)));
-    }
-
-    // ---- element writers (mirror the UBL serializer) ---------------------
-
-    fn leaf(
-        &mut self,
-        namespace: cii::Namespace,
-        name: &str,
-        field: &'static str,
-        term: Term,
-        value: &str,
-    ) {
-        if self.is_forbidden(term) {
-            return;
-        }
-        self.write_field_leaf(namespace, name, field, &[], value);
-    }
-
-    fn leaf_attr(
-        &mut self,
-        namespace: cii::Namespace,
-        name: &str,
-        field: &'static str,
-        term: Term,
-        attributes: &[(&str, &str)],
-        value: &str,
-    ) {
-        if self.is_forbidden(term) {
-            return;
-        }
-        self.write_field_leaf(namespace, name, field, attributes, value);
-    }
-
-    fn field_leaf(
-        &mut self,
-        namespace: cii::Namespace,
-        name: &str,
-        field: &'static str,
-        value: &str,
-    ) {
-        self.write_field_leaf(namespace, name, field, &[], value);
-    }
-
-    fn field_leaf_attr(
-        &mut self,
-        namespace: cii::Namespace,
-        name: &str,
-        field: &'static str,
-        attributes: &[(&str, &str)],
-        value: &str,
-    ) {
-        self.write_field_leaf(namespace, name, field, attributes, value);
-    }
-
-    fn write_field_leaf(
-        &mut self,
-        namespace: cii::Namespace,
-        name: &str,
-        field: &'static str,
-        attributes: &[(&str, &str)],
-        value: &str,
-    ) {
-        self.trace.enter(namespace, name);
-        self.trace.push_field(field);
-        self.trace.record_context();
-        self.write_element(namespace, name, attributes, value);
-        self.trace.pop_context();
-        self.trace.leave();
-    }
-
-    fn rooted(
-        &mut self,
-        namespace: cii::Namespace,
-        name: &str,
-        attributes: &[(&str, &str)],
-        value: &str,
-    ) {
-        self.trace.enter(namespace, name);
-        self.trace.record_root();
-        self.write_element(namespace, name, attributes, value);
-        self.trace.leave();
-    }
-
-    fn derived(
-        &mut self,
-        namespace: cii::Namespace,
-        name: &str,
-        attributes: &[(&str, &str)],
-        value: &str,
-    ) {
-        self.trace.enter(namespace, name);
-        self.trace.record_context();
-        self.write_element(namespace, name, attributes, value);
-        self.trace.leave();
-    }
-
-    fn group(
-        &mut self,
-        namespace: cii::Namespace,
-        name: &str,
-        field: &'static str,
-        term: Term,
-        body: impl FnOnce(&mut Self),
-    ) {
-        if self.is_forbidden(term) {
-            return;
-        }
-        self.trace.enter(namespace, name);
-        self.trace.push_field(field);
-        self.trace.record_context();
-        self.write_start(namespace, name);
-        body(self);
-        self.write_end(namespace, name);
-        self.trace.pop_context();
-        self.trace.leave();
-    }
-
-    // Writes a group mapped to a model field, never filtered (its term is never forbidden).
-    fn field_group(
-        &mut self,
-        namespace: cii::Namespace,
-        name: &str,
-        field: &'static str,
-        body: impl FnOnce(&mut Self),
-    ) {
-        self.trace.enter(namespace, name);
-        self.trace.push_field(field);
-        self.trace.record_context();
-        self.write_start(namespace, name);
-        body(self);
-        self.write_end(namespace, name);
-        self.trace.pop_context();
-        self.trace.leave();
-    }
-
-    fn repeatable(
-        &mut self,
-        namespace: cii::Namespace,
-        name: &str,
-        field: &'static str,
-        term: Term,
-        instance: NonZeroUsize,
-        body: impl FnOnce(&mut Self),
-    ) {
-        if self.is_forbidden(term) {
-            return;
-        }
-        self.trace.enter(namespace, name);
-        self.trace.push_instance(field, instance);
-        self.trace.record_context();
-        self.write_start(namespace, name);
-        body(self);
-        self.write_end(namespace, name);
-        self.trace.pop_context();
-        self.trace.leave();
-    }
-
-    fn structural(&mut self, namespace: cii::Namespace, name: &str, body: impl FnOnce(&mut Self)) {
-        self.trace.enter(namespace, name);
-        self.trace.record_root();
-        self.write_start(namespace, name);
-        body(self);
-        self.write_end(namespace, name);
-        self.trace.leave();
-    }
-
-    fn nested(&mut self, namespace: cii::Namespace, name: &str, body: impl FnOnce(&mut Self)) {
-        self.trace.enter(namespace, name);
-        self.trace.record_context();
-        self.write_start(namespace, name);
-        body(self);
-        self.write_end(namespace, name);
-        self.trace.leave();
-    }
-
-    fn write_element(
-        &mut self,
-        namespace: cii::Namespace,
-        name: &str,
-        attributes: &[(&str, &str)],
-        value: &str,
-    ) {
-        let tag = qname(namespace, name);
-        let mut start = BytesStart::new(tag.clone());
-        for (key, attribute_value) in attributes {
-            start.push_attribute((*key, *attribute_value));
-        }
-        self.write(Event::Start(start));
-        self.write(Event::Text(BytesText::new(value)));
-        self.write(Event::End(BytesEnd::new(tag)));
-    }
-
-    fn write_start(&mut self, namespace: cii::Namespace, name: &str) {
-        self.write(Event::Start(BytesStart::new(qname(namespace, name))));
-    }
-
-    fn write_end(&mut self, namespace: cii::Namespace, name: &str) {
-        self.write(Event::End(BytesEnd::new(qname(namespace, name))));
-    }
-
-    fn write(&mut self, event: Event<'_>) {
-        self.inner
-            .write_event(event)
-            .expect("writing XML to an in-memory buffer never fails");
-    }
-}
-
-// The record-form qualified name of an element, prefixed for its namespace.
-fn qname(namespace: cii::Namespace, name: &str) -> String {
-    format!("{}:{}", namespace.prefix(), name)
 }
 
 fn index(position: usize) -> NonZeroUsize {
