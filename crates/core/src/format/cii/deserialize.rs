@@ -13,9 +13,9 @@ use crate::{
 };
 use crate::{Deserializable, Format};
 
-impl Deserializable<Cii> for Invoice {
+impl<N: crate::Namespace + From<Namespace>> Deserializable<Cii, N> for Invoice {
     // Parses the whole document under the CII root element.
-    fn deserialize(parser: &mut Parser<Cii>) -> Result<DocumentBuilder<Invoice>, Error> {
+    fn deserialize(parser: &mut Parser<Cii, N>) -> Result<DocumentBuilder<Invoice>, Error> {
         parser.enter_structural(Cii::root_namespace(), Cii::ROOT_ELEMENT)?;
 
         let (profile, business_process) = parser.exchanged_document_context()?;
@@ -93,7 +93,7 @@ impl Deserializable<Cii> for Invoice {
 
 // ---- parser --------------------------------------------------------------
 
-impl Parser<Cii> {
+impl<N: crate::Namespace + From<Namespace>> Parser<Cii, N> {
     // Parses the document context: the profile (`BT-24`) and business process (`BT-23`).
     fn exchanged_document_context(
         &mut self,

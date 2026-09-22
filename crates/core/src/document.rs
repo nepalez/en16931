@@ -19,7 +19,7 @@ pub struct Document<I, F: Format> {
     pub(crate) abbreviations: Abbreviations<F::Namespace>,
 }
 
-impl<I: Deserializable<F> + Default, F: Format> Document<I, F> {
+impl<I: Deserializable<F, F::Namespace> + Default, F: Format> Document<I, F> {
     /// Parses an XML document of the binding `F` into a `Document`.
     ///
     /// A malformed document yields `Error::MalformedXml`.
@@ -31,7 +31,7 @@ impl<I: Deserializable<F> + Default, F: Format> Document<I, F> {
         });
         document.xml = xml.to_owned();
         let (tokens, abbreviations) = F::tokenize(&document.xml)?;
-        let mut parser = Parser::new(tokens);
+        let mut parser: Parser<F, F::Namespace> = Parser::new(tokens);
         document.builder = I::deserialize(&mut parser)?;
         document.dictionary = parser.finish();
         document.abbreviations = abbreviations;
@@ -133,7 +133,7 @@ impl<F: Format> Document<Invoice, F> {
     }
 }
 
-impl<I: Serializable<F>, F: Format> TryFrom<DocumentBuilder<I>> for Document<I, F> {
+impl<I: Serializable<F, F::Namespace>, F: Format> TryFrom<DocumentBuilder<I>> for Document<I, F> {
     type Error = Error;
 
     /// Serializes a `DocumentBuilder` into a `Document` of the binding `F`.
@@ -141,7 +141,8 @@ impl<I: Serializable<F>, F: Format> TryFrom<DocumentBuilder<I>> for Document<I, 
     /// The pass renders the XML and fills the dictionary in lockstep.
     fn try_from(builder: DocumentBuilder<I>) -> Result<Self, Self::Error> {
         let mut document = Self::empty(builder);
-        let mut serializer = Serializer::new(document.builder.profile.forbidden_terms());
+        let mut serializer: Serializer<F, F::Namespace> =
+            Serializer::new(document.builder.profile.forbidden_terms());
         I::serialize(&mut serializer, &document.builder);
         let (xml, dictionary, abbreviations) = serializer.finish();
         document.xml = xml;

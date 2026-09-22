@@ -31,9 +31,9 @@ fn plain(value: Decimal) -> String {
     value.to_string()
 }
 
-impl Serializable<Cii> for Invoice {
+impl<N: crate::Namespace + From<Namespace>> Serializable<Cii, N> for Invoice {
     // Serializes the whole document under the CII root element.
-    fn serialize(serializer: &mut Serializer<Cii>, builder: &DocumentBuilder<Invoice>) {
+    fn serialize(serializer: &mut Serializer<Cii, N>, builder: &DocumentBuilder<Invoice>) {
         let invoice = &builder.invoice;
         serializer.root(|serializer| {
             serializer.exchanged_document_context(builder);
@@ -52,7 +52,7 @@ impl Serializable<Cii> for Invoice {
     }
 }
 
-impl Serializer<Cii> {
+impl<N: crate::Namespace + From<Namespace>> Serializer<Cii, N> {
     // Serializes the document context: the business process (BT-23) and the profile (BT-24).
     fn exchanged_document_context(&mut self, builder: &DocumentBuilder<Invoice>) {
         self.structural(Namespace::Rsm, "ExchangedDocumentContext", |serializer| {

@@ -16,7 +16,7 @@ What abstractions does the library offer to a consumer?
 
 `DocumentBuilder<P>` is the staging form that serialization reads. It is a public struct with the `invoice` and the regulatory-flow data. The parameter `P` names the profile and its binding, so neither takes a field. No validation runs here.
 
-`Serializable` and `Deserializable` are the core (de)serializers (ADR-0005). They are traits of an invoice type, parameterized by the binding and the namespace set. Each one fills the document in place, building the dictionary in lockstep. Neither computes an amount.
+`Serializable` and `Deserializable` are the core (de)serializers (ADR-0005). Both are invoice-type traits over a binding and a namespace set. Each walks a `Serializer` or a `Parser` from `Document`, building the dictionary in lockstep. Neither computes an amount.
 
 `Document<P>` is the public artifact. It holds a private `builder`, the `xml`, and the `dictionary` from record-form paths to `Context`-s. `TryFrom<DocumentBuilder<P>>` serializes into it, and `Document::parse_as::<P>` reconstructs it. That parse rejects a document whose `BT-24` belongs to another profile. It converts into the `Invoice` through `From<Document<P>>`. A received document must become a business object. An `Invoice` never parses from XML alone.
 

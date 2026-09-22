@@ -11,9 +11,9 @@ use crate::{
 };
 use crate::{Deserializable, Format};
 
-impl Deserializable<Ubl> for Invoice {
+impl<N: crate::Namespace + From<Namespace>> Deserializable<Ubl, N> for Invoice {
     // Parses the whole document under the UBL root element.
-    fn deserialize(parser: &mut Parser<Ubl>) -> Result<DocumentBuilder<Invoice>, Error> {
+    fn deserialize(parser: &mut Parser<Ubl, N>) -> Result<DocumentBuilder<Invoice>, Error> {
         parser.enter_structural(Ubl::root_namespace(), Ubl::ROOT_ELEMENT)?;
 
         let profile = parser.rooted(Namespace::Cbc, "CustomizationID")?.parse()?;
@@ -251,7 +251,7 @@ impl Deserializable<Ubl> for Invoice {
 
 // ---- parser --------------------------------------------------------------
 
-impl Parser<Ubl> {
+impl<N: crate::Namespace + From<Namespace>> Parser<Ubl, N> {
     // Parses the invoice period, returning the period and the VAT point event.
     fn parse_invoice_period(&mut self) -> Result<(Option<Period>, Option<VatPoint>), Error> {
         self.enter_group(Namespace::Cac, "InvoicePeriod", "invoicing_period")?;
@@ -952,7 +952,7 @@ impl Parser<Ubl> {
     // Parses the item, whose classified tax category yields the line VAT.
     fn parse_item(&mut self) -> Result<(Item, Option<VatTreatment>), Error> {
         self.take_open(Namespace::Cac, "Item")?;
-        self.trace.enter(Namespace::Cac, "Item");
+        self.trace.enter(Namespace::Cac.into(), "Item");
         self.trace.push_field("item");
         self.trace.record_context();
 

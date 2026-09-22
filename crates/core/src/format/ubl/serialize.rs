@@ -50,9 +50,9 @@ fn currency_attribute(invoice: &Invoice) -> Vec<(&'static str, &'static str)> {
         .unwrap_or_default()
 }
 
-impl Serializable<Ubl> for Invoice {
+impl<N: crate::Namespace + From<Namespace>> Serializable<Ubl, N> for Invoice {
     // Serializes the whole document under the UBL root element.
-    fn serialize(serializer: &mut Serializer<Ubl>, builder: &DocumentBuilder<Invoice>) {
+    fn serialize(serializer: &mut Serializer<Ubl, N>, builder: &DocumentBuilder<Invoice>) {
         let invoice = &builder.invoice;
         let currency = currency_attribute(invoice);
         serializer.root(|serializer| {
@@ -229,7 +229,7 @@ impl Serializable<Ubl> for Invoice {
     }
 }
 
-impl Serializer<Ubl> {
+impl<N: crate::Namespace + From<Namespace>> Serializer<Ubl, N> {
     // Serializes the notes (`BG-1`), each a repeatable single-value element.
     fn notes(&mut self, notes: &[Note]) {
         let drop_subject = self.forbids(Term::BT(21));
@@ -1406,7 +1406,7 @@ impl Serializer<Ubl> {
 
     // Serializes the item (`BG-31`), rebasing the classified tax category onto the line VAT.
     fn item(&mut self, item: Option<&Item>, vat: Option<&VatTreatment>) {
-        self.trace.enter(Namespace::Cac, "Item");
+        self.trace.enter(Namespace::Cac.into(), "Item");
         self.trace.push_field("item");
         self.trace.record_context();
         self.write_start(Namespace::Cac, "Item");

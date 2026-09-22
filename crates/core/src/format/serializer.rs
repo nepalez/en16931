@@ -1,6 +1,9 @@
 use super::Trace;
-use crate::prelude::{BytesEnd, BytesStart, BytesText, Event, NonZeroUsize, VariantArray, Writer};
-use crate::{Abbreviations, Dictionary, Format, Namespace, Term};
+use crate::prelude::{
+    BytesEnd, BytesStart, BytesText, Event, NonZeroUsize, PhantomData, VariantArray, Writer,
+};
+use crate::{Abbreviations, Dictionary, Term};
+use crate::{Format, Namespace};
 
 /// The stateful writer of the binding `F`, handed to a `Serializable` walk.
 ///
@@ -8,30 +11,26 @@ use crate::{Abbreviations, Dictionary, Format, Namespace, Term};
 /// so a finding of a validator later binds to the model context of the node it addresses.
 /// The walk writes the document through the writing primitives only, from the root element down,
 /// and never touches the XML or the dictionary directly.
-pub struct Serializer<F: Format> {
+pub struct Serializer<F: Format, N: Namespace + From<F::Namespace>> {
     inner: Writer<Vec<u8>>,
-    pub(crate) trace: Trace<F::Namespace>,
-    abbreviations: Abbreviations<F::Namespace>,
+    pub(crate) trace: Trace<N>,
+    abbreviations: Abbreviations<N>,
     forbidden: &'static [Term],
+    format: PhantomData<F>,
 }
 
-impl<F: Format> Serializer<F> {
+impl<F: Format, N: Namespace + From<F::Namespace>> Serializer<F, N> {
     pub(crate) fn new(forbidden: &'static [Term]) -> Self {
         Self {
             inner: Writer::new(Vec::new()),
             trace: Trace::new(),
-            abbreviations: F::Namespace::default_abbreviations(),
+            abbreviations: N::default_abbreviations(),
             forbidden,
+            format: PhantomData,
         }
     }
 
-    pub(crate) fn finish(
-        self,
-    ) -> (
-        String,
-        Dictionary<F::Namespace>,
-        Abbreviations<F::Namespace>,
-    ) {
+    pub(crate) fn finish(self) -> (String, Dictionary<N>, Abbreviations<N>) {
         let xml = String::from_utf8(self.inner.into_inner()).expect("quick-xml emits valid UTF-8");
         (xml, self.trace.into_dictionary(), self.abbreviations)
     }
@@ -47,6 +46,7 @@ impl<F: Format> Serializer<F> {
         let declarations: Vec<(String, &'static str)> = F::Namespace::VARIANTS
             .iter()
             .map(|namespace| {
+                let namespace = N::from(*namespace);
                 let prefix = namespace.prefix();
                 let key = if prefix.is_empty() {
                     "xmlns".to_owned()
@@ -56,20 +56,22 @@ impl<F: Format> Serializer<F> {
                 (key, namespace.uri())
             })
             .collect();
-        let root = BytesStart::new(qname(F::root_namespace(), F::ROOT_ELEMENT))
+        let root_namespace = N::from(F::root_namespace());
+        let root = BytesStart::new(qname(root_namespace, F::ROOT_ELEMENT))
             .with_attributes(declarations.iter().map(|(key, uri)| (key.as_str(), *uri)));
         self.write(Event::Start(root));
         for namespace in F::Namespace::VARIANTS {
+            let namespace = N::from(*namespace);
             self.abbreviations
-                .declare(namespace.prefix(), *namespace)
+                .declare(namespace.prefix(), namespace)
                 .expect("the writer binds each abbreviation to one namespace");
         }
-        self.trace.enter(F::root_namespace(), F::ROOT_ELEMENT);
+        self.trace.enter(root_namespace, F::ROOT_ELEMENT);
         self.trace.record_root();
         body(self);
         self.trace.leave();
         self.write(Event::End(BytesEnd::new(qname(
-            F::root_namespace(),
+            root_namespace,
             F::ROOT_ELEMENT,
         ))));
     }
@@ -77,7 +79,7 @@ impl<F: Format> Serializer<F> {
     // Writes a term-bearing leaf, skipped when the profile forbids the term.
     pub(crate) fn leaf(
         &mut self,
-        namespace: F::Namespace,
+        namespace: impl Into<N>,
         name: &str,
         field: &'static str,
         term: Term,
@@ -92,7 +94,7 @@ impl<F: Format> Serializer<F> {
     // Writes a term-bearing leaf with attributes, skipped when the profile forbids the term.
     pub(crate) fn leaf_attr(
         &mut self,
-        namespace: F::Namespace,
+        namespace: impl Into<N>,
         name: &str,
         field: &'static str,
         term: Term,
@@ -108,7 +110,7 @@ impl<F: Format> Serializer<F> {
     // Writes a leaf mapped to a model field, never filtered (its term is never forbidden).
     pub(crate) fn field_leaf(
         &mut self,
-        namespace: F::Namespace,
+        namespace: impl Into<N>,
         name: &str,
         field: &'static str,
         value: &str,
@@ -119,7 +121,7 @@ impl<F: Format> Serializer<F> {
     // Writes a leaf with attributes mapped to a model field, never filtered.
     pub(crate) fn field_leaf_attr(
         &mut self,
-        namespace: F::Namespace,
+        namespace: impl Into<N>,
         name: &str,
         field: &'static str,
         attributes: &[(&str, &str)],
@@ -130,12 +132,13 @@ impl<F: Format> Serializer<F> {
 
     pub(crate) fn write_field_leaf(
         &mut self,
-        namespace: F::Namespace,
+        namespace: impl Into<N>,
         name: &str,
         field: &'static str,
         attributes: &[(&str, &str)],
         value: &str,
     ) {
+        let namespace = namespace.into();
         self.trace.enter(namespace, name);
         self.trace.push_field(field);
         self.trace.record_context();
@@ -147,7 +150,7 @@ impl<F: Format> Serializer<F> {
     // Writes a repeatable single-value element mapped to a group instance.
     pub(crate) fn repeatable_leaf(
         &mut self,
-        namespace: F::Namespace,
+        namespace: impl Into<N>,
         name: &str,
         field: &'static str,
         term: Term,
@@ -157,6 +160,7 @@ impl<F: Format> Serializer<F> {
         if self.forbids(term) {
             return;
         }
+        let namespace = namespace.into();
         self.trace.enter(namespace, name);
         self.trace.push_instance(field, instance);
         self.trace.record_context();
@@ -168,11 +172,12 @@ impl<F: Format> Serializer<F> {
     // Writes a regulatory leaf recorded at the root context (`BT-23`/`BT-24`).
     pub(crate) fn rooted(
         &mut self,
-        namespace: F::Namespace,
+        namespace: impl Into<N>,
         name: &str,
         attributes: &[(&str, &str)],
         value: &str,
     ) {
+        let namespace = namespace.into();
         self.trace.enter(namespace, name);
         self.trace.record_root();
         self.write_element(namespace, name, attributes, value);
@@ -182,11 +187,12 @@ impl<F: Format> Serializer<F> {
     // Writes a derived leaf with no model field, mapped to the enclosing context.
     pub(crate) fn derived(
         &mut self,
-        namespace: F::Namespace,
+        namespace: impl Into<N>,
         name: &str,
         attributes: &[(&str, &str)],
         value: &str,
     ) {
+        let namespace = namespace.into();
         self.trace.enter(namespace, name);
         self.trace.record_context();
         self.write_element(namespace, name, attributes, value);
@@ -196,7 +202,7 @@ impl<F: Format> Serializer<F> {
     // Writes a term-bearing group around a nested body, skipped when the term is forbidden.
     pub(crate) fn group(
         &mut self,
-        namespace: F::Namespace,
+        namespace: impl Into<N>,
         name: &str,
         field: &'static str,
         term: Term,
@@ -205,6 +211,7 @@ impl<F: Format> Serializer<F> {
         if self.forbids(term) {
             return;
         }
+        let namespace = namespace.into();
         self.trace.enter(namespace, name);
         self.trace.push_field(field);
         self.trace.record_context();
@@ -218,11 +225,12 @@ impl<F: Format> Serializer<F> {
     // Writes a group mapped to a model field, never filtered (its term is never forbidden).
     pub(crate) fn field_group(
         &mut self,
-        namespace: F::Namespace,
+        namespace: impl Into<N>,
         name: &str,
         field: &'static str,
         body: impl FnOnce(&mut Self),
     ) {
+        let namespace = namespace.into();
         self.trace.enter(namespace, name);
         self.trace.push_field(field);
         self.trace.record_context();
@@ -236,7 +244,7 @@ impl<F: Format> Serializer<F> {
     // Writes one instance of a term-bearing repeatable group, carrying its index.
     pub(crate) fn repeatable(
         &mut self,
-        namespace: F::Namespace,
+        namespace: impl Into<N>,
         name: &str,
         field: &'static str,
         term: Term,
@@ -246,6 +254,7 @@ impl<F: Format> Serializer<F> {
         if self.forbids(term) {
             return;
         }
+        let namespace = namespace.into();
         self.trace.enter(namespace, name);
         self.trace.push_instance(field, instance);
         self.trace.record_context();
@@ -259,10 +268,11 @@ impl<F: Format> Serializer<F> {
     // Writes a term-less structural wrapper mapped to the root context.
     pub(crate) fn structural(
         &mut self,
-        namespace: F::Namespace,
+        namespace: impl Into<N>,
         name: &str,
         body: impl FnOnce(&mut Self),
     ) {
+        let namespace = namespace.into();
         self.trace.enter(namespace, name);
         self.trace.record_root();
         self.write_start(namespace, name);
@@ -274,10 +284,11 @@ impl<F: Format> Serializer<F> {
     // Writes a wrapper mapped to the enclosing context, without a new segment.
     pub(crate) fn nested(
         &mut self,
-        namespace: F::Namespace,
+        namespace: impl Into<N>,
         name: &str,
         body: impl FnOnce(&mut Self),
     ) {
+        let namespace = namespace.into();
         self.trace.enter(namespace, name);
         self.trace.record_context();
         self.write_start(namespace, name);
@@ -289,12 +300,12 @@ impl<F: Format> Serializer<F> {
     // Writes a whole element with its attributes and text, never recorded.
     pub(crate) fn write_element(
         &mut self,
-        namespace: F::Namespace,
+        namespace: impl Into<N>,
         name: &str,
         attributes: &[(&str, &str)],
         value: &str,
     ) {
-        let tag = qname(namespace, name);
+        let tag = qname(namespace.into(), name);
         let mut start = BytesStart::new(tag.clone());
         for (key, attribute_value) in attributes {
             start.push_attribute((*key, *attribute_value));
@@ -304,12 +315,12 @@ impl<F: Format> Serializer<F> {
         self.write(Event::End(BytesEnd::new(tag)));
     }
 
-    pub(crate) fn write_start(&mut self, namespace: F::Namespace, name: &str) {
-        self.write(Event::Start(BytesStart::new(qname(namespace, name))));
+    pub(crate) fn write_start(&mut self, namespace: impl Into<N>, name: &str) {
+        self.write(Event::Start(BytesStart::new(qname(namespace.into(), name))));
     }
 
-    pub(crate) fn write_end(&mut self, namespace: F::Namespace, name: &str) {
-        self.write(Event::End(BytesEnd::new(qname(namespace, name))));
+    pub(crate) fn write_end(&mut self, namespace: impl Into<N>, name: &str) {
+        self.write(Event::End(BytesEnd::new(qname(namespace.into(), name))));
     }
 
     fn write(&mut self, event: Event<'_>) {

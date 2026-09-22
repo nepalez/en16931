@@ -40,18 +40,18 @@ pub trait Format: Sealed {
     /// A malformed document, an element without a namespace,
     /// or an element of a namespace outside the set yield `Error::MalformedXml`.
     #[allow(private_interfaces)]
-    fn tokenize(xml: &str) -> Result<Tokenized<Self::Namespace>, Error> {
+    fn tokenize<N: Namespace + From<Self::Namespace>>(xml: &str) -> Result<Tokenized<N>, Error> {
         let mut reader = NsReader::from_str(xml);
         let mut tokens = Vec::new();
-        let mut abbreviations = Self::Namespace::default_abbreviations();
+        let mut abbreviations = N::default_abbreviations();
         loop {
             let (resolved, event) = reader.read_resolved_event()?;
             match event {
                 Event::Start(start) => {
-                    tokens.push(open_token::<Self>(resolved, &start, &mut abbreviations)?);
+                    tokens.push(open_token::<N>(resolved, &start, &mut abbreviations)?);
                 }
                 Event::Empty(start) => {
-                    tokens.push(open_token::<Self>(resolved, &start, &mut abbreviations)?);
+                    tokens.push(open_token::<N>(resolved, &start, &mut abbreviations)?);
                     tokens.push(Token::Close);
                 }
                 Event::End(_) => tokens.push(Token::Close),
@@ -85,16 +85,16 @@ pub(crate) enum Token<N: Namespace> {
 
 // Builds an `Open` token from a start tag, resolving its namespace and reading
 // its attributes. A namespace declaration binds an abbreviation instead.
-fn open_token<F: Format + ?Sized>(
+fn open_token<N: Namespace>(
     resolved: ResolveResult<'_>,
     start: &BytesStart<'_>,
-    abbreviations: &mut Abbreviations<F::Namespace>,
-) -> Result<Token<F::Namespace>, Error> {
+    abbreviations: &mut Abbreviations<N>,
+) -> Result<Token<N>, Error> {
     let ResolveResult::Bound(uri) = resolved else {
         return Err(Error::malformed_xml("an element has no namespace"));
     };
     let uri = String::from_utf8_lossy(uri.into_inner());
-    let namespace = F::Namespace::from_uri(&uri)
+    let namespace = N::from_uri(&uri)
         .ok_or_else(|| Error::malformed_xml(format!("unknown namespace: {uri}")))?;
     let name = String::from_utf8_lossy(start.local_name().as_ref()).into_owned();
     let mut attributes = Vec::new();
@@ -104,7 +104,7 @@ fn open_token<F: Format + ?Sized>(
         if key == b"xmlns" || key.starts_with(b"xmlns:") {
             let abbreviation = String::from_utf8_lossy(key.strip_prefix(b"xmlns:").unwrap_or(b""));
             let uri = String::from_utf8_lossy(&attribute.value);
-            if let Some(namespace) = F::Namespace::from_uri(&uri) {
+            if let Some(namespace) = N::from_uri(&uri) {
                 abbreviations.declare(&abbreviation, namespace)?;
             }
             continue;

@@ -19,6 +19,7 @@ pub use std::borrow::Cow;
 pub use std::collections::HashMap;
 pub use std::fmt::{self, Display, Formatter};
 pub use std::hash::Hash;
+pub use std::marker::PhantomData;
 pub use std::num::NonZeroUsize;
 pub use std::str::FromStr;
 pub use strum::VariantArray;

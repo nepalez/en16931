@@ -2,8 +2,9 @@
 //! and the trace that rebuilds the dictionary in lockstep, behind one set of reading primitives.
 
 use super::{Token, Trace};
-use crate::prelude::NonZeroUsize;
-use crate::{Dictionary, Error, Format, NonEmptyString};
+use crate::prelude::{NonZeroUsize, PhantomData};
+use crate::{Dictionary, Error, NonEmptyString};
+use crate::{Format, Namespace};
 
 /// The stateful reader of the binding `F`, handed to a `Deserializable` walk.
 ///
@@ -11,22 +12,24 @@ use crate::{Dictionary, Error, Format, NonEmptyString};
 /// into the dictionary in the same pass, so a finding of a validator later binds
 /// to the model context of the node it addresses. The walk reads the document
 /// through the reading primitives only, from the root element down.
-pub struct Parser<F: Format> {
-    pub(crate) tokens: Vec<Token<F::Namespace>>,
+pub struct Parser<F: Format, N: Namespace + From<F::Namespace>> {
+    pub(crate) tokens: Vec<Token<N>>,
     pub(crate) cursor: usize,
-    pub(crate) trace: Trace<F::Namespace>,
+    pub(crate) trace: Trace<N>,
+    format: PhantomData<F>,
 }
 
-impl<F: Format> Parser<F> {
-    pub(crate) fn new(tokens: Vec<Token<F::Namespace>>) -> Self {
+impl<F: Format, N: Namespace + From<F::Namespace>> Parser<F, N> {
+    pub(crate) fn new(tokens: Vec<Token<N>>) -> Self {
         Self {
             tokens,
             cursor: 0,
             trace: Trace::new(),
+            format: PhantomData,
         }
     }
 
-    pub(crate) fn finish(self) -> Dictionary<F::Namespace> {
+    pub(crate) fn finish(self) -> Dictionary<N> {
         self.trace.into_dictionary()
     }
 
@@ -35,7 +38,7 @@ impl<F: Format> Parser<F> {
     // Reads a leaf mapped to a model field, returning its text.
     pub(crate) fn leaf(
         &mut self,
-        namespace: F::Namespace,
+        namespace: impl Into<N>,
         name: &str,
         field: &'static str,
     ) -> Result<String, Error> {
@@ -45,10 +48,11 @@ impl<F: Format> Parser<F> {
     // Reads a leaf mapped to a model field, returning its attributes and text.
     pub(crate) fn leaf_attr(
         &mut self,
-        namespace: F::Namespace,
+        namespace: impl Into<N>,
         name: &str,
         field: &'static str,
     ) -> Result<(Vec<(String, String)>, String), Error> {
+        let namespace = namespace.into();
         let attributes = self.take_open(namespace, name)?;
         self.trace.enter(namespace, name);
         self.trace.push_field(field);
@@ -63,10 +67,11 @@ impl<F: Format> Parser<F> {
     // Reads an optional leaf mapped to a model field.
     pub(crate) fn optional_leaf(
         &mut self,
-        namespace: F::Namespace,
+        namespace: impl Into<N>,
         name: &str,
         field: &'static str,
     ) -> Result<Option<NonEmptyString>, Error> {
+        let namespace = namespace.into();
         if self.is_open(namespace, name) {
             Ok(Some(self.leaf(namespace, name, field)?.parse()?))
         } else {
@@ -77,10 +82,11 @@ impl<F: Format> Parser<F> {
     // Reads the text of an optional leaf mapped to a model field.
     pub(crate) fn optional_text(
         &mut self,
-        namespace: F::Namespace,
+        namespace: impl Into<N>,
         name: &str,
         field: &'static str,
     ) -> Result<Option<String>, Error> {
+        let namespace = namespace.into();
         if self.is_open(namespace, name) {
             Ok(Some(self.leaf(namespace, name, field)?))
         } else {
@@ -92,10 +98,11 @@ impl<F: Format> Parser<F> {
     #[allow(clippy::type_complexity)]
     pub(crate) fn optional_leaf_attr(
         &mut self,
-        namespace: F::Namespace,
+        namespace: impl Into<N>,
         name: &str,
         field: &'static str,
     ) -> Result<Option<(Vec<(String, String)>, String)>, Error> {
+        let namespace = namespace.into();
         if self.is_open(namespace, name) {
             Ok(Some(self.leaf_attr(namespace, name, field)?))
         } else {
@@ -107,9 +114,10 @@ impl<F: Format> Parser<F> {
     #[allow(clippy::type_complexity)]
     pub(crate) fn optional_derived(
         &mut self,
-        namespace: F::Namespace,
+        namespace: impl Into<N>,
         name: &str,
     ) -> Result<Option<(Vec<(String, String)>, String)>, Error> {
+        let namespace = namespace.into();
         if self.is_open(namespace, name) {
             Ok(Some(self.derived(namespace, name)?))
         } else {
@@ -120,11 +128,12 @@ impl<F: Format> Parser<F> {
     // Reads a repeatable single-value element.
     pub(crate) fn repeatable_leaf(
         &mut self,
-        namespace: F::Namespace,
+        namespace: impl Into<N>,
         name: &str,
         field: &'static str,
         instance: NonZeroUsize,
     ) -> Result<String, Error> {
+        let namespace = namespace.into();
         self.take_open(namespace, name)?;
         self.trace.enter(namespace, name);
         self.trace.push_instance(field, instance);
@@ -137,7 +146,8 @@ impl<F: Format> Parser<F> {
     }
 
     // Reads a regulatory leaf recorded at the root context.
-    pub(crate) fn rooted(&mut self, namespace: F::Namespace, name: &str) -> Result<String, Error> {
+    pub(crate) fn rooted(&mut self, namespace: impl Into<N>, name: &str) -> Result<String, Error> {
+        let namespace = namespace.into();
         self.take_open(namespace, name)?;
         self.trace.enter(namespace, name);
         self.trace.record_root();
@@ -150,9 +160,10 @@ impl<F: Format> Parser<F> {
     // Reads a derived leaf with no model field, returning its attributes and text.
     pub(crate) fn derived(
         &mut self,
-        namespace: F::Namespace,
+        namespace: impl Into<N>,
         name: &str,
     ) -> Result<(Vec<(String, String)>, String), Error> {
+        let namespace = namespace.into();
         let attributes = self.take_open(namespace, name)?;
         self.trace.enter(namespace, name);
         self.trace.record_context();
@@ -164,9 +175,10 @@ impl<F: Format> Parser<F> {
 
     pub(crate) fn enter_structural(
         &mut self,
-        namespace: F::Namespace,
+        namespace: impl Into<N>,
         name: &str,
     ) -> Result<(), Error> {
+        let namespace = namespace.into();
         self.take_open(namespace, name)?;
         self.trace.enter(namespace, name);
         self.trace.record_root();
@@ -181,9 +193,10 @@ impl<F: Format> Parser<F> {
 
     pub(crate) fn enter_nested(
         &mut self,
-        namespace: F::Namespace,
+        namespace: impl Into<N>,
         name: &str,
     ) -> Result<(), Error> {
+        let namespace = namespace.into();
         self.take_open(namespace, name)?;
         self.trace.enter(namespace, name);
         self.trace.record_context();
@@ -198,10 +211,11 @@ impl<F: Format> Parser<F> {
 
     pub(crate) fn enter_group(
         &mut self,
-        namespace: F::Namespace,
+        namespace: impl Into<N>,
         name: &str,
         field: &'static str,
     ) -> Result<(), Error> {
+        let namespace = namespace.into();
         self.take_open(namespace, name)?;
         self.trace.enter(namespace, name);
         self.trace.push_field(field);
@@ -218,11 +232,12 @@ impl<F: Format> Parser<F> {
 
     pub(crate) fn enter_repeatable(
         &mut self,
-        namespace: F::Namespace,
+        namespace: impl Into<N>,
         name: &str,
         field: &'static str,
         instance: NonZeroUsize,
     ) -> Result<(), Error> {
+        let namespace = namespace.into();
         self.take_open(namespace, name)?;
         self.trace.enter(namespace, name);
         self.trace.push_instance(field, instance);
@@ -266,7 +281,7 @@ impl<F: Format> Parser<F> {
         None
     }
 
-    pub(crate) fn head(&self) -> Result<(F::Namespace, String), Error> {
+    pub(crate) fn head(&self) -> Result<(N, String), Error> {
         match self.tokens.get(self.cursor) {
             Some(Token::Open {
                 namespace, name, ..
@@ -275,14 +290,16 @@ impl<F: Format> Parser<F> {
         }
     }
 
-    pub(crate) fn is_open(&self, namespace: F::Namespace, name: &str) -> bool {
+    pub(crate) fn is_open(&self, namespace: impl Into<N>, name: &str) -> bool {
+        let namespace = namespace.into();
         matches!(
             self.tokens.get(self.cursor),
             Some(Token::Open { namespace: found, name: local, .. }) if *found == namespace && local == name
         )
     }
 
-    pub(crate) fn is_open_namespace(&self, namespace: F::Namespace) -> bool {
+    pub(crate) fn is_open_namespace(&self, namespace: impl Into<N>) -> bool {
+        let namespace = namespace.into();
         matches!(
             self.tokens.get(self.cursor),
             Some(Token::Open { namespace: found, .. }) if *found == namespace
@@ -291,9 +308,10 @@ impl<F: Format> Parser<F> {
 
     pub(crate) fn take_open(
         &mut self,
-        namespace: F::Namespace,
+        namespace: impl Into<N>,
         name: &str,
     ) -> Result<Vec<(String, String)>, Error> {
+        let namespace = namespace.into();
         match self.tokens.get(self.cursor) {
             Some(Token::Open {
                 namespace: found,
