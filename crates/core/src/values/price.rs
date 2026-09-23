@@ -1,6 +1,8 @@
+//! The price details (`BG-29`).
+
 use crate::{Decimal, Quantity};
 
-/// Price details (`BG-29`): the item price and the quantity it applies to.
+/// The item price and the quantity it applies to (`BG-29`).
 ///
 /// Amounts are in the invoice currency (`BT-5`).
 /// The price is stated per base quantity, not per single unit,
@@ -8,9 +10,9 @@ use crate::{Decimal, Quantity};
 /// The issuer states the net price along with the gross price and the discount.
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub struct Price {
-    /// Net price (`BT-146`): the price after the discount.
+    /// The price after the discount (`BT-146`).
     pub net: Option<Decimal>,
-    /// Gross price (`BT-148`): the price before the discount.
+    /// The price before the discount (`BT-148`).
     pub gross: Option<Decimal>,
     /// Price discount (`BT-147`).
     pub discount: Option<Decimal>,

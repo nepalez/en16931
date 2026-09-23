@@ -6,8 +6,8 @@
 use crate::Error;
 use crate::prelude::*;
 
-/// The invoiced object identifier scheme (`BT-18`, UNTDID 1153): the qualifier of an
-/// identifier for an object the invoice refers to (a contract, subscription, meter, and so on).
+/// The qualifier of an identifier for an object the invoice refers to
+/// (a contract, subscription, meter, and so on) (`BT-18`, UNTDID 1153).
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Display, FromStr)]
 pub enum InvoicedObjectType {
     #[display("AAA")]

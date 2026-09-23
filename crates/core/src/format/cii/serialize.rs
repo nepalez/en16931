@@ -1,12 +1,12 @@
+//! The CII writing walk, generic over the interfaces of the semantic model.
+
 use super::Namespace;
-use crate::Serializable;
 use crate::prelude::*;
 use crate::{
     Adjustment, AdjustmentAmount, AdjustmentReason, Buyer, Cii, Contact, Currency, Delivery,
-    DocumentBuilder, ElectronicAddress, Invoice, InvoiceLine, Item, LegalEntity, LineAdjustment,
-    NonEmptyString, OperationalEntity, Payee, PaymentDetails, PaymentInstructions, Period,
-    PostalAddress, PrecedingInvoice, Price, Seller, Serializer, TaxRepresentative, Term, VatPoint,
-    VatTreatment,
+    DocumentBuilder, ElectronicAddress, Invoice, InvoiceReference, Item, LegalEntity, Line,
+    LineAdjustment, OperationalEntity, Payee, PaymentDetails, PaymentInstructions, Period,
+    PostalAddress, Price, Seller, Serializer, TaxRepresentative, Term, VatPoint, VatTreatment,
 };
 
 // Renders a date as an ISO-8601 basic date (`YYYYMMDD`), the CII form 102.
@@ -31,32 +31,22 @@ fn plain(value: Decimal) -> String {
     value.to_string()
 }
 
-impl<N: crate::Namespace + From<Namespace>> Serializable<Cii, N> for Invoice {
-    // Serializes the whole document under the CII root element.
-    fn serialize(serializer: &mut Serializer<Cii, N>, builder: &DocumentBuilder<Invoice>) {
-        let invoice = &builder.invoice;
-        serializer.root(|serializer| {
-            serializer.exchanged_document_context(builder);
-            serializer.exchanged_document(invoice);
-            serializer.structural(
-                Namespace::Rsm,
-                "SupplyChainTradeTransaction",
-                |serializer| {
-                    serializer.lines(&invoice.lines);
-                    serializer.header_trade_agreement(invoice);
-                    serializer.header_trade_delivery(invoice);
-                    serializer.header_trade_settlement(invoice);
-                },
-            );
-        });
-    }
-}
-
-impl<N: crate::Namespace + From<Namespace>> Serializer<Cii, N> {
-    // Serializes the document context: the business process (BT-23) and the profile (BT-24).
-    fn exchanged_document_context(&mut self, builder: &DocumentBuilder<Invoice>) {
-        self.structural(Namespace::Rsm, "ExchangedDocumentContext", |serializer| {
-            if let Some(process) = &builder.business_process {
+/// Writes the whole document of the builder under the CII root element,
+/// filling the dictionary and the abbreviation table in the same pass.
+///
+/// An implementation of `Serializable<Cii, N>` for a concrete invoice type calls this walk.
+pub fn serialize<I: Invoice, N: crate::Namespace + From<Namespace>>(
+    serializer: &mut Serializer<Cii, N>,
+    builder: &mut DocumentBuilder<I>,
+) {
+    let DocumentBuilder {
+        invoice,
+        profile,
+        business_process,
+    } = builder;
+    serializer.root(|serializer| {
+        serializer.structural(Namespace::Rsm, "ExchangedDocumentContext", |serializer| {
+            if let Some(process) = business_process {
                 serializer.structural(
                     Namespace::Ram,
                     "BusinessProcessSpecifiedDocumentContextParameter",
@@ -69,16 +59,29 @@ impl<N: crate::Namespace + From<Namespace>> Serializer<Cii, N> {
                 Namespace::Ram,
                 "GuidelineSpecifiedDocumentContextParameter",
                 |serializer| {
-                    serializer.rooted(Namespace::Ram, "ID", &[], &builder.profile.to_string());
+                    serializer.rooted(Namespace::Ram, "ID", &[], &profile.to_string());
                 },
             );
         });
-    }
+        serializer.exchanged_document(invoice);
+        serializer.structural(
+            Namespace::Rsm,
+            "SupplyChainTradeTransaction",
+            |serializer| {
+                serializer.lines(invoice.lines());
+                serializer.header_trade_agreement(invoice);
+                serializer.header_trade_delivery(invoice);
+                serializer.header_trade_settlement(invoice);
+            },
+        );
+    });
+}
 
+impl<N: crate::Namespace + From<Namespace>> Serializer<Cii, N> {
     // Serializes the exchanged document header: number, type, date, and notes.
-    fn exchanged_document(&mut self, invoice: &Invoice) {
+    fn exchanged_document<I: Invoice>(&mut self, invoice: &mut I) {
         self.structural(Namespace::Rsm, "ExchangedDocument", |serializer| {
-            if let Some(number) = &invoice.number {
+            if let Some(number) = invoice.number() {
                 serializer.leaf(Namespace::Ram, "ID", "number", Term::BT(1), number.as_ref());
             }
             serializer.leaf(
@@ -86,12 +89,12 @@ impl<N: crate::Namespace + From<Namespace>> Serializer<Cii, N> {
                 "TypeCode",
                 "type_code",
                 Term::BT(3),
-                &invoice.type_code.to_string(),
+                &invoice.type_code().to_string(),
             );
-            if let Some(issued) = invoice.issue_date {
+            if let Some(issued) = *invoice.issue_date() {
                 serializer.datetime("IssueDateTime", "issue_date", Term::BT(2), issued);
             }
-            for (position, note) in invoice.notes.iter().enumerate() {
+            for (position, note) in invoice.notes().iter_mut().enumerate() {
                 let instance = index(position);
                 serializer.repeatable(
                     Namespace::Ram,
@@ -120,8 +123,8 @@ impl<N: crate::Namespace + From<Namespace>> Serializer<Cii, N> {
     }
 
     // Serializes the invoice lines (`BG-25`).
-    fn lines(&mut self, lines: &[InvoiceLine]) {
-        for (position, line) in lines.iter().enumerate() {
+    fn lines<L: Line>(&mut self, lines: &mut [L]) {
+        for (position, line) in lines.iter_mut().enumerate() {
             let instance = index(position);
             self.repeatable(
                 Namespace::Ram,
@@ -137,15 +140,15 @@ impl<N: crate::Namespace + From<Namespace>> Serializer<Cii, N> {
     }
 
     // Serializes one invoice line body.
-    fn line(&mut self, line: &InvoiceLine) {
+    fn line<L: Line>(&mut self, line: &mut L) {
         self.structural(
             Namespace::Ram,
             "AssociatedDocumentLineDocument",
             |serializer| {
-                if let Some(id) = &line.id {
+                if let Some(id) = line.id() {
                     serializer.leaf(Namespace::Ram, "LineID", "id", Term::BT(126), id.as_ref());
                 }
-                if let Some(note) = &line.note {
+                if let Some(note) = line.note() {
                     serializer.group(
                         Namespace::Ram,
                         "IncludedNote",
@@ -158,12 +161,12 @@ impl<N: crate::Namespace + From<Namespace>> Serializer<Cii, N> {
                 }
             },
         );
-        if let Some(item) = &line.item {
+        if let Some(item) = line.item() {
             self.line_product(item);
         }
         self.line_agreement(line);
         self.structural(Namespace::Ram, "SpecifiedLineTradeDelivery", |serializer| {
-            if let Some(quantity) = &line.quantity {
+            if let Some(quantity) = line.quantity() {
                 serializer.leaf_attr(
                     Namespace::Ram,
                     "BilledQuantity",
@@ -178,13 +181,13 @@ impl<N: crate::Namespace + From<Namespace>> Serializer<Cii, N> {
     }
 
     // Serializes the line product (`BG-31`), rebasing the tax onto the line VAT elsewhere.
-    fn line_product(&mut self, item: &Item) {
+    fn line_product<T: Item>(&mut self, item: &mut T) {
         self.field_group(
             Namespace::Ram,
             "SpecifiedTradeProduct",
             "item",
             |serializer| {
-                if let Some(standard) = &item.standard_id {
+                if let Some(standard) = item.standard_id() {
                     if let Some(id) = &standard.id {
                         match &standard.issuer {
                             Some(issuer) => serializer.field_leaf_attr(
@@ -203,7 +206,7 @@ impl<N: crate::Namespace + From<Namespace>> Serializer<Cii, N> {
                         }
                     }
                 }
-                if let Some(id) = &item.seller_id {
+                if let Some(id) = item.seller_id() {
                     serializer.field_leaf(
                         Namespace::Ram,
                         "SellerAssignedID",
@@ -211,7 +214,7 @@ impl<N: crate::Namespace + From<Namespace>> Serializer<Cii, N> {
                         id.as_ref(),
                     );
                 }
-                if let Some(id) = &item.buyer_id {
+                if let Some(id) = item.buyer_id() {
                     serializer.field_leaf(
                         Namespace::Ram,
                         "BuyerAssignedID",
@@ -219,10 +222,10 @@ impl<N: crate::Namespace + From<Namespace>> Serializer<Cii, N> {
                         id.as_ref(),
                     );
                 }
-                if let Some(name) = &item.name {
+                if let Some(name) = item.name() {
                     serializer.field_leaf(Namespace::Ram, "Name", "name", name.as_ref());
                 }
-                if let Some(description) = &item.description {
+                if let Some(description) = item.description() {
                     serializer.field_leaf(
                         Namespace::Ram,
                         "Description",
@@ -230,7 +233,7 @@ impl<N: crate::Namespace + From<Namespace>> Serializer<Cii, N> {
                         description.as_ref(),
                     );
                 }
-                for attribute in &item.attributes {
+                for attribute in item.attributes().iter() {
                     serializer.structural(
                         Namespace::Ram,
                         "ApplicableProductCharacteristic",
@@ -254,7 +257,7 @@ impl<N: crate::Namespace + From<Namespace>> Serializer<Cii, N> {
                         },
                     );
                 }
-                for classification in &item.classifications {
+                for classification in item.classifications().iter() {
                     serializer.structural(
                         Namespace::Ram,
                         "DesignatedProductClassification",
@@ -286,7 +289,7 @@ impl<N: crate::Namespace + From<Namespace>> Serializer<Cii, N> {
                         },
                     );
                 }
-                if let Some(country) = item.country_of_origin {
+                if let Some(country) = *item.country_of_origin() {
                     serializer.structural(Namespace::Ram, "OriginTradeCountry", |serializer| {
                         serializer.field_leaf(
                             Namespace::Ram,
@@ -301,12 +304,12 @@ impl<N: crate::Namespace + From<Namespace>> Serializer<Cii, N> {
     }
 
     // Serializes the line trade agreement: order line reference and prices.
-    fn line_agreement(&mut self, line: &InvoiceLine) {
+    fn line_agreement<L: Line>(&mut self, line: &mut L) {
         self.structural(
             Namespace::Ram,
             "SpecifiedLineTradeAgreement",
             |serializer| {
-                if let Some(order) = &line.order_line_reference {
+                if let Some(order) = line.order_line_reference() {
                     serializer.structural(
                         Namespace::Ram,
                         "BuyerOrderReferencedDocument",
@@ -321,7 +324,7 @@ impl<N: crate::Namespace + From<Namespace>> Serializer<Cii, N> {
                         },
                     );
                 }
-                if let Some(price) = &line.price {
+                if let Some(price) = line.price() {
                     serializer.line_price(price);
                 }
             },
@@ -393,22 +396,22 @@ impl<N: crate::Namespace + From<Namespace>> Serializer<Cii, N> {
     }
 
     // Serializes the line trade settlement: tax, period, adjustments, totals, object, account.
-    fn line_settlement(&mut self, line: &InvoiceLine) {
+    fn line_settlement<L: Line>(&mut self, line: &mut L) {
         self.structural(
             Namespace::Ram,
             "SpecifiedLineTradeSettlement",
             |serializer| {
-                if let Some(vat) = &line.vat {
+                if let Some(vat) = line.vat() {
                     serializer.line_tax(vat);
                 }
-                if let Some(period) = line.period {
+                if let Some(period) = *line.period() {
                     serializer.billing_period(period, "period", Term::BG(26));
                 }
-                for (position, adjustment) in line.adjustments.iter().enumerate() {
+                for (position, adjustment) in line.adjustments().iter().enumerate() {
                     let instance = index(position);
                     serializer.line_adjustment(adjustment, instance);
                 }
-                if let Some(net) = line.net_amount {
+                if let Some(net) = *line.net_amount() {
                     serializer.structural(
                         Namespace::Ram,
                         "SpecifiedTradeSettlementLineMonetarySummation",
@@ -423,7 +426,7 @@ impl<N: crate::Namespace + From<Namespace>> Serializer<Cii, N> {
                         },
                     );
                 }
-                if let Some(object) = &line.object {
+                if let Some(object) = line.object() {
                     serializer.field_group(
                         Namespace::Ram,
                         "AdditionalReferencedDocument",
@@ -449,7 +452,7 @@ impl<N: crate::Namespace + From<Namespace>> Serializer<Cii, N> {
                         },
                     );
                 }
-                if let Some(reference) = &line.buyer_accounting_reference {
+                if let Some(reference) = line.buyer_accounting_reference() {
                     serializer.field_group(
                         Namespace::Ram,
                         "ReceivableSpecifiedTradeAccountingAccount",
@@ -514,12 +517,12 @@ impl<N: crate::Namespace + From<Namespace>> Serializer<Cii, N> {
     }
 
     // Serializes the header trade agreement (`BG-4`, `BG-7`, references, `BG-11`).
-    fn header_trade_agreement(&mut self, invoice: &Invoice) {
+    fn header_trade_agreement<I: Invoice>(&mut self, invoice: &mut I) {
         self.structural(
             Namespace::Ram,
             "ApplicableHeaderTradeAgreement",
             |serializer| {
-                if let Some(reference) = &invoice.buyer_reference {
+                if let Some(reference) = invoice.buyer_reference() {
                     serializer.leaf(
                         Namespace::Ram,
                         "BuyerReference",
@@ -528,16 +531,16 @@ impl<N: crate::Namespace + From<Namespace>> Serializer<Cii, N> {
                         reference.as_ref(),
                     );
                 }
-                if let Some(seller) = &invoice.seller {
+                if let Some(seller) = invoice.seller() {
                     serializer.seller_party(seller);
                 }
-                if let Some(buyer) = &invoice.buyer {
+                if let Some(buyer) = invoice.buyer() {
                     serializer.buyer_party(buyer);
                 }
-                if let Some(representative) = &invoice.tax_representative {
+                if let Some(representative) = invoice.tax_representative() {
                     serializer.tax_representative_party(representative);
                 }
-                if let Some(sales) = &invoice.sales_order_reference {
+                if let Some(sales) = invoice.sales_order_reference() {
                     serializer.reference(
                         Namespace::Ram,
                         "SellerOrderReferencedDocument",
@@ -546,7 +549,7 @@ impl<N: crate::Namespace + From<Namespace>> Serializer<Cii, N> {
                         sales.as_ref(),
                     );
                 }
-                if let Some(order) = &invoice.purchase_order_reference {
+                if let Some(order) = invoice.purchase_order_reference() {
                     serializer.reference(
                         Namespace::Ram,
                         "BuyerOrderReferencedDocument",
@@ -555,7 +558,7 @@ impl<N: crate::Namespace + From<Namespace>> Serializer<Cii, N> {
                         order.as_ref(),
                     );
                 }
-                if let Some(contract) = &invoice.contract_reference {
+                if let Some(contract) = invoice.contract_reference() {
                     serializer.reference(
                         Namespace::Ram,
                         "ContractReferencedDocument",
@@ -565,7 +568,7 @@ impl<N: crate::Namespace + From<Namespace>> Serializer<Cii, N> {
                     );
                 }
                 serializer.additional_documents(invoice);
-                if let Some(project) = &invoice.project_reference {
+                if let Some(project) = invoice.project_reference() {
                     serializer.group(
                         Namespace::Ram,
                         "SpecifiedProcuringProject",
@@ -582,8 +585,8 @@ impl<N: crate::Namespace + From<Namespace>> Serializer<Cii, N> {
     }
 
     // Serializes the invoiced object (`BT-18`), tender (`BT-17`), and supporting documents (`BG-24`).
-    fn additional_documents(&mut self, invoice: &Invoice) {
-        if let Some(object) = &invoice.object {
+    fn additional_documents<I: Invoice>(&mut self, invoice: &mut I) {
+        if let Some(object) = invoice.object() {
             self.group(
                 Namespace::Ram,
                 "AdditionalReferencedDocument",
@@ -605,7 +608,7 @@ impl<N: crate::Namespace + From<Namespace>> Serializer<Cii, N> {
                 },
             );
         }
-        if let Some(tender) = &invoice.tender_or_lot_reference {
+        if let Some(tender) = invoice.tender_or_lot_reference() {
             self.group(
                 Namespace::Ram,
                 "AdditionalReferencedDocument",
@@ -617,7 +620,7 @@ impl<N: crate::Namespace + From<Namespace>> Serializer<Cii, N> {
                 },
             );
         }
-        for (position, document) in invoice.supporting_documents.iter().enumerate() {
+        for (position, document) in invoice.supporting_documents().iter_mut().enumerate() {
             let instance = index(position);
             self.repeatable(
                 Namespace::Ram,
@@ -659,18 +662,18 @@ impl<N: crate::Namespace + From<Namespace>> Serializer<Cii, N> {
     }
 
     // Serializes the seller party (`BG-4`).
-    fn seller_party(&mut self, seller: &Seller) {
+    fn seller_party<S: Seller>(&mut self, seller: &mut S) {
         self.group(
             Namespace::Ram,
             "SellerTradeParty",
             "seller",
             Term::BG(4),
             |serializer| {
-                serializer.party_identifiers(&seller.identifiers, "identifiers");
-                if let Some(name) = &seller.name {
+                serializer.party_identifiers(seller.identifiers(), "identifiers");
+                if let Some(name) = seller.name() {
                     serializer.field_leaf(Namespace::Ram, "Name", "name", name.as_ref());
                 }
-                if let Some(info) = &seller.additional_legal_information {
+                if let Some(info) = seller.additional_legal_information() {
                     serializer.field_leaf(
                         Namespace::Ram,
                         "Description",
@@ -678,23 +681,38 @@ impl<N: crate::Namespace + From<Namespace>> Serializer<Cii, N> {
                         info.as_ref(),
                     );
                 }
-                serializer.legal_organization(
-                    seller.legal_entity.as_ref(),
-                    seller.trading_name.as_deref_ref(),
-                );
-                if let Some(contact) = &seller.contact {
+                if seller.legal_entity().is_some() || seller.trading_name().is_some() {
+                    serializer.structural(
+                        Namespace::Ram,
+                        "SpecifiedLegalOrganization",
+                        |serializer| {
+                            if let Some(entity) = seller.legal_entity() {
+                                serializer.legal_entity_id(entity);
+                            }
+                            if let Some(name) = seller.trading_name() {
+                                serializer.field_leaf(
+                                    Namespace::Ram,
+                                    "TradingBusinessName",
+                                    "trading_name",
+                                    name.as_ref(),
+                                );
+                            }
+                        },
+                    );
+                }
+                if let Some(contact) = seller.contact() {
                     serializer.contact(contact);
                 }
-                if let Some(address) = &seller.address {
+                if let Some(address) = seller.address() {
                     serializer.postal_address(address);
                 }
-                if let Some(address) = &seller.electronic_address {
+                if let Some(address) = seller.electronic_address() {
                     serializer.electronic_address(address);
                 }
-                if let Some(vat) = &seller.vat {
+                if let Some(vat) = seller.vat() {
                     serializer.tax_registration(&vat.to_string(), "VA", "vat");
                 }
-                if let Some(registration) = &seller.tax_registration {
+                if let Some(registration) = seller.tax_registration() {
                     serializer.tax_registration(registration.as_ref(), "FC", "tax_registration");
                 }
             },
@@ -702,31 +720,46 @@ impl<N: crate::Namespace + From<Namespace>> Serializer<Cii, N> {
     }
 
     // Serializes the buyer party (`BG-7`).
-    fn buyer_party(&mut self, buyer: &Buyer) {
+    fn buyer_party<B: Buyer>(&mut self, buyer: &mut B) {
         self.group(
             Namespace::Ram,
             "BuyerTradeParty",
             "buyer",
             Term::BG(7),
             |serializer| {
-                serializer.party_identifiers(&buyer.identifiers, "identifiers");
-                if let Some(name) = &buyer.name {
+                serializer.party_identifiers(buyer.identifiers(), "identifiers");
+                if let Some(name) = buyer.name() {
                     serializer.field_leaf(Namespace::Ram, "Name", "name", name.as_ref());
                 }
-                serializer.legal_organization(
-                    buyer.legal_entity.as_ref(),
-                    buyer.trading_name.as_deref_ref(),
-                );
-                if let Some(contact) = &buyer.contact {
+                if buyer.legal_entity().is_some() || buyer.trading_name().is_some() {
+                    serializer.structural(
+                        Namespace::Ram,
+                        "SpecifiedLegalOrganization",
+                        |serializer| {
+                            if let Some(entity) = buyer.legal_entity() {
+                                serializer.legal_entity_id(entity);
+                            }
+                            if let Some(name) = buyer.trading_name() {
+                                serializer.field_leaf(
+                                    Namespace::Ram,
+                                    "TradingBusinessName",
+                                    "trading_name",
+                                    name.as_ref(),
+                                );
+                            }
+                        },
+                    );
+                }
+                if let Some(contact) = buyer.contact() {
                     serializer.contact(contact);
                 }
-                if let Some(address) = &buyer.address {
+                if let Some(address) = buyer.address() {
                     serializer.postal_address(address);
                 }
-                if let Some(address) = &buyer.electronic_address {
+                if let Some(address) = buyer.electronic_address() {
                     serializer.electronic_address(address);
                 }
-                if let Some(vat) = &buyer.vat {
+                if let Some(vat) = buyer.vat() {
                     serializer.tax_registration(&vat.to_string(), "VA", "vat");
                 }
             },
@@ -734,20 +767,20 @@ impl<N: crate::Namespace + From<Namespace>> Serializer<Cii, N> {
     }
 
     // Serializes the seller tax representative (`BG-11`).
-    fn tax_representative_party(&mut self, representative: &TaxRepresentative) {
+    fn tax_representative_party<T: TaxRepresentative>(&mut self, representative: &mut T) {
         self.group(
             Namespace::Ram,
             "SellerTaxRepresentativeTradeParty",
             "tax_representative",
             Term::BG(11),
             |serializer| {
-                if let Some(name) = &representative.name {
+                if let Some(name) = representative.name() {
                     serializer.field_leaf(Namespace::Ram, "Name", "name", name.as_ref());
                 }
-                if let Some(address) = &representative.address {
+                if let Some(address) = representative.address() {
                     serializer.postal_address(address);
                 }
-                if let Some(vat) = &representative.vat {
+                if let Some(vat) = representative.vat() {
                     serializer.tax_registration(&vat.to_string(), "VA", "vat");
                 }
             },
@@ -773,21 +806,6 @@ impl<N: crate::Namespace + From<Namespace>> Serializer<Cii, N> {
         }
     }
 
-    // Serializes the specified legal organization: the legal id and the trading name.
-    fn legal_organization(&mut self, entity: Option<&LegalEntity>, trading_name: Option<&str>) {
-        if entity.is_none() && trading_name.is_none() {
-            return;
-        }
-        self.structural(Namespace::Ram, "SpecifiedLegalOrganization", |serializer| {
-            if let Some(entity) = entity {
-                serializer.legal_entity_id(entity);
-            }
-            if let Some(name) = trading_name {
-                serializer.field_leaf(Namespace::Ram, "TradingBusinessName", "trading_name", name);
-            }
-        });
-    }
-
     // Serializes the legal registration id (`BT-30`/`BT-47`/`BT-61`), with its scheme when present.
     fn legal_entity_id(&mut self, entity: &LegalEntity) {
         let Some(id) = &entity.id else {
@@ -806,17 +824,17 @@ impl<N: crate::Namespace + From<Namespace>> Serializer<Cii, N> {
     }
 
     // Serializes a defined trade contact (`BG-6`).
-    fn contact(&mut self, contact: &Contact) {
+    fn contact<C: Contact>(&mut self, contact: &mut C) {
         self.group(
             Namespace::Ram,
             "DefinedTradeContact",
             "contact",
             Term::BG(6),
             |serializer| {
-                if let Some(name) = &contact.name {
+                if let Some(name) = contact.name() {
                     serializer.field_leaf(Namespace::Ram, "PersonName", "name", name.as_ref());
                 }
-                if let Some(phone) = &contact.telephone {
+                if let Some(phone) = contact.telephone() {
                     serializer.structural(
                         Namespace::Ram,
                         "TelephoneUniversalCommunication",
@@ -830,7 +848,7 @@ impl<N: crate::Namespace + From<Namespace>> Serializer<Cii, N> {
                         },
                     );
                 }
-                if let Some(email) = &contact.email {
+                if let Some(email) = contact.email() {
                     serializer.structural(
                         Namespace::Ram,
                         "EmailURIUniversalCommunication",
@@ -931,14 +949,14 @@ impl<N: crate::Namespace + From<Namespace>> Serializer<Cii, N> {
 
     // Serializes the header trade delivery (`BG-13`). The wrapper is mandatory in
     // the CII schema, so it is always written, even when empty.
-    fn header_trade_delivery(&mut self, invoice: &Invoice) {
+    fn header_trade_delivery<I: Invoice>(&mut self, invoice: &mut I) {
         self.structural(
             Namespace::Ram,
             "ApplicableHeaderTradeDelivery",
             |serializer| {
-                if let Some(delivery) = &invoice.delivery {
+                if let Some(delivery) = invoice.delivery() {
                     serializer.delivery_party(delivery);
-                    if let Some(date_value) = delivery.date {
+                    if let Some(date_value) = *delivery.date() {
                         serializer.structural(
                             Namespace::Ram,
                             "ActualDeliverySupplyChainEvent",
@@ -953,7 +971,7 @@ impl<N: crate::Namespace + From<Namespace>> Serializer<Cii, N> {
                         );
                     }
                 }
-                if let Some(reference) = &invoice.despatch_advice_reference {
+                if let Some(reference) = invoice.despatch_advice_reference() {
                     serializer.reference(
                         Namespace::Ram,
                         "DespatchAdviceReferencedDocument",
@@ -962,7 +980,7 @@ impl<N: crate::Namespace + From<Namespace>> Serializer<Cii, N> {
                         reference.as_ref(),
                     );
                 }
-                if let Some(reference) = &invoice.receiving_advice_reference {
+                if let Some(reference) = invoice.receiving_advice_reference() {
                     serializer.reference(
                         Namespace::Ram,
                         "ReceivingAdviceReferencedDocument",
@@ -976,8 +994,11 @@ impl<N: crate::Namespace + From<Namespace>> Serializer<Cii, N> {
     }
 
     // Serializes the delivery ship-to party (`BG-13` name, location, address).
-    fn delivery_party(&mut self, delivery: &Delivery) {
-        if delivery.name.is_none() && delivery.location.is_none() && delivery.address.is_none() {
+    fn delivery_party<D: Delivery>(&mut self, delivery: &mut D) {
+        if delivery.name().is_none()
+            && delivery.location().is_none()
+            && delivery.address().is_none()
+        {
             return;
         }
         self.group(
@@ -986,32 +1007,26 @@ impl<N: crate::Namespace + From<Namespace>> Serializer<Cii, N> {
             "delivery",
             Term::BG(13),
             |serializer| {
-                if let Some(id) = delivery
-                    .location
-                    .as_ref()
-                    .and_then(|location| location.id.as_ref())
-                {
-                    let issuer = delivery
-                        .location
-                        .as_ref()
-                        .and_then(|location| location.issuer);
-                    match issuer {
-                        Some(issuer) => serializer.field_leaf_attr(
-                            Namespace::Ram,
-                            "ID",
-                            "location",
-                            &[("schemeID", &issuer.to_string())],
-                            id.as_ref(),
-                        ),
-                        None => {
-                            serializer.field_leaf(Namespace::Ram, "ID", "location", id.as_ref())
+                if let Some(location) = delivery.location() {
+                    if let Some(id) = &location.id {
+                        match &location.issuer {
+                            Some(issuer) => serializer.field_leaf_attr(
+                                Namespace::Ram,
+                                "ID",
+                                "location",
+                                &[("schemeID", &issuer.to_string())],
+                                id.as_ref(),
+                            ),
+                            None => {
+                                serializer.field_leaf(Namespace::Ram, "ID", "location", id.as_ref())
+                            }
                         }
                     }
                 }
-                if let Some(name) = &delivery.name {
+                if let Some(name) = delivery.name() {
                     serializer.field_leaf(Namespace::Ram, "Name", "name", name.as_ref());
                 }
-                if let Some(address) = &delivery.address {
+                if let Some(address) = delivery.address() {
                     serializer.postal_address(address);
                 }
             },
@@ -1019,8 +1034,8 @@ impl<N: crate::Namespace + From<Namespace>> Serializer<Cii, N> {
     }
 
     // Serializes the header trade settlement.
-    fn header_trade_settlement(&mut self, invoice: &Invoice) {
-        let currency = invoice.currency.as_ref().map(Currency::code);
+    fn header_trade_settlement<I: Invoice>(&mut self, invoice: &mut I) {
+        let currency = invoice.currency().as_ref().map(Currency::code);
         let attribute: Vec<(&str, &str)> = currency
             .map(|currency| vec![("currencyID", currency)])
             .unwrap_or_default();
@@ -1028,16 +1043,16 @@ impl<N: crate::Namespace + From<Namespace>> Serializer<Cii, N> {
             Namespace::Ram,
             "ApplicableHeaderTradeSettlement",
             |serializer| {
-                if let Some(creditor) = invoice.payment.as_ref().and_then(direct_debit_creditor) {
-                    serializer.leaf(
-                        Namespace::Ram,
-                        "CreditorReferenceID",
-                        "creditor_identifier",
-                        Term::BT(90),
-                        creditor,
-                    );
-                }
-                if let Some(payment) = &invoice.payment {
+                if let Some(payment) = invoice.payment() {
+                    if let Some(creditor) = direct_debit_creditor(payment) {
+                        serializer.leaf(
+                            Namespace::Ram,
+                            "CreditorReferenceID",
+                            "creditor_identifier",
+                            Term::BT(90),
+                            creditor,
+                        );
+                    }
                     if let Some(reference) = &payment.remittance_information {
                         serializer.leaf(
                             Namespace::Ram,
@@ -1048,7 +1063,7 @@ impl<N: crate::Namespace + From<Namespace>> Serializer<Cii, N> {
                         );
                     }
                 }
-                if let Some(accounting) = &invoice.vat_accounting_total {
+                if let Some(accounting) = invoice.vat_accounting_total() {
                     serializer.leaf(
                         Namespace::Ram,
                         "TaxCurrencyCode",
@@ -1066,21 +1081,21 @@ impl<N: crate::Namespace + From<Namespace>> Serializer<Cii, N> {
                         currency,
                     );
                 }
-                if let Some(payee) = &invoice.payee {
+                if let Some(payee) = invoice.payee() {
                     serializer.payee_party(payee);
                 }
-                if let Some(payment) = &invoice.payment {
+                if let Some(payment) = invoice.payment() {
                     serializer.payment_means(payment);
                 }
                 serializer.tax_breakdown(invoice);
-                if let Some(period) = invoice.invoicing_period {
+                if let Some(period) = *invoice.invoicing_period() {
                     serializer.billing_period(period, "invoicing_period", Term::BG(14));
                 }
-                serializer.adjustments(&invoice.adjustments);
+                serializer.adjustments(invoice.adjustments());
                 serializer.payment_terms(invoice);
                 serializer.monetary_summation(invoice, &attribute);
-                serializer.preceding_invoices(&invoice.preceding_invoices);
-                if let Some(reference) = &invoice.buyer_accounting_reference {
+                serializer.preceding_invoices(invoice.preceding_invoices());
+                if let Some(reference) = invoice.buyer_accounting_reference() {
                     serializer.field_group(
                         Namespace::Ram,
                         "ReceivableSpecifiedTradeAccountingAccount",
@@ -1095,18 +1110,18 @@ impl<N: crate::Namespace + From<Namespace>> Serializer<Cii, N> {
     }
 
     // Serializes the payee party (`BG-10`).
-    fn payee_party(&mut self, payee: &Payee) {
+    fn payee_party<P: Payee>(&mut self, payee: &mut P) {
         self.group(
             Namespace::Ram,
             "PayeeTradeParty",
             "payee",
             Term::BG(10),
             |serializer| {
-                serializer.party_identifiers(&payee.identifiers, "identifiers");
-                if let Some(name) = &payee.name {
+                serializer.party_identifiers(payee.identifiers(), "identifiers");
+                if let Some(name) = payee.name() {
                     serializer.field_leaf(Namespace::Ram, "Name", "name", name.as_ref());
                 }
-                if let Some(entity) = &payee.legal_entity {
+                if let Some(entity) = payee.legal_entity() {
                     serializer.structural(
                         Namespace::Ram,
                         "SpecifiedLegalOrganization",
@@ -1168,7 +1183,7 @@ impl<N: crate::Namespace + From<Namespace>> Serializer<Cii, N> {
                         }
                     }
                     Some(PaymentDetails::CreditTransfers(transfers)) => {
-                        for transfer in transfers {
+                        for transfer in transfers.iter() {
                             serializer.nested(
                                 Namespace::Ram,
                                 "PayeePartyCreditorFinancialAccount",
@@ -1214,12 +1229,12 @@ impl<N: crate::Namespace + From<Namespace>> Serializer<Cii, N> {
     }
 
     // Serializes the VAT breakdown (`BG-23`), each group an instance mapped to its own fields.
-    fn tax_breakdown(&mut self, invoice: &Invoice) {
-        let event = match invoice.vat_point {
+    fn tax_breakdown<I: Invoice>(&mut self, invoice: &mut I) {
+        let event = match *invoice.vat_point() {
             Some(VatPoint::Event(event)) => Some(u16::from(event).to_string()),
             _ => None,
         };
-        for (position, group) in invoice.vat_breakdown.iter().enumerate() {
+        for (position, group) in invoice.vat_breakdown().iter_mut().enumerate() {
             let instance = index(position);
             self.repeatable(
                 Namespace::Ram,
@@ -1399,16 +1414,20 @@ impl<N: crate::Namespace + From<Namespace>> Serializer<Cii, N> {
     }
 
     // Serializes the payment terms (`BT-20`), due date (`BT-9`), and mandate (`BT-89`).
-    fn payment_terms(&mut self, invoice: &Invoice) {
-        let mandate = invoice.payment.as_ref().and_then(direct_debit_mandate);
-        if invoice.payment_terms.is_none()
-            && invoice.payment_due_date.is_none()
+    fn payment_terms<I: Invoice>(&mut self, invoice: &mut I) {
+        let mandate: Option<String> = invoice
+            .payment()
+            .as_mut()
+            .and_then(|payment| direct_debit_mandate(payment))
+            .map(str::to_owned);
+        if invoice.payment_terms().is_none()
+            && invoice.payment_due_date().is_none()
             && mandate.is_none()
         {
             return;
         }
         self.structural(Namespace::Ram, "SpecifiedTradePaymentTerms", |serializer| {
-            if let Some(terms) = &invoice.payment_terms {
+            if let Some(terms) = invoice.payment_terms() {
                 serializer.field_leaf(
                     Namespace::Ram,
                     "Description",
@@ -1416,10 +1435,10 @@ impl<N: crate::Namespace + From<Namespace>> Serializer<Cii, N> {
                     terms.as_ref(),
                 );
             }
-            if let Some(due) = invoice.payment_due_date {
+            if let Some(due) = *invoice.payment_due_date() {
                 serializer.datetime("DueDateDateTime", "payment_due_date", Term::BT(9), due);
             }
-            if let Some(mandate) = mandate {
+            if let Some(mandate) = &mandate {
                 serializer.field_leaf(
                     Namespace::Ram,
                     "DirectDebitMandateID",
@@ -1432,65 +1451,71 @@ impl<N: crate::Namespace + From<Namespace>> Serializer<Cii, N> {
 
     // Serializes the header monetary summation, each amount mapped to its own field.
     // The whole group is absent when the invoice states none of its amounts.
-    fn monetary_summation(&mut self, invoice: &Invoice, currency: &[(&str, &str)]) {
+    fn monetary_summation<I: Invoice>(&mut self, invoice: &mut I, currency: &[(&str, &str)]) {
         let totals: [(_, _, _, &[(&str, &str)], _); 9] = [
             (
                 "LineTotalAmount",
                 "line_net_total",
                 Term::BT(106),
                 &[],
-                invoice.line_net_total,
+                *invoice.line_net_total(),
             ),
             (
                 "ChargeTotalAmount",
                 "charges_total",
                 Term::BT(108),
                 &[],
-                invoice.charges_total,
+                *invoice.charges_total(),
             ),
             (
                 "AllowanceTotalAmount",
                 "allowances_total",
                 Term::BT(107),
                 &[],
-                invoice.allowances_total,
+                *invoice.allowances_total(),
             ),
             (
                 "TaxBasisTotalAmount",
                 "net_total",
                 Term::BT(109),
                 &[],
-                invoice.net_total,
+                *invoice.net_total(),
             ),
             (
                 "TaxTotalAmount",
                 "vat_total",
                 Term::BT(110),
                 currency,
-                invoice.vat_total,
+                *invoice.vat_total(),
             ),
             (
                 "RoundingAmount",
                 "rounding",
                 Term::BT(114),
                 &[],
-                invoice.rounding,
+                *invoice.rounding(),
             ),
             (
                 "GrandTotalAmount",
                 "gross_total",
                 Term::BT(112),
                 &[],
-                invoice.gross_total,
+                *invoice.gross_total(),
             ),
             (
                 "TotalPrepaidAmount",
                 "paid",
                 Term::BT(113),
                 &[],
-                invoice.paid,
+                *invoice.paid(),
             ),
-            ("DuePayableAmount", "due", Term::BT(115), &[], invoice.due),
+            (
+                "DuePayableAmount",
+                "due",
+                Term::BT(115),
+                &[],
+                *invoice.due(),
+            ),
         ];
         if totals.iter().all(|(_, _, _, _, value)| value.is_none()) {
             return;
@@ -1516,7 +1541,7 @@ impl<N: crate::Namespace + From<Namespace>> Serializer<Cii, N> {
     }
 
     // Serializes the preceding invoice references (`BG-3`).
-    fn preceding_invoices(&mut self, preceding: &[PrecedingInvoice]) {
+    fn preceding_invoices(&mut self, preceding: &[InvoiceReference]) {
         for (position, invoice) in preceding.iter().enumerate() {
             let instance = index(position);
             self.repeatable(
@@ -1612,16 +1637,5 @@ fn direct_debit_mandate(payment: &PaymentInstructions) -> Option<&str> {
             debit.mandate_reference.as_ref().map(|value| value.as_ref())
         }
         _ => None,
-    }
-}
-
-// A small extension to read an optional non-empty string as an optional `&str`.
-trait AsDerefRef {
-    fn as_deref_ref(&self) -> Option<&str>;
-}
-
-impl AsDerefRef for Option<NonEmptyString> {
-    fn as_deref_ref(&self) -> Option<&str> {
-        self.as_ref().map(|value| value.as_ref())
     }
 }

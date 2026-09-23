@@ -10,7 +10,8 @@
 //! cargo run -p en16931-examples --example receive_invoice
 //! ```
 
-use en16931_core::{Cii, Document, Invoice, RawReport, Wrapper};
+use en16931_cius::Invoice;
+use en16931_core::{Cii, Document, RawReport, Wrapper};
 use en16931_iso::Iso;
 use en16931_phive::Phive;
 
@@ -34,7 +35,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             // The checked document yields the business object, dropping the XML and the report.
             let Invoice {
                 number, issue_date, ..
-            } = valid.into();
+            } = valid.into_invoice();
             println!("Received invoice {number:?} issued on {issue_date:?}");
         }
         Err(invalid) => {

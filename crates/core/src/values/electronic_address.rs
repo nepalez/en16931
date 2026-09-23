@@ -2,8 +2,8 @@
 
 use crate::{ElectronicAddressScheme, NonEmptyString};
 
-/// A party's electronic address (`BT-34` seller, `BT-49` buyer):
-/// the endpoint a party is reached at, identified under a CEF EAS scheme.
+/// The endpoint a party is reached at, identified under a CEF EAS scheme
+/// (`BT-34` seller, `BT-49` buyer).
 ///
 /// An electronic address is resolvable only by naming its scheme,
 /// which the validator requires.

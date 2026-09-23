@@ -12,13 +12,13 @@ What abstractions does the library offer to a consumer?
 
 > The library separates the business entity, the form the consumer fills, and the public artifact. Several types model the lifecycle.
 
-`Invoice` is the business entity. It carries every business fact — parties, lines, dates, amounts. The issuer states every amount, since the library computes none. It is the superset model of all profiles (ADR-0003). Every field but the type code is optional, so it implements `Default`. Regulatory-flow fields (like `BT-23`) do not live here.
+`Invoice` is the business entity, declared as a core trait (ADR-0003). It exposes every business fact — parties, lines, dates, amounts. Each method takes `&mut self` and returns a reference to its field. One method serves both writing and parsing. The issuer states every amount, since the library computes none. The invoice stores its kind apart from the type code `BT-3`. The validator checks that the kind, the code, and the signs of the amounts agree. Regulatory-flow fields (like `BT-23`) do not live here.
 
 `DocumentBuilder<P>` is the staging form that serialization reads. It is a public struct with the `invoice` and the regulatory-flow data. The parameter `P` names the profile and its binding, so neither takes a field. No validation runs here.
 
 `Serializable` and `Deserializable` are the core (de)serializers (ADR-0005). Both are invoice-type traits over a binding and a namespace set. Each walks a `Serializer` or a `Parser` from `Document`, building the dictionary in lockstep. Neither computes an amount.
 
-`Document<P>` is the public artifact. It holds a private `builder`, the `xml`, and the `dictionary` from record-form paths to `Context`-s. `TryFrom<DocumentBuilder<P>>` serializes into it, and `Document::parse_as::<P>` reconstructs it. That parse rejects a document whose `BT-24` belongs to another profile. It converts into the `Invoice` through `From<Document<P>>`. A received document must become a business object. An `Invoice` never parses from XML alone.
+`Document<P>` is the public artifact. It holds a private `builder`, the `xml`, and the `dictionary` from record-form paths to `Context`-s. `TryFrom<DocumentBuilder<P>>` serializes into it, and `Document::parse_as::<P>` reconstructs it. That parse rejects a document whose `BT-24` belongs to another profile. It yields its invoice through `into_invoice`, as orphan rules forbid `From<Document<P>>` for a generic type. A received document must become a business object. An `Invoice` never parses from XML alone.
 
 `Target<P>` is what a validator needs to pick a rule set. It carries the document kind, while its parameter names the profile and the binding. A `Document<P>` yields one, and an extension turns it into the identifier of that service (ADR-0002).
 
@@ -28,9 +28,9 @@ What abstractions does the library offer to a consumer?
 
 `Document::check` binds each location of the `RawReport` to a `Context` through the dictionary. It returns `Result<Result<ValidDocument<P>, InvalidDocument<P>>, Error>`. A separate `Error` covers resolution failures (ADR-0007).
 
-`ValidDocument<P>` and `InvalidDocument<P>` are newtypes over a `Document<P>` and a bound `Report`. A `ValidDocument<P>` carries a `Report` without errors, which may still hold warnings. Both convert back to a `Document<P>` or an `Invoice`, dropping the report.
+`ValidDocument<P>` and `InvalidDocument<P>` are newtypes over a `Document<P>` and a bound `Report`. A `ValidDocument<P>` carries a `Report` without errors, which may still hold warnings. Both convert back to a `Document<P>` or yield the invoice, dropping the report.
 
-`Profile` is a core trait (ADR-0006). A profile type stamps `BT-24` per document kind, and omits it for an uncovered kind. It also drops the terms it forbids, taken from a declarative set on the type. The type carries the default `BT-23` value, applied when the builder leaves that field empty. Its invoice type converts from and into the `Invoice`.
+`Profile` is a core trait (ADR-0006). A profile type stamps `BT-24` per document kind, and omits it for an uncovered kind. It also drops the terms it forbids, taken from a declarative set on the type. The type carries the default `BT-23` value, applied when the builder leaves that field empty. Its invoice type implements the `Invoice` trait.
 
 ## Alternatives Considered
 

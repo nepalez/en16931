@@ -2,7 +2,7 @@
 
 ## Context
 
-The library's public surface centers on `Invoice` (ADR-0008). Each [EN-16931] term carries a constraint. Examples are a length cap, a code list, or a currency type.
+The library's public surface centers on the `Invoice` trait (ADR-0008). Each [EN-16931] term carries a constraint. Examples are a length cap, a code list, or a currency type.
 
 ## Problem
 

@@ -9,6 +9,7 @@ publish = false
 description = "End-to-end scenario tests across the core and the extensions"
 
 [dev-dependencies]
+en16931-cius.workspace = true
 en16931-core.workspace = true
 en16931-iso.workspace = true
 en16931-kosit.workspace = true

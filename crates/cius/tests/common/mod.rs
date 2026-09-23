@@ -1,19 +1,27 @@
-//! Shared document fixtures and helpers for the binding tests.
+//! Shared fixtures and helpers of the binding and document tests of the base invoice.
 
-use crate::prelude::*;
-use crate::{
-    Adjustment, AdjustmentAmount, AdjustmentReason, AllowanceReason, Binding, BusinessProcess,
-    Buyer, Classification, Contact, CreditTransfer, Delivery, DirectDebit, DocumentBuilder,
-    ElectronicAddress, ElectronicAddressScheme, Invoice, InvoiceLine, IssuingAgency, Item,
-    ItemAttribute, ItemClassification, ItemReference, LegalEntity, LineAdjustment,
-    LocationReference, Namespace, Note, ObjectReference, OperationalEntity, Path, Payee,
-    PaymentCard, PaymentDetails, PaymentInstructions, PaymentMeans, Percentage, Period,
-    PostalAddress, PrecedingInvoice, Price, Profile, Quantity, Seller, Step, SupportingDocument,
-    TaxRepresentative, Unit, VatBreakdown, VatIdentifier, VatPoint, VatTreatment,
+#![allow(dead_code)]
+
+use std::num::NonZeroUsize;
+
+use en16931_cius::{
+    Buyer, Contact, Delivery, Invoice, InvoiceLine, Item, Payee, Seller, TaxRepresentative,
 };
+use en16931_core::{
+    Adjustment, AdjustmentAmount, AdjustmentReason, AllowanceReason, Binding, BusinessProcess,
+    Context, CountryCode, CreditTransfer, Currency, Date, Decimal, DirectDebit, Document,
+    DocumentBuilder, ElectronicAddress, ElectronicAddressScheme, Entry, Format, InvoiceReference,
+    IssuingAgency, ItemAttribute, ItemClassification, ItemClassificationScheme, ItemReference,
+    LegalEntity, LineAdjustment, Location, LocationReference, LocationStep, NonEmptyString, Note,
+    ObjectReference, OperationalEntity, PaymentCard, PaymentDetails, PaymentInstructions,
+    PaymentMeans, Percentage, Period, PostalAddress, Price, Profile, Quantity, QuantityUnit,
+    RawNamespace, RawReport, Segment, Severity, SupportingDocument, VatBreakdown, VatIdentifier,
+    VatPoint, VatTreatment,
+};
+use time::Month;
 
 // Builds a non-empty string, panicking on an empty input.
-fn text(value: &str) -> Option<crate::NonEmptyString> {
+fn text(value: &str) -> Option<NonEmptyString> {
     Some(value.parse().expect("a non-empty string"))
 }
 
@@ -35,7 +43,7 @@ fn rate(value: i64) -> Percentage {
 // Builds a quantity of units (`C62`).
 fn units(value: i64) -> Quantity {
     Quantity {
-        unit: Unit::from_code("C62").expect("a unit"),
+        unit: QuantityUnit::from_code("C62").expect("a unit"),
         value: Decimal::from(value),
     }
 }
@@ -45,7 +53,7 @@ fn units(value: i64) -> Quantity {
 /// The base profile forbids no term, so it serializes and parses back unchanged.
 /// The fixture follows the `binding` it is written to: UBL carries no gross price
 /// without a price discount, so only the CII fixture states one for such a line.
-pub(crate) fn builder(binding: Binding) -> DocumentBuilder<Invoice> {
+pub fn builder(binding: Binding) -> DocumentBuilder<Invoice> {
     DocumentBuilder {
         invoice: invoice(binding),
         profile: Profile::En16931,
@@ -59,7 +67,7 @@ pub(crate) fn builder(binding: Binding) -> DocumentBuilder<Invoice> {
 /// payment, an event VAT point, relative and charge adjustments, an exempt line, an
 /// object scheme, a price discount, and start-only or end-only periods. Every choice
 /// survives the `binding` it is written to, so its codec parses the document back unchanged.
-pub(crate) fn variant_builder(binding: Binding) -> DocumentBuilder<Invoice> {
+pub fn variant_builder(binding: Binding) -> DocumentBuilder<Invoice> {
     DocumentBuilder {
         invoice: variant_invoice(binding),
         ..builder(binding)
@@ -71,7 +79,7 @@ pub(crate) fn variant_builder(binding: Binding) -> DocumentBuilder<Invoice> {
 /// It overrides the payment of the rich invoice, so the card details reach the
 /// branch neither `builder` (credit transfer) nor `variant_builder` (direct
 /// debit) exercises. The document round-trips through the `binding` it is written to.
-pub(crate) fn card_builder(binding: Binding) -> DocumentBuilder<Invoice> {
+pub fn card_builder(binding: Binding) -> DocumentBuilder<Invoice> {
     DocumentBuilder {
         invoice: Invoice {
             payment: Some(card_payment()),
@@ -82,7 +90,7 @@ pub(crate) fn card_builder(binding: Binding) -> DocumentBuilder<Invoice> {
 }
 
 /// A `DocumentBuilder` whose invoice carries nothing but the default type code.
-pub(crate) fn empty_builder() -> DocumentBuilder<Invoice> {
+pub fn empty_builder() -> DocumentBuilder<Invoice> {
     DocumentBuilder {
         invoice: Invoice::default(),
         profile: Profile::En16931,
@@ -259,7 +267,7 @@ fn invoice(binding: Binding) -> Invoice {
             subject_code: text("AAB"),
             text: text("General note text"),
         }],
-        preceding_invoices: vec![PrecedingInvoice {
+        preceding_invoices: vec![InvoiceReference {
             number: text("INV-2025-900"),
             issue_date: Some(date(2025, Month::December, 1)),
         }],
@@ -458,9 +466,9 @@ fn line(binding: Binding, id: &str, quantity: i64, price: i64, net: i64) -> Invo
                 id: text("1234567890128"),
                 issuer: Some("0088".parse::<IssuingAgency>().expect("an agency")),
             }),
-            classifications: vec![Classification {
+            classifications: vec![ItemClassification {
                 id: text("65434"),
-                scheme: Some(ItemClassification::MutuallyDefined),
+                scheme: Some(ItemClassificationScheme::MutuallyDefined),
                 version: None,
             }],
             country_of_origin: Some(country("DE")),
@@ -484,26 +492,12 @@ fn address(code: &str, street: &str) -> PostalAddress {
     }
 }
 
-/// A record-form step with a 1-based positional index, for path assertions.
-pub(crate) fn step<N: Namespace>(namespace: N, name: &str, index: usize) -> Step<N> {
-    Step {
-        namespace,
-        name: name.to_owned(),
-        index: NonZeroUsize::new(index).expect("a positive index"),
-    }
-}
-
-/// A record-form path from its steps, for dictionary lookups in tests.
-pub(crate) fn path<N: Namespace>(steps: Vec<Step<N>>) -> Path<N> {
-    Path { steps }
-}
-
 /// Indents compact serializer output for readable golden fixtures.
 ///
 /// Newlines and indentation go only between tags, so leaf text stays on its own
 /// line and the parser (which drops whitespace-only nodes) reads the result back
 /// unchanged. It is the exact form each committed `*.xml` fixture is stored in.
-pub(crate) fn pretty(xml: &str) -> String {
+pub fn pretty(xml: &str) -> String {
     #[derive(PartialEq)]
     enum Prev {
         None,
@@ -552,4 +546,93 @@ pub(crate) fn pretty(xml: &str) -> String {
     }
     out.push('\n');
     out
+}
+
+// ---- report locations and their bindings --------------------------------
+
+/// An address of the steps a dialect abbreviated.
+pub fn location(steps: &[(&str, &str, usize)]) -> Location {
+    Location {
+        steps: steps
+            .iter()
+            .map(|(abbreviation, name, index)| abbreviated(abbreviation, name, *index))
+            .collect(),
+    }
+}
+
+/// A step whose namespace a dialect abbreviated.
+pub fn abbreviated(abbreviation: &str, name: &str, index: usize) -> LocationStep {
+    LocationStep {
+        namespace: Some(RawNamespace::Abbreviation(abbreviation.to_owned())),
+        name: name.to_owned(),
+        index: NonZeroUsize::new(index).expect("a positive index"),
+    }
+}
+
+/// A step whose namespace a dialect wrote in full.
+pub fn resolved(uri: &str, name: &str, index: usize) -> LocationStep {
+    LocationStep {
+        namespace: Some(RawNamespace::Uri(uri.to_owned())),
+        name: name.to_owned(),
+        index: NonZeroUsize::new(index).expect("a positive index"),
+    }
+}
+
+/// A trailing attribute step, which belongs to no namespace.
+pub fn attribute(name: &str) -> LocationStep {
+    LocationStep {
+        namespace: None,
+        name: name.to_owned(),
+        index: NonZeroUsize::new(1).expect("a positive index"),
+    }
+}
+
+/// A context of the given model segments.
+pub fn context(segments: Vec<Segment>) -> Context {
+    Context { segments }
+}
+
+/// A single non-indexed field segment.
+pub fn field(name: &'static str) -> Segment {
+    Segment {
+        field: name,
+        index: None,
+    }
+}
+
+/// A repeatable-group instance segment.
+pub fn instance(name: &'static str, index: usize) -> Segment {
+    Segment {
+        field: name,
+        index: NonZeroUsize::new(index),
+    }
+}
+
+/// A finding of the given weight at the given address.
+pub fn finding(severity: Severity, location: Location) -> Entry {
+    Entry {
+        severity,
+        code: Some("BR-21".to_owned()),
+        text: "each line needs an identifier".to_owned(),
+        original_location: "/ubl:Invoice/cac:InvoiceLine[2]".to_owned(),
+        normalized_location: Some(location),
+    }
+}
+
+/// The context the document binds an address to, through the check of a single finding,
+/// or `None` when no node answers the address.
+pub fn bound<F: Format + Clone>(
+    document: &Document<Invoice, F>,
+    location: Location,
+) -> Option<Context> {
+    let report = RawReport {
+        findings: vec![finding(Severity::Error, location)],
+    };
+    match document.clone().check(report) {
+        Ok(Err(rejected)) => rejected
+            .problems()
+            .first()
+            .map(|problem| problem.context.clone()),
+        _ => None,
+    }
 }

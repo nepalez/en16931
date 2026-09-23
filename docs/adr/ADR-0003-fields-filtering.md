@@ -4,7 +4,7 @@
 
 [EN-16931] defines a core invoice. Country and sector profiles restrict it. A profile forbids some terms and requires others.
 
-An extension of the standard adds terms the core model does not carry.
+An extension of the standard adds terms the standard does not define.
 
 One business invoice may target several profiles (for example, during cross-border operations).
 
@@ -16,15 +16,15 @@ How does it keep a profile-forbidden term out of the output?
 
 ## Decision
 
-> The core holds one unified model.
+> The core declares the invoice as a set of interfaces.
 
-It is the superset of every term in [EN-16931] and in its supported [CIUS] profiles. Every term is optional, except the type code `BT-3`, which selects the rule set. The consumer fills every term it knows without tracking per-profile rules.
+The invoice and its groups of parties, lines, items, delivery, and contacts are core traits. Each trait has a method per field. The crate `en16931-cius` implements them for the base standard. Its types cover every term in [EN-16931] and in its supported [CIUS] profiles. Every term is optional, except the type code `BT-3`, which selects the rule set. The consumer fills every term it knows without tracking per-profile rules.
 
 The model checks the type of a value, not the presence of a term. A missing term is a finding of the validator, not a library error.
 
-A profile version is another supported profile. The superset only grows. An optional term is added, never removed, while any supported version needs it.
+A profile version is another supported profile. The base types only grow. An optional term is added, never removed, while any supported version needs it.
 
-The superset is not the only form of an invoice. An extension declares an invoice form of its own, which carries terms beyond the standard. That form converts into the core invoice, dropping those terms.
+The base types are not the only form of an invoice. An extension composes a type of its own from the base types and its fields. The core walks write the base content of any such type. The core publishes no conversion from an extended invoice to the base one.
 
 Serialization targets one profile skipping terms it forbids. The library runs no other checks, leaving them to a service (ADR-0001).
 
@@ -50,7 +50,6 @@ An invoice serves several profiles through separate serializations. Each carries
 
 * The model carries terms that a given profile could never emit.
 * Any error except for forbidden fields surfaces only at the service, not at serialization.
-* A conversion to the core invoice drops the terms of an extension.
 * The model admits an incomplete invoice.
 
 ## Examples

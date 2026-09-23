@@ -1,6 +1,6 @@
 use crate::{IssuingAgency, NonEmptyString};
 
-/// A standard item reference (`BT-157`): an item identified under a registered scheme.
+/// An item identified under a registered scheme (`BT-157`).
 ///
 /// An identifier is meaningless without naming its scheme (a GTIN, an SKU, and so on),
 /// which the validator requires.

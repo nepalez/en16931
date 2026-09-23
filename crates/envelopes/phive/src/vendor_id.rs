@@ -1,6 +1,6 @@
 use crate::prelude::*;
 use Binding::*;
-use DocumentKind::*;
+use InvoiceKind::*;
 use Profile::*;
 
 /// Names the rule set the service checks such a document against.
@@ -63,7 +63,7 @@ mod test {
     use super::*;
 
     // A document of the given profile, binding, and kind.
-    fn target(profile: Profile, binding: Binding, kind: DocumentKind) -> Target {
+    fn target(profile: Profile, binding: Binding, kind: InvoiceKind) -> Target {
         Target {
             profile,
             binding,

@@ -1,8 +1,7 @@
 use crate::{InvoicedObjectType, NonEmptyString};
 
-/// An invoiced object reference (`BT-18` document, `BT-128` line):
-/// an identifier of an object the invoice or line refers to,
-/// such as a contract, a subscription, or a meter.
+/// An identifier of an object the invoice or line refers to,
+/// such as a contract, a subscription, or a meter (`BT-18` document, `BT-128` line).
 ///
 /// Without the scheme the identifier is contextual.
 #[derive(Debug, Clone, Default, PartialEq, Eq)]

@@ -6,7 +6,7 @@
 use crate::Error;
 use crate::prelude::*;
 
-/// The mime code of a binary attachment (`BT-125`): the media type of embedded document.
+/// The media type of an embedded document (`BT-125`).
 /// The set is the closed `BR-CL-24` list of media types allowed for an attachment.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Display, FromStr)]
 pub enum MimeCode {

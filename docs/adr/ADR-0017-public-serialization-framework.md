@@ -18,7 +18,7 @@ What does the core publish to a third-party crate? The crate must write and pars
 
 > The core publishes the writing framework as a stable public API.
 
-The write events, the trace, and the dictionary registration are public. The base walk keeps the order of the schema, and asks the extension at every position. One generic hook carries that question, and its default body is empty.
+The write events, the trace, and the dictionary registration are public. The base walk keeps the order of the schema, and asks the extension at every position. A separate open core trait on the invoice type carries that question. Its write and parse hooks have empty default bodies. The trait takes the binding and the namespace set as parameters, like the serialization contracts. So an extension implements it for its own set and writes nodes of its namespace. Its own group types delegate to the types of `cius`.
 
 A `Slot` names a position in the terms of the record form (ADR-0004). One form points inside a group, the other after that group. The addressing is complete by construction, so any future position is expressible.
 

@@ -1,0 +1,18 @@
+[package]
+name = "en16931-cius"
+version = "0.1.0"
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+authors.workspace = true
+homepage.workspace = true
+repository.workspace = true
+description = "The base EN-16931 invoice: concrete types implementing the interfaces of the core"
+keywords = ["en16931", "invoice", "peppol"]
+categories = ["parsing", "finance"]
+
+[dependencies]
+en16931-core.workspace = true
+
+[dev-dependencies]
+time.workspace = true

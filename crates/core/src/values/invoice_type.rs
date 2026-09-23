@@ -5,7 +5,7 @@
 use crate::Error;
 use crate::prelude::*;
 
-/// The invoice type code (`BT-3`): the document type.
+/// The document type (`BT-3`).
 ///
 /// The set is the EN-16931 subset of UNTDID 1001, enforced by `BR-CL-01`.
 /// It unites the UBL `InvoiceTypeCode` and `CreditNoteTypeCode` lists.
@@ -79,30 +79,39 @@ pub enum InvoiceType {
     CustomsInvoice = 935,
 }
 
-/// Whether an invoice type code denotes an invoice or a credit note.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum DocumentKind {
+/// The kind of an invoice: a claim for a payment, or a credit note that reduces a claim.
+///
+/// The issuer decides the kind by the business event, before it picks the type code (`BT-3`),
+/// and the external validator checks that the kind, the type code, and the amounts agree.
+/// The default is an invoice.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+pub enum InvoiceKind {
+    /// A claim for a payment.
+    #[default]
     Invoice,
+    /// A reduction of a claim issued before.
     CreditNote,
 }
 
-impl InvoiceType {
-    pub fn kind(&self) -> DocumentKind {
-        match self {
-            Self::CreditNoteGoodsServices
-            | Self::CreditNoteFinancialAdjustments
-            | Self::SelfBilledCreditNote
-            | Self::ConsolidatedCreditNote
-            | Self::CreditNotePriceVariation
-            | Self::DelcredereCreditNote
-            | Self::CreditNote
-            | Self::FactoredCreditNote
-            | Self::OcrPaymentCreditNote
-            | Self::ReversalOfCredit
-            | Self::SelfBilledFactoredCreditNote
-            | Self::PrepaymentCreditNote
-            | Self::ForwardersCreditNote => DocumentKind::CreditNote,
-            _ => DocumentKind::Invoice,
+/// The kind a type code denotes by the `BR-CL-01` lists, for a binding that states no kind
+/// of its own (CII). Code `81` sits in both lists and is taken as a credit note.
+impl From<InvoiceType> for InvoiceKind {
+    fn from(code: InvoiceType) -> Self {
+        match code {
+            InvoiceType::CreditNoteGoodsServices
+            | InvoiceType::CreditNoteFinancialAdjustments
+            | InvoiceType::SelfBilledCreditNote
+            | InvoiceType::ConsolidatedCreditNote
+            | InvoiceType::CreditNotePriceVariation
+            | InvoiceType::DelcredereCreditNote
+            | InvoiceType::CreditNote
+            | InvoiceType::FactoredCreditNote
+            | InvoiceType::OcrPaymentCreditNote
+            | InvoiceType::ReversalOfCredit
+            | InvoiceType::SelfBilledFactoredCreditNote
+            | InvoiceType::PrepaymentCreditNote
+            | InvoiceType::ForwardersCreditNote => Self::CreditNote,
+            _ => Self::Invoice,
         }
     }
 }
@@ -179,9 +188,15 @@ mod test {
     }
 
     #[test]
-    fn classifies_the_document_kind() {
-        assert_eq!(InvoiceType::CommercialInvoice.kind(), DocumentKind::Invoice);
-        assert_eq!(InvoiceType::CreditNote.kind(), DocumentKind::CreditNote);
+    fn classifies_the_invoice_kind() {
+        assert_eq!(
+            InvoiceKind::from(InvoiceType::CommercialInvoice),
+            InvoiceKind::Invoice
+        );
+        assert_eq!(
+            InvoiceKind::from(InvoiceType::CreditNote),
+            InvoiceKind::CreditNote
+        );
     }
 
     #[test]

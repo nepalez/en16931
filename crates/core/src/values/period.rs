@@ -2,8 +2,8 @@
 
 use crate::Date;
 
-/// An invoicing period (`BG-14` document level, `BG-26` invoice line):
-/// the date range that the invoice or a line charges for.
+/// The date range that the invoice or a line charges for
+/// (`BG-14` document level, `BG-26` invoice line).
 ///
 /// At least one bound is present (`BR-CO-19`), an empty period is forbidden.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]

@@ -1,94 +1,69 @@
+//! The CII parsing walk, generic over the interfaces of the semantic model.
+
 use super::{Namespace, Token};
+use crate::Format;
 use crate::prelude::{
     CountryCode, Currency, Date, Decimal, EmailAddress, Month, NonZeroUsize, Url,
 };
 use crate::{
-    Adjustment, AdjustmentAmount, AdjustmentReason, Amount, Buyer, Cii, Classification, Contact,
-    CreditTransfer, Delivery, DirectDebit, DocumentBuilder, ElectronicAddress, Error,
-    ExemptionReason, Invoice, InvoiceLine, Item, ItemAttribute, ItemReference, LegalEntity,
+    Adjustment, AdjustmentAmount, AdjustmentReason, Amount, Buyer, Cii, Contact, CreditTransfer,
+    Delivery, DirectDebit, DocumentBuilder, ElectronicAddress, Error, Invoice, InvoiceKind,
+    InvoiceReference, Item, ItemAttribute, ItemClassification, ItemReference, LegalEntity, Line,
     LineAdjustment, LocationReference, NonEmptyString, Note, ObjectReference, OperationalEntity,
     Parser, Payee, PaymentCard, PaymentDetails, PaymentInstructions, Percentage, Period,
-    PostalAddress, PrecedingInvoice, Price, Quantity, Seller, SupportingDocument,
-    TaxRepresentative, Unit, VatBreakdown, VatCategory, VatPoint, VatTreatment,
+    PostalAddress, Quantity, QuantityUnit, Seller, SupportingDocument, TaxRepresentative,
+    VatBreakdown, VatCategory, VatExemptionReason, VatPoint, VatTreatment,
 };
-use crate::{Deserializable, Format};
 
-impl<N: crate::Namespace + From<Namespace>> Deserializable<Cii, N> for Invoice {
-    // Parses the whole document under the CII root element.
-    fn deserialize(parser: &mut Parser<Cii, N>) -> Result<DocumentBuilder<Invoice>, Error> {
-        parser.enter_structural(Cii::root_namespace(), Cii::ROOT_ELEMENT)?;
+/// Reads the whole document from the parser into a builder, from the root element down,
+/// filling the dictionary in the same pass.
+///
+/// An implementation of `Deserializable<Cii, N>` for a concrete invoice type calls this walk.
+/// The walk builds every group from its default and fills it through the model interfaces,
+/// so the invoice type and each of its groups must implement `Default`.
+#[allow(clippy::type_complexity)]
+pub fn deserialize<I, N>(parser: &mut Parser<Cii, N>) -> Result<DocumentBuilder<I>, Error>
+where
+    I: Invoice + Default,
+    I::Seller: Default,
+    <I::Seller as Seller>::Contact: Default,
+    I::Buyer: Default,
+    <I::Buyer as Buyer>::Contact: Default,
+    I::Payee: Default,
+    I::TaxRepresentative: Default,
+    I::Delivery: Default,
+    I::Line: Default,
+    <I::Line as Line>::Item: Default,
+    N: crate::Namespace + From<Namespace>,
+{
+    parser.enter_structural(Cii::root_namespace(), Cii::ROOT_ELEMENT)?;
 
-        let (profile, business_process) = parser.exchanged_document_context()?;
-        let (number, type_code, issue_date, notes) = parser.exchanged_document()?;
+    let (profile, business_process) = parser.exchanged_document_context()?;
+    let mut invoice = I::default();
+    parser.exchanged_document(&mut invoice)?;
 
-        let mut lines = Vec::new();
-        let mut agreement = Agreement::default();
-        let mut delivery = DeliveryParts::default();
-        let mut settlement = Settlement::default();
-        if parser.is_open(Namespace::Rsm, "SupplyChainTradeTransaction") {
-            parser.enter_structural(Namespace::Rsm, "SupplyChainTradeTransaction")?;
-            while parser.is_open(Namespace::Ram, "IncludedSupplyChainTradeLineItem") {
-                let instance = index(lines.len());
-                lines.push(parser.parse_line(instance)?);
-            }
-            agreement = parser.header_trade_agreement()?;
-            delivery = parser.header_trade_delivery()?;
-            settlement = parser.header_trade_settlement()?;
-            parser.leave_structural()?;
+    let mut exemptions = ExemptionMap::new();
+    if parser.is_open(Namespace::Rsm, "SupplyChainTradeTransaction") {
+        parser.enter_structural(Namespace::Rsm, "SupplyChainTradeTransaction")?;
+        while parser.is_open(Namespace::Ram, "IncludedSupplyChainTradeLineItem") {
+            let instance = index(invoice.lines().len());
+            let line = parser.parse_line(instance)?;
+            invoice.lines().push(line);
         }
-
+        parser.header_trade_agreement(&mut invoice)?;
+        parser.header_trade_delivery(&mut invoice)?;
+        exemptions = parser.header_trade_settlement(&mut invoice)?;
         parser.leave_structural()?;
-
-        let mut invoice = Invoice {
-            number,
-            issue_date,
-            type_code,
-            currency: settlement.currency,
-            vat_accounting_total: settlement.vat_accounting_total,
-            vat_point: settlement.vat_point,
-            payment_due_date: settlement.payment_due_date,
-            buyer_reference: agreement.buyer_reference,
-            project_reference: agreement.project_reference,
-            contract_reference: agreement.contract_reference,
-            purchase_order_reference: agreement.purchase_order_reference,
-            sales_order_reference: agreement.sales_order_reference,
-            receiving_advice_reference: delivery.receiving_advice_reference,
-            despatch_advice_reference: delivery.despatch_advice_reference,
-            tender_or_lot_reference: agreement.tender_or_lot_reference,
-            object: agreement.object,
-            buyer_accounting_reference: settlement.buyer_accounting_reference,
-            payment_terms: settlement.payment_terms,
-            notes,
-            preceding_invoices: settlement.preceding_invoices,
-            seller: agreement.seller,
-            buyer: agreement.buyer,
-            payee: settlement.payee,
-            tax_representative: agreement.tax_representative,
-            delivery: delivery.delivery,
-            invoicing_period: settlement.invoicing_period,
-            adjustments: settlement.adjustments,
-            line_net_total: settlement.summation.line_net_total,
-            allowances_total: settlement.summation.allowances_total,
-            charges_total: settlement.summation.charges_total,
-            net_total: settlement.summation.net_total,
-            vat_total: settlement.summation.vat_total,
-            gross_total: settlement.summation.gross_total,
-            rounding: settlement.summation.rounding,
-            payment: settlement.payment,
-            paid: settlement.summation.paid,
-            due: settlement.summation.due,
-            vat_breakdown: settlement.vat_breakdown,
-            supporting_documents: agreement.supporting_documents,
-            lines,
-        };
-        settlement.exemptions.apply(&mut invoice);
-
-        Ok(DocumentBuilder {
-            invoice,
-            profile,
-            business_process,
-        })
     }
+
+    parser.leave_structural()?;
+    exemptions.apply(&mut invoice);
+
+    Ok(DocumentBuilder {
+        invoice,
+        profile,
+        business_process,
+    })
 }
 
 // ---- parser --------------------------------------------------------------
@@ -120,28 +95,18 @@ impl<N: crate::Namespace + From<Namespace>> Parser<Cii, N> {
         Ok((profile, business_process))
     }
 
-    // Parses the exchanged document header.
-    #[allow(clippy::type_complexity)]
-    fn exchanged_document(
-        &mut self,
-    ) -> Result<
-        (
-            Option<NonEmptyString>,
-            crate::InvoiceType,
-            Option<Date>,
-            Vec<Note>,
-        ),
-        Error,
-    > {
+    // Parses the exchanged document header into the invoice.
+    fn exchanged_document<I: Invoice>(&mut self, invoice: &mut I) -> Result<(), Error> {
         self.enter_structural(Namespace::Rsm, "ExchangedDocument")?;
-        let number = self.optional_leaf(Namespace::Ram, "ID", "number")?;
-        let type_code = self
+        *invoice.number() = self.optional_leaf(Namespace::Ram, "ID", "number")?;
+        *invoice.type_code() = self
             .leaf(Namespace::Ram, "TypeCode", "type_code")?
             .parse()?;
-        let issue_date = self.optional_datetime("IssueDateTime", "issue_date")?;
-        let mut notes = Vec::new();
+        // CII states no kind of its own, so the type code lists of `BR-CL-01` decide it.
+        *invoice.kind() = InvoiceKind::from(*invoice.type_code());
+        *invoice.issue_date() = self.optional_datetime("IssueDateTime", "issue_date")?;
         while self.is_open(Namespace::Ram, "IncludedNote") {
-            let instance = index(notes.len());
+            let instance = index(invoice.notes().len());
             self.enter_repeatable(Namespace::Ram, "IncludedNote", "notes", instance)?;
             let text = self
                 .optional_derived(Namespace::Ram, "Content")?
@@ -153,14 +118,17 @@ impl<N: crate::Namespace + From<Namespace>> Parser<Cii, N> {
                 None
             };
             self.leave_repeatable()?;
-            notes.push(Note { subject_code, text });
+            invoice.notes().push(Note { subject_code, text });
         }
         self.leave_structural()?;
-        Ok((number, type_code, issue_date, notes))
+        Ok(())
     }
 
     // Parses one invoice line.
-    fn parse_line(&mut self, instance: NonZeroUsize) -> Result<InvoiceLine, Error> {
+    fn parse_line<L: Line + Default>(&mut self, instance: NonZeroUsize) -> Result<L, Error>
+    where
+        L::Item: Default,
+    {
         self.enter_repeatable(
             Namespace::Ram,
             "IncludedSupplyChainTradeLineItem",
@@ -168,14 +136,13 @@ impl<N: crate::Namespace + From<Namespace>> Parser<Cii, N> {
             instance,
         )?;
 
-        let mut id = None;
-        let mut note = None;
+        let mut line = L::default();
         if self.is_open(Namespace::Ram, "AssociatedDocumentLineDocument") {
             self.enter_structural(Namespace::Ram, "AssociatedDocumentLineDocument")?;
-            id = self.optional_leaf(Namespace::Ram, "LineID", "id")?;
+            *line.id() = self.optional_leaf(Namespace::Ram, "LineID", "id")?;
             if self.is_open(Namespace::Ram, "IncludedNote") {
                 self.enter_group(Namespace::Ram, "IncludedNote", "note")?;
-                note = self
+                *line.note() = self
                     .optional_derived(Namespace::Ram, "Content")?
                     .map(|(_, text)| text.parse())
                     .transpose()?;
@@ -184,57 +151,36 @@ impl<N: crate::Namespace + From<Namespace>> Parser<Cii, N> {
             self.leave_structural()?;
         }
 
-        let item = if self.is_open(Namespace::Ram, "SpecifiedTradeProduct") {
-            Some(self.parse_product()?)
-        } else {
-            None
-        };
-        let (order_line_reference, price) =
-            if self.is_open(Namespace::Ram, "SpecifiedLineTradeAgreement") {
-                self.parse_agreement()?
-            } else {
-                (None, None)
-            };
+        if self.is_open(Namespace::Ram, "SpecifiedTradeProduct") {
+            *line.item() = Some(self.parse_product()?);
+        }
+        if self.is_open(Namespace::Ram, "SpecifiedLineTradeAgreement") {
+            self.parse_agreement(&mut line)?;
+        }
 
-        let mut quantity = None;
         if self.is_open(Namespace::Ram, "SpecifiedLineTradeDelivery") {
             self.enter_structural(Namespace::Ram, "SpecifiedLineTradeDelivery")?;
-            quantity = self
+            *line.quantity() = self
                 .optional_leaf_attr(Namespace::Ram, "BilledQuantity", "quantity")?
                 .map(|(attributes, text)| parse_quantity(&attributes, &text))
                 .transpose()?;
             self.leave_structural()?;
         }
 
-        let (vat, period, adjustments, net_amount, object, buyer_accounting_reference) =
-            if self.is_open(Namespace::Ram, "SpecifiedLineTradeSettlement") {
-                self.parse_line_settlement()?
-            } else {
-                (None, None, Vec::new(), None, None, None)
-            };
+        if self.is_open(Namespace::Ram, "SpecifiedLineTradeSettlement") {
+            self.parse_line_settlement(&mut line)?;
+        }
 
         self.leave_repeatable()?;
-        Ok(InvoiceLine {
-            id,
-            note,
-            object,
-            quantity,
-            net_amount,
-            order_line_reference,
-            buyer_accounting_reference,
-            period,
-            adjustments,
-            price,
-            vat,
-            item,
-        })
+        Ok(line)
     }
 
     // Parses the line product into an item.
-    fn parse_product(&mut self) -> Result<Item, Error> {
+    fn parse_product<T: Item + Default>(&mut self) -> Result<T, Error> {
         self.enter_group(Namespace::Ram, "SpecifiedTradeProduct", "item")?;
 
-        let standard_id = self
+        let mut item = T::default();
+        *item.standard_id() = self
             .optional_leaf_attr(Namespace::Ram, "GlobalID", "standard_id")?
             .map(|(attributes, id)| {
                 Ok::<_, Error>(ItemReference {
@@ -245,22 +191,20 @@ impl<N: crate::Namespace + From<Namespace>> Parser<Cii, N> {
                 })
             })
             .transpose()?;
-        let seller_id = self.optional_leaf(Namespace::Ram, "SellerAssignedID", "seller_id")?;
-        let buyer_id = self.optional_leaf(Namespace::Ram, "BuyerAssignedID", "buyer_id")?;
-        let name = self.optional_leaf(Namespace::Ram, "Name", "name")?;
-        let description = self.optional_leaf(Namespace::Ram, "Description", "description")?;
-        let mut attributes = Vec::new();
+        *item.seller_id() = self.optional_leaf(Namespace::Ram, "SellerAssignedID", "seller_id")?;
+        *item.buyer_id() = self.optional_leaf(Namespace::Ram, "BuyerAssignedID", "buyer_id")?;
+        *item.name() = self.optional_leaf(Namespace::Ram, "Name", "name")?;
+        *item.description() = self.optional_leaf(Namespace::Ram, "Description", "description")?;
         while self.is_open(Namespace::Ram, "ApplicableProductCharacteristic") {
             self.enter_structural(Namespace::Ram, "ApplicableProductCharacteristic")?;
             let name = self.optional_leaf(Namespace::Ram, "Description", "attributes")?;
             let value = self.optional_leaf(Namespace::Ram, "Value", "attributes")?;
             self.leave_structural()?;
-            attributes.push(ItemAttribute { name, value });
+            item.attributes().push(ItemAttribute { name, value });
         }
-        let mut classifications = Vec::new();
         while self.is_open(Namespace::Ram, "DesignatedProductClassification") {
             self.enter_structural(Namespace::Ram, "DesignatedProductClassification")?;
-            let mut classification = Classification::default();
+            let mut classification = ItemClassification::default();
             if let Some((class_attrs, id)) =
                 self.optional_leaf_attr(Namespace::Ram, "ClassCode", "classifications")?
             {
@@ -274,73 +218,53 @@ impl<N: crate::Namespace + From<Namespace>> Parser<Cii, N> {
                 };
             }
             self.leave_structural()?;
-            classifications.push(classification);
+            item.classifications().push(classification);
         }
-        let country_of_origin = if self.is_open(Namespace::Ram, "OriginTradeCountry") {
+        if self.is_open(Namespace::Ram, "OriginTradeCountry") {
             self.enter_structural(Namespace::Ram, "OriginTradeCountry")?;
             let code = self.optional_text(Namespace::Ram, "ID", "country_of_origin")?;
             self.leave_structural()?;
-            code.map(|code| parse_country(&code)).transpose()?
-        } else {
-            None
-        };
+            *item.country_of_origin() = code.map(|code| parse_country(&code)).transpose()?;
+        }
 
         self.leave_group()?;
-
-        Ok(Item {
-            name,
-            description,
-            seller_id,
-            buyer_id,
-            standard_id,
-            classifications,
-            country_of_origin,
-            attributes,
-        })
+        Ok(item)
     }
 
-    // Parses the line trade agreement, returning the order line reference and the price.
-    fn parse_agreement(&mut self) -> Result<(Option<NonEmptyString>, Option<Price>), Error> {
+    // Parses the line trade agreement into the line: the order line reference and the price.
+    // The base quantity of the net price group applies only without the gross price group.
+    fn parse_agreement<L: Line>(&mut self, line: &mut L) -> Result<(), Error> {
         self.enter_structural(Namespace::Ram, "SpecifiedLineTradeAgreement")?;
-        let order_line_reference = if self.is_open(Namespace::Ram, "BuyerOrderReferencedDocument") {
+        if self.is_open(Namespace::Ram, "BuyerOrderReferencedDocument") {
             self.enter_structural(Namespace::Ram, "BuyerOrderReferencedDocument")?;
-            let reference = self.optional_leaf(Namespace::Ram, "LineID", "order_line_reference")?;
+            *line.order_line_reference() =
+                self.optional_leaf(Namespace::Ram, "LineID", "order_line_reference")?;
             self.leave_structural()?;
-            reference
-        } else {
-            None
-        };
+        }
 
-        let mut price = None;
+        let mut has_gross = false;
         if self.is_open(Namespace::Ram, "GrossPriceProductTradePrice") {
+            has_gross = true;
             self.enter_group(Namespace::Ram, "GrossPriceProductTradePrice", "price")?;
-            let gross = self
+            let price = line.price().get_or_insert_with(Default::default);
+            price.gross = self
                 .optional_derived(Namespace::Ram, "ChargeAmount")?
                 .map(|(_, text)| parse_decimal(&text))
                 .transpose()?;
-            let base_quantity = self
+            price.base_quantity = self
                 .optional_derived(Namespace::Ram, "BasisQuantity")?
                 .map(|(attributes, text)| parse_quantity(&attributes, &text))
                 .transpose()?;
-            let discount = if self.is_open(Namespace::Ram, "AppliedTradeAllowanceCharge") {
+            if self.is_open(Namespace::Ram, "AppliedTradeAllowanceCharge") {
                 self.enter_nested(Namespace::Ram, "AppliedTradeAllowanceCharge")?;
                 self.optional_indicator()?;
-                let amount = self
+                price.discount = self
                     .optional_derived(Namespace::Ram, "ActualAmount")?
                     .map(|(_, text)| parse_decimal(&text))
                     .transpose()?;
                 self.leave_nested()?;
-                amount
-            } else {
-                None
-            };
+            }
             self.leave_group()?;
-            price = Some(Price {
-                net: None,
-                gross,
-                discount,
-                base_quantity,
-            });
         }
 
         if self.is_open(Namespace::Ram, "NetPriceProductTradePrice") {
@@ -354,53 +278,31 @@ impl<N: crate::Namespace + From<Namespace>> Parser<Cii, N> {
                 .map(|(attributes, text)| parse_quantity(&attributes, &text))
                 .transpose()?;
             self.leave_group()?;
-            price = Some(match price {
-                Some(price) => Price { net, ..price },
-                None => Price {
-                    net,
-                    gross: None,
-                    discount: None,
-                    base_quantity,
-                },
-            });
+            let price = line.price().get_or_insert_with(Default::default);
+            price.net = net;
+            if !has_gross {
+                price.base_quantity = base_quantity;
+            }
         }
 
         self.leave_structural()?;
-        Ok((order_line_reference, price))
+        Ok(())
     }
 
-    // Parses the line trade settlement.
-    #[allow(clippy::type_complexity)]
-    fn parse_line_settlement(
-        &mut self,
-    ) -> Result<
-        (
-            Option<VatTreatment>,
-            Option<Period>,
-            Vec<LineAdjustment>,
-            Option<Decimal>,
-            Option<ObjectReference>,
-            Option<NonEmptyString>,
-        ),
-        Error,
-    > {
+    // Parses the line trade settlement into the line.
+    fn parse_line_settlement<L: Line>(&mut self, line: &mut L) -> Result<(), Error> {
         self.enter_structural(Namespace::Ram, "SpecifiedLineTradeSettlement")?;
-        let vat = if self.is_open(Namespace::Ram, "ApplicableTradeTax") {
-            Some(self.parse_line_tax()?)
-        } else {
-            None
-        };
-        let period = if self.is_open(Namespace::Ram, "BillingSpecifiedPeriod") {
-            Some(self.billing_period("period")?)
-        } else {
-            None
-        };
-        let mut adjustments = Vec::new();
-        while self.is_open(Namespace::Ram, "SpecifiedTradeAllowanceCharge") {
-            let instance = index(adjustments.len());
-            adjustments.push(self.parse_line_adjustment(instance)?);
+        if self.is_open(Namespace::Ram, "ApplicableTradeTax") {
+            *line.vat() = Some(self.parse_line_tax()?);
         }
-        let mut net_amount = None;
+        if self.is_open(Namespace::Ram, "BillingSpecifiedPeriod") {
+            *line.period() = Some(self.billing_period("period")?);
+        }
+        while self.is_open(Namespace::Ram, "SpecifiedTradeAllowanceCharge") {
+            let instance = index(line.adjustments().len());
+            let adjustment = self.parse_line_adjustment(instance)?;
+            line.adjustments().push(adjustment);
+        }
         if self.is_open(
             Namespace::Ram,
             "SpecifiedTradeSettlementLineMonetarySummation",
@@ -409,13 +311,13 @@ impl<N: crate::Namespace + From<Namespace>> Parser<Cii, N> {
                 Namespace::Ram,
                 "SpecifiedTradeSettlementLineMonetarySummation",
             )?;
-            net_amount = self
+            *line.net_amount() = self
                 .optional_text(Namespace::Ram, "LineTotalAmount", "net_amount")?
                 .map(|text| parse_decimal(&text))
                 .transpose()?;
             self.leave_structural()?;
         }
-        let object = if self.is_open(Namespace::Ram, "AdditionalReferencedDocument") {
+        if self.is_open(Namespace::Ram, "AdditionalReferencedDocument") {
             self.enter_group(Namespace::Ram, "AdditionalReferencedDocument", "object")?;
             let id = self
                 .optional_derived(Namespace::Ram, "IssuerAssignedID")?
@@ -427,20 +329,11 @@ impl<N: crate::Namespace + From<Namespace>> Parser<Cii, N> {
                 .map(|(_, text)| text.parse())
                 .transpose()?;
             self.leave_group()?;
-            Some(ObjectReference { id, scheme })
-        } else {
-            None
-        };
-        let buyer_accounting_reference = self.optional_accounting_account()?;
+            *line.object() = Some(ObjectReference { id, scheme });
+        }
+        *line.buyer_accounting_reference() = self.optional_accounting_account()?;
         self.leave_structural()?;
-        Ok((
-            vat,
-            period,
-            adjustments,
-            net_amount,
-            object,
-            buyer_accounting_reference,
-        ))
+        Ok(())
     }
 
     // Parses the receivable accounting account (`BT-19`/`BT-133`), when present.
@@ -487,90 +380,68 @@ impl<N: crate::Namespace + From<Namespace>> Parser<Cii, N> {
         Ok(LineAdjustment { amount, reason })
     }
 
-    // Parses the header trade agreement, when present.
-    fn header_trade_agreement(&mut self) -> Result<Agreement, Error> {
+    // Parses the header trade agreement into the invoice, when present.
+    fn header_trade_agreement<I: Invoice>(&mut self, invoice: &mut I) -> Result<(), Error>
+    where
+        I::Seller: Default,
+        <I::Seller as Seller>::Contact: Default,
+        I::Buyer: Default,
+        <I::Buyer as Buyer>::Contact: Default,
+        I::TaxRepresentative: Default,
+    {
         if !self.is_open(Namespace::Ram, "ApplicableHeaderTradeAgreement") {
-            return Ok(Agreement::default());
+            return Ok(());
         }
         self.enter_structural(Namespace::Ram, "ApplicableHeaderTradeAgreement")?;
-        let buyer_reference =
+        *invoice.buyer_reference() =
             self.optional_leaf(Namespace::Ram, "BuyerReference", "buyer_reference")?;
-        let seller = if self.is_open(Namespace::Ram, "SellerTradeParty") {
-            Some(self.parse_seller()?)
-        } else {
-            None
-        };
-        let buyer = if self.is_open(Namespace::Ram, "BuyerTradeParty") {
-            Some(self.parse_buyer()?)
-        } else {
-            None
-        };
-        let tax_representative =
-            if self.is_open(Namespace::Ram, "SellerTaxRepresentativeTradeParty") {
-                Some(self.parse_tax_representative()?)
-            } else {
-                None
-            };
-        let sales_order_reference = self.optional_reference(
+        if self.is_open(Namespace::Ram, "SellerTradeParty") {
+            *invoice.seller() = Some(self.parse_seller()?);
+        }
+        if self.is_open(Namespace::Ram, "BuyerTradeParty") {
+            *invoice.buyer() = Some(self.parse_buyer()?);
+        }
+        if self.is_open(Namespace::Ram, "SellerTaxRepresentativeTradeParty") {
+            *invoice.tax_representative() = Some(self.parse_tax_representative()?);
+        }
+        *invoice.sales_order_reference() = self.optional_reference(
             Namespace::Ram,
             "SellerOrderReferencedDocument",
             "sales_order_reference",
         )?;
-        let purchase_order_reference = self.optional_reference(
+        *invoice.purchase_order_reference() = self.optional_reference(
             Namespace::Ram,
             "BuyerOrderReferencedDocument",
             "purchase_order_reference",
         )?;
-        let contract_reference = self.optional_reference(
+        *invoice.contract_reference() = self.optional_reference(
             Namespace::Ram,
             "ContractReferencedDocument",
             "contract_reference",
         )?;
-        let mut object = None;
-        let mut tender_or_lot_reference = None;
-        let mut supporting_documents = Vec::new();
         while self.is_open(Namespace::Ram, "AdditionalReferencedDocument") {
-            match self.parse_additional_document(supporting_documents.len())? {
-                Additional::Object(reference) => object = Some(reference),
-                Additional::Tender(reference) => tender_or_lot_reference = reference,
-                Additional::Supporting(document) => supporting_documents.push(document),
-            }
+            self.parse_additional_document(invoice)?;
         }
-        let project_reference = if self.is_open(Namespace::Ram, "SpecifiedProcuringProject") {
+        if self.is_open(Namespace::Ram, "SpecifiedProcuringProject") {
             self.enter_group(
                 Namespace::Ram,
                 "SpecifiedProcuringProject",
                 "project_reference",
             )?;
-            let id = self
+            *invoice.project_reference() = self
                 .optional_derived(Namespace::Ram, "ID")?
                 .map(|(_, text)| text.parse())
                 .transpose()?;
             self.optional_derived(Namespace::Ram, "Name")?;
             self.leave_group()?;
-            id
-        } else {
-            None
-        };
+        }
         self.leave_structural()?;
-        Ok(Agreement {
-            buyer_reference,
-            seller,
-            buyer,
-            tax_representative,
-            sales_order_reference,
-            purchase_order_reference,
-            contract_reference,
-            object,
-            tender_or_lot_reference,
-            supporting_documents,
-            project_reference,
-        })
+        Ok(())
     }
 
-    fn parse_additional_document(&mut self, supporting: usize) -> Result<Additional, Error> {
-        let kind = self.additional_kind();
-        match kind {
+    // Parses one additional referenced document into the invoice, by its fixed type code.
+    fn parse_additional_document<I: Invoice>(&mut self, invoice: &mut I) -> Result<(), Error> {
+        match self.additional_kind() {
             AdditionalKind::Object => {
                 self.enter_group(Namespace::Ram, "AdditionalReferencedDocument", "object")?;
                 let id = self.optional_issuer_assigned_id()?;
@@ -580,7 +451,7 @@ impl<N: crate::Namespace + From<Namespace>> Parser<Cii, N> {
                     .map(|(_, text)| text.parse())
                     .transpose()?;
                 self.leave_group()?;
-                Ok(Additional::Object(ObjectReference { id, scheme }))
+                *invoice.object() = Some(ObjectReference { id, scheme });
             }
             AdditionalKind::Tender => {
                 self.enter_group(
@@ -588,13 +459,12 @@ impl<N: crate::Namespace + From<Namespace>> Parser<Cii, N> {
                     "AdditionalReferencedDocument",
                     "tender_or_lot_reference",
                 )?;
-                let id = self.optional_issuer_assigned_id()?;
+                *invoice.tender_or_lot_reference() = self.optional_issuer_assigned_id()?;
                 self.optional_derived(Namespace::Ram, "TypeCode")?;
                 self.leave_group()?;
-                Ok(Additional::Tender(id))
             }
             AdditionalKind::Supporting => {
-                let instance = index(supporting);
+                let instance = index(invoice.supporting_documents().len());
                 self.enter_repeatable(
                     Namespace::Ram,
                     "AdditionalReferencedDocument",
@@ -609,14 +479,15 @@ impl<N: crate::Namespace + From<Namespace>> Parser<Cii, N> {
                 self.optional_derived(Namespace::Ram, "TypeCode")?;
                 let description = self.optional_leaf(Namespace::Ram, "Name", "description")?;
                 self.leave_repeatable()?;
-                Ok(Additional::Supporting(SupportingDocument {
+                invoice.supporting_documents().push(SupportingDocument {
                     reference,
                     description,
                     external_location,
                     attachment: None,
-                }))
+                });
             }
         }
+        Ok(())
     }
 
     // Reads the issuer-assigned identifier of a referenced document, when present.
@@ -635,99 +506,83 @@ impl<N: crate::Namespace + From<Namespace>> Parser<Cii, N> {
         }
     }
 
-    fn parse_seller(&mut self) -> Result<Seller, Error> {
+    fn parse_seller<S: Seller + Default>(&mut self) -> Result<S, Error>
+    where
+        S::Contact: Default,
+    {
         self.enter_group(Namespace::Ram, "SellerTradeParty", "seller")?;
-        let identifiers = self.parse_identifiers("identifiers")?;
-        let name = self.optional_leaf(Namespace::Ram, "Name", "name")?;
-        let additional_legal_information = self.optional_leaf(
+        let mut seller = S::default();
+        *seller.identifiers() = self.parse_identifiers("identifiers")?;
+        *seller.name() = self.optional_leaf(Namespace::Ram, "Name", "name")?;
+        *seller.additional_legal_information() = self.optional_leaf(
             Namespace::Ram,
             "Description",
             "additional_legal_information",
         )?;
         let (legal_entity, trading_name) = self.parse_legal_organization()?;
-        let contact = if self.is_open(Namespace::Ram, "DefinedTradeContact") {
-            Some(self.parse_contact()?)
-        } else {
-            None
-        };
-        let address = self.optional_address()?;
-        let electronic_address = self.optional_electronic_address()?;
-        let mut vat = None;
-        let mut tax_registration = None;
+        *seller.legal_entity() = legal_entity;
+        *seller.trading_name() = trading_name;
+        if self.is_open(Namespace::Ram, "DefinedTradeContact") {
+            *seller.contact() = Some(self.parse_contact()?);
+        }
+        *seller.address() = self.optional_address()?;
+        *seller.electronic_address() = self.optional_electronic_address()?;
         while self.is_open(Namespace::Ram, "SpecifiedTaxRegistration") {
             match self.parse_tax_registration()? {
-                Some(TaxRegistration::Vat(value)) => vat = Some(value),
-                Some(TaxRegistration::Other(value)) => tax_registration = Some(value),
+                Some(TaxRegistration::Vat(value)) => *seller.vat() = Some(value),
+                Some(TaxRegistration::Other(value)) => *seller.tax_registration() = Some(value),
                 None => {}
             }
         }
         self.leave_group()?;
-        Ok(Seller {
-            name,
-            trading_name,
-            identifiers,
-            legal_entity,
-            additional_legal_information,
-            vat,
-            tax_registration,
-            electronic_address,
-            address,
-            contact,
-        })
+        Ok(seller)
     }
 
-    fn parse_buyer(&mut self) -> Result<Buyer, Error> {
+    fn parse_buyer<B: Buyer + Default>(&mut self) -> Result<B, Error>
+    where
+        B::Contact: Default,
+    {
         self.enter_group(Namespace::Ram, "BuyerTradeParty", "buyer")?;
-        let identifiers = self.parse_identifiers("identifiers")?;
-        let name = self.optional_leaf(Namespace::Ram, "Name", "name")?;
+        let mut buyer = B::default();
+        *buyer.identifiers() = self.parse_identifiers("identifiers")?;
+        *buyer.name() = self.optional_leaf(Namespace::Ram, "Name", "name")?;
         let (legal_entity, trading_name) = self.parse_legal_organization()?;
-        let contact = if self.is_open(Namespace::Ram, "DefinedTradeContact") {
-            Some(self.parse_contact()?)
-        } else {
-            None
-        };
-        let address = self.optional_address()?;
-        let electronic_address = self.optional_electronic_address()?;
-        let mut vat = None;
+        *buyer.legal_entity() = legal_entity;
+        *buyer.trading_name() = trading_name;
+        if self.is_open(Namespace::Ram, "DefinedTradeContact") {
+            *buyer.contact() = Some(self.parse_contact()?);
+        }
+        *buyer.address() = self.optional_address()?;
+        *buyer.electronic_address() = self.optional_electronic_address()?;
         while self.is_open(Namespace::Ram, "SpecifiedTaxRegistration") {
             if let Some(TaxRegistration::Vat(value)) = self.parse_tax_registration()? {
-                vat = Some(value);
+                *buyer.vat() = Some(value);
             }
         }
         self.leave_group()?;
-        Ok(Buyer {
-            name,
-            trading_name,
-            identifiers,
-            legal_entity,
-            vat,
-            electronic_address,
-            address,
-            contact,
-        })
+        Ok(buyer)
     }
 
-    fn parse_tax_representative(&mut self) -> Result<TaxRepresentative, Error> {
+    fn parse_tax_representative<T: TaxRepresentative + Default>(&mut self) -> Result<T, Error> {
         self.enter_group(
             Namespace::Ram,
             "SellerTaxRepresentativeTradeParty",
             "tax_representative",
         )?;
-        let name = self.optional_leaf(Namespace::Ram, "Name", "name")?;
-        let address = self.optional_address()?;
-        let vat = if self.is_open(Namespace::Ram, "SpecifiedTaxRegistration") {
-            match self.parse_tax_registration()? {
+        let mut representative = T::default();
+        *representative.name() = self.optional_leaf(Namespace::Ram, "Name", "name")?;
+        *representative.address() = self.optional_address()?;
+        if self.is_open(Namespace::Ram, "SpecifiedTaxRegistration") {
+            *representative.vat() = match self.parse_tax_registration()? {
                 Some(TaxRegistration::Vat(value)) => Some(value),
                 Some(TaxRegistration::Other(_)) => {
                     return Err(bad("a tax representative without a VAT id"));
                 }
                 None => None,
-            }
-        } else {
-            None
-        };
+            };
+        }
         self.leave_group()?;
-        Ok(TaxRepresentative { name, vat, address })
+        Ok(representative)
     }
 
     fn parse_identifiers(&mut self, field: &'static str) -> Result<Vec<OperationalEntity>, Error> {
@@ -783,34 +638,26 @@ impl<N: crate::Namespace + From<Namespace>> Parser<Cii, N> {
             .transpose()
     }
 
-    fn parse_contact(&mut self) -> Result<Contact, Error> {
+    fn parse_contact<C: Contact + Default>(&mut self) -> Result<C, Error> {
         self.enter_group(Namespace::Ram, "DefinedTradeContact", "contact")?;
-        let name = self.optional_leaf(Namespace::Ram, "PersonName", "name")?;
-        let telephone = if self.is_open(Namespace::Ram, "TelephoneUniversalCommunication") {
+        let mut contact = C::default();
+        *contact.name() = self.optional_leaf(Namespace::Ram, "PersonName", "name")?;
+        if self.is_open(Namespace::Ram, "TelephoneUniversalCommunication") {
             self.enter_structural(Namespace::Ram, "TelephoneUniversalCommunication")?;
-            let number = self.optional_leaf(Namespace::Ram, "CompleteNumber", "telephone")?;
+            *contact.telephone() =
+                self.optional_leaf(Namespace::Ram, "CompleteNumber", "telephone")?;
             self.leave_structural()?;
-            number
-        } else {
-            None
-        };
-        let email = if self.is_open(Namespace::Ram, "EmailURIUniversalCommunication") {
+        }
+        if self.is_open(Namespace::Ram, "EmailURIUniversalCommunication") {
             self.enter_structural(Namespace::Ram, "EmailURIUniversalCommunication")?;
-            let address = self
+            *contact.email() = self
                 .optional_text(Namespace::Ram, "URIID", "email")?
                 .map(|value| parse_email(&value))
                 .transpose()?;
             self.leave_structural()?;
-            address
-        } else {
-            None
-        };
+        }
         self.leave_group()?;
-        Ok(Contact {
-            name,
-            telephone,
-            email,
-        })
+        Ok(contact)
     }
 
     fn optional_address(&mut self) -> Result<Option<PostalAddress>, Error> {
@@ -838,9 +685,9 @@ impl<N: crate::Namespace + From<Namespace>> Parser<Cii, N> {
             line2,
             line3,
             city,
-            country,
-            country_subdivision,
             postal_code,
+            country_subdivision,
+            country,
         }))
     }
 
@@ -885,71 +732,45 @@ impl<N: crate::Namespace + From<Namespace>> Parser<Cii, N> {
         }
     }
 
-    // Parses the header trade delivery.
-    fn header_trade_delivery(&mut self) -> Result<DeliveryParts, Error> {
+    // Parses the header trade delivery into the invoice, when present.
+    fn header_trade_delivery<I: Invoice>(&mut self, invoice: &mut I) -> Result<(), Error>
+    where
+        I::Delivery: Default,
+    {
         if !self.is_open(Namespace::Ram, "ApplicableHeaderTradeDelivery") {
-            return Ok(DeliveryParts::default());
+            return Ok(());
         }
         self.enter_structural(Namespace::Ram, "ApplicableHeaderTradeDelivery")?;
-        let mut ship_to = None;
         if self.is_open(Namespace::Ram, "ShipToTradeParty") {
-            ship_to = Some(self.parse_ship_to()?);
+            let delivery = invoice.delivery().get_or_insert_with(Default::default);
+            self.parse_ship_to(delivery)?;
         }
-        let date = if self.is_open(Namespace::Ram, "ActualDeliverySupplyChainEvent") {
+        if self.is_open(Namespace::Ram, "ActualDeliverySupplyChainEvent") {
             self.enter_structural(Namespace::Ram, "ActualDeliverySupplyChainEvent")?;
             let date = self.optional_datetime("OccurrenceDateTime", "date")?;
             self.leave_structural()?;
-            date
-        } else {
-            None
-        };
-        let despatch_advice_reference = self.optional_reference(
+            if let Some(date) = date {
+                let delivery = invoice.delivery().get_or_insert_with(Default::default);
+                *delivery.date() = Some(date);
+            }
+        }
+        *invoice.despatch_advice_reference() = self.optional_reference(
             Namespace::Ram,
             "DespatchAdviceReferencedDocument",
             "despatch_advice_reference",
         )?;
-        let receiving_advice_reference = self.optional_reference(
+        *invoice.receiving_advice_reference() = self.optional_reference(
             Namespace::Ram,
             "ReceivingAdviceReferencedDocument",
             "receiving_advice_reference",
         )?;
         self.leave_structural()?;
-
-        let delivery = match (ship_to, date) {
-            (Some((name, location, address)), date) => Some(Delivery {
-                name,
-                location,
-                date,
-                address,
-            }),
-            (None, Some(date)) => Some(Delivery {
-                name: None,
-                location: None,
-                date: Some(date),
-                address: None,
-            }),
-            (None, None) => None,
-        };
-        Ok(DeliveryParts {
-            delivery,
-            despatch_advice_reference,
-            receiving_advice_reference,
-        })
+        Ok(())
     }
 
-    #[allow(clippy::type_complexity)]
-    fn parse_ship_to(
-        &mut self,
-    ) -> Result<
-        (
-            Option<NonEmptyString>,
-            Option<LocationReference>,
-            Option<PostalAddress>,
-        ),
-        Error,
-    > {
+    fn parse_ship_to<D: Delivery>(&mut self, delivery: &mut D) -> Result<(), Error> {
         self.enter_group(Namespace::Ram, "ShipToTradeParty", "delivery")?;
-        let location = self
+        *delivery.location() = self
             .optional_leaf_attr(Namespace::Ram, "ID", "location")?
             .map(|(attributes, id)| {
                 Ok::<_, Error>(LocationReference {
@@ -960,16 +781,23 @@ impl<N: crate::Namespace + From<Namespace>> Parser<Cii, N> {
                 })
             })
             .transpose()?;
-        let name = self.optional_leaf(Namespace::Ram, "Name", "name")?;
-        let address = self.optional_address()?;
+        *delivery.name() = self.optional_leaf(Namespace::Ram, "Name", "name")?;
+        *delivery.address() = self.optional_address()?;
         self.leave_group()?;
-        Ok((name, location, address))
+        Ok(())
     }
 
-    // Parses the header trade settlement, when present.
-    fn header_trade_settlement(&mut self) -> Result<Settlement, Error> {
+    // Parses the header trade settlement into the invoice, when present,
+    // returning the exemption reasons collected from the VAT breakdown.
+    fn header_trade_settlement<I: Invoice>(
+        &mut self,
+        invoice: &mut I,
+    ) -> Result<ExemptionMap, Error>
+    where
+        I::Payee: Default,
+    {
         if !self.is_open(Namespace::Ram, "ApplicableHeaderTradeSettlement") {
-            return Ok(Settlement::default());
+            return Ok(ExemptionMap::new());
         }
         self.enter_structural(Namespace::Ram, "ApplicableHeaderTradeSettlement")?;
         let creditor =
@@ -985,130 +813,94 @@ impl<N: crate::Namespace + From<Namespace>> Parser<Cii, N> {
         } else {
             None
         };
-        let currency = self
+        *invoice.currency() = self
             .optional_text(Namespace::Ram, "InvoiceCurrencyCode", "currency")?
             .map(|code| parse_currency(&code))
             .transpose()?;
-        let payee = if self.is_open(Namespace::Ram, "PayeeTradeParty") {
-            Some(self.parse_payee()?)
-        } else {
-            None
-        };
-        let paid_by = self.is_open(Namespace::Ram, "SpecifiedTradeSettlementPaymentMeans");
-        let (means, means_text, mut details) = if paid_by {
-            self.parse_payment_means()?
-        } else {
-            (None, None, None)
-        };
-
-        let (exemptions, vat_point, vat_breakdown) = self.parse_tax_breakdown()?;
-        let invoicing_period = if self.is_open(Namespace::Ram, "BillingSpecifiedPeriod") {
-            Some(self.billing_period("invoicing_period")?)
-        } else {
-            None
-        };
-        let mut adjustments = Vec::new();
-        while self.is_open(Namespace::Ram, "SpecifiedTradeAllowanceCharge") {
-            let instance = index(adjustments.len());
-            adjustments.push(self.parse_adjustment(instance)?);
+        if self.is_open(Namespace::Ram, "PayeeTradeParty") {
+            *invoice.payee() = Some(self.parse_payee()?);
         }
-        let (payment_terms, payment_due_date, mandate) =
-            if self.is_open(Namespace::Ram, "SpecifiedTradePaymentTerms") {
-                self.parse_payment_terms()?
-            } else {
-                (None, None, None)
-            };
-        let summation = self.parse_monetary_summation()?;
+        if self.is_open(Namespace::Ram, "SpecifiedTradeSettlementPaymentMeans") {
+            let payment = invoice.payment().insert(Default::default());
+            payment.remittance_information = remittance;
+            self.parse_payment_means(payment)?;
+        }
+
+        let (exemptions, vat_point) = self.parse_tax_breakdown(invoice)?;
+        *invoice.vat_point() = vat_point;
+        if self.is_open(Namespace::Ram, "BillingSpecifiedPeriod") {
+            *invoice.invoicing_period() = Some(self.billing_period("invoicing_period")?);
+        }
+        while self.is_open(Namespace::Ram, "SpecifiedTradeAllowanceCharge") {
+            let instance = index(invoice.adjustments().len());
+            let adjustment = self.parse_adjustment(instance)?;
+            invoice.adjustments().push(adjustment);
+        }
+        let mut mandate = None;
+        if self.is_open(Namespace::Ram, "SpecifiedTradePaymentTerms") {
+            let (terms, due, reference) = self.parse_payment_terms()?;
+            *invoice.payment_terms() = terms;
+            *invoice.payment_due_date() = due;
+            mandate = reference;
+        }
+        self.parse_monetary_summation(invoice)?;
         // The summation carries no accounting-currency VAT total (`BT-111`) the parser reads.
         let accounting_value: Option<Decimal> = None;
-        let mut preceding_invoices = Vec::new();
         while self.is_open(Namespace::Ram, "InvoiceReferencedDocument") {
-            let instance = index(preceding_invoices.len());
-            preceding_invoices.push(self.parse_preceding_invoice(instance)?);
+            let instance = index(invoice.preceding_invoices().len());
+            let reference = self.parse_preceding_invoice(instance)?;
+            invoice.preceding_invoices().push(reference);
         }
-        let buyer_accounting_reference = self.optional_accounting_account()?;
+        *invoice.buyer_accounting_reference() = self.optional_accounting_account()?;
         self.leave_structural()?;
 
         // Inject the direct-debit creditor and mandate collected across the settlement.
-        if let Some(PaymentDetails::DirectDebit(debit)) = &mut details {
-            debit.creditor_identifier = creditor;
-            debit.mandate_reference = mandate;
+        if let Some(payment) = invoice.payment() {
+            if let Some(PaymentDetails::DirectDebit(debit)) = &mut payment.details {
+                debit.creditor_identifier = creditor;
+                debit.mandate_reference = mandate;
+            }
         }
-        let payment = paid_by.then_some(PaymentInstructions {
-            means,
-            means_text,
-            remittance_information: remittance,
-            details,
-        });
-        let vat_accounting_total = match (accounting_currency, accounting_value) {
+        *invoice.vat_accounting_total() = match (accounting_currency, accounting_value) {
             (Some(currency), Some(value)) => Some(Amount { value, currency }),
             _ => None,
         };
 
-        Ok(Settlement {
-            currency,
-            vat_accounting_total,
-            vat_point,
-            payment_due_date,
-            payee,
-            payment,
-            exemptions,
-            invoicing_period,
-            adjustments,
-            payment_terms,
-            summation,
-            vat_breakdown,
-            preceding_invoices,
-            buyer_accounting_reference,
-        })
+        Ok(exemptions)
     }
 
-    fn parse_payee(&mut self) -> Result<Payee, Error> {
+    fn parse_payee<P: Payee + Default>(&mut self) -> Result<P, Error> {
         self.enter_group(Namespace::Ram, "PayeeTradeParty", "payee")?;
-        let identifiers = self.parse_identifiers("identifiers")?;
-        let name = self.optional_leaf(Namespace::Ram, "Name", "name")?;
-        let legal_entity = if self.is_open(Namespace::Ram, "SpecifiedLegalOrganization") {
+        let mut payee = P::default();
+        *payee.identifiers() = self.parse_identifiers("identifiers")?;
+        *payee.name() = self.optional_leaf(Namespace::Ram, "Name", "name")?;
+        if self.is_open(Namespace::Ram, "SpecifiedLegalOrganization") {
             self.enter_structural(Namespace::Ram, "SpecifiedLegalOrganization")?;
-            let entity = self.optional_legal_entity()?;
+            *payee.legal_entity() = self.optional_legal_entity()?;
             self.leave_structural()?;
-            entity
-        } else {
-            None
-        };
+        }
         self.leave_group()?;
-        Ok(Payee {
-            name,
-            identifiers,
-            legal_entity,
-        })
+        Ok(payee)
     }
 
-    #[allow(clippy::type_complexity)]
-    fn parse_payment_means(
-        &mut self,
-    ) -> Result<
-        (
-            Option<crate::PaymentMeans>,
-            Option<NonEmptyString>,
-            Option<PaymentDetails>,
-        ),
-        Error,
-    > {
+    // Parses the payment means into the payment instructions.
+    fn parse_payment_means(&mut self, payment: &mut PaymentInstructions) -> Result<(), Error> {
         self.enter_group(
             Namespace::Ram,
             "SpecifiedTradeSettlementPaymentMeans",
             "payment",
         )?;
-        let means = self
+        payment.means = self
             .optional_derived(Namespace::Ram, "TypeCode")?
             .map(|(_, text)| text.parse())
             .transpose()?;
-        let means_text = if self.is_open(Namespace::Ram, "Information") {
+        payment.means_text = if self.is_open(Namespace::Ram, "Information") {
             Some(self.derived(Namespace::Ram, "Information")?.1.parse()?)
         } else {
             None
         };
-        let details = if self.is_open(Namespace::Ram, "ApplicableTradeSettlementFinancialCard") {
+        payment.details = if self.is_open(Namespace::Ram, "ApplicableTradeSettlementFinancialCard")
+        {
             self.enter_nested(Namespace::Ram, "ApplicableTradeSettlementFinancialCard")?;
             let primary_account_number = self
                 .optional_derived(Namespace::Ram, "ID")?
@@ -1126,7 +918,7 @@ impl<N: crate::Namespace + From<Namespace>> Parser<Cii, N> {
             }))
         } else if self.is_open(Namespace::Ram, "PayerPartyDebtorFinancialAccount") {
             self.enter_nested(Namespace::Ram, "PayerPartyDebtorFinancialAccount")?;
-            let account = self
+            let debited_account = self
                 .optional_derived(Namespace::Ram, "IBANID")?
                 .map(|(_, text)| text.parse())
                 .transpose()?;
@@ -1134,7 +926,7 @@ impl<N: crate::Namespace + From<Namespace>> Parser<Cii, N> {
             Some(PaymentDetails::DirectDebit(DirectDebit {
                 mandate_reference: None,
                 creditor_identifier: None,
-                debited_account: account,
+                debited_account,
             }))
         } else if self.is_open(Namespace::Ram, "PayeePartyCreditorFinancialAccount") {
             let mut transfers = Vec::new();
@@ -1156,12 +948,12 @@ impl<N: crate::Namespace + From<Namespace>> Parser<Cii, N> {
                             Namespace::Ram,
                             "PayeeSpecifiedCreditorFinancialInstitution",
                         )?;
-                        let bic = self
+                        let provider = self
                             .optional_derived(Namespace::Ram, "BICID")?
                             .map(|(_, text)| text.parse())
                             .transpose()?;
                         self.leave_nested()?;
-                        bic
+                        provider
                     } else {
                         None
                     };
@@ -1176,19 +968,19 @@ impl<N: crate::Namespace + From<Namespace>> Parser<Cii, N> {
             None
         };
         self.leave_group()?;
-        Ok((means, means_text, details))
+        Ok(())
     }
 
-    // Parses the VAT breakdown (`BG-23`), collecting exemption reasons and the VAT point event.
-    #[allow(clippy::type_complexity)]
-    fn parse_tax_breakdown(
+    // Parses the VAT breakdown (`BG-23`) into the invoice, collecting exemption reasons
+    // and the VAT point event.
+    fn parse_tax_breakdown<I: Invoice>(
         &mut self,
-    ) -> Result<(ExemptionMap, Option<VatPoint>, Vec<VatBreakdown>), Error> {
+        invoice: &mut I,
+    ) -> Result<(ExemptionMap, Option<VatPoint>), Error> {
         let mut exemptions = ExemptionMap::new();
         let mut vat_point = None;
-        let mut breakdown = Vec::new();
         while self.is_open(Namespace::Ram, "ApplicableTradeTax") {
-            let instance = index(breakdown.len());
+            let instance = index(invoice.vat_breakdown().len());
             self.enter_repeatable(
                 Namespace::Ram,
                 "ApplicableTradeTax",
@@ -1212,7 +1004,7 @@ impl<N: crate::Namespace + From<Namespace>> Parser<Cii, N> {
                 .optional_text(Namespace::Ram, "CategoryCode", "treatment")?
                 .map(|text| text.parse())
                 .transpose()?;
-            let code: Option<ExemptionReason> = self
+            let code: Option<VatExemptionReason> = self
                 .optional_text(Namespace::Ram, "ExemptionReasonCode", "treatment")?
                 .map(|text| text.parse())
                 .transpose()?;
@@ -1244,13 +1036,13 @@ impl<N: crate::Namespace + From<Namespace>> Parser<Cii, N> {
             if category == Some(VatCategory::Exempt) {
                 exemptions.set(code, text);
             }
-            breakdown.push(VatBreakdown {
+            invoice.vat_breakdown().push(VatBreakdown {
                 treatment,
                 taxable,
                 tax,
             });
         }
-        Ok((exemptions, vat_point, breakdown))
+        Ok((exemptions, vat_point))
     }
 
     fn parse_adjustment(&mut self, instance: NonZeroUsize) -> Result<Adjustment, Error> {
@@ -1344,14 +1136,13 @@ impl<N: crate::Namespace + From<Namespace>> Parser<Cii, N> {
         Ok((terms, due, mandate))
     }
 
-    // Parses the header monetary summation, keeping every amount the document states.
-    fn parse_monetary_summation(&mut self) -> Result<Summation, Error> {
-        let mut summation = Summation::default();
+    // Parses the header monetary summation into the invoice, keeping every stated amount.
+    fn parse_monetary_summation<I: Invoice>(&mut self, invoice: &mut I) -> Result<(), Error> {
         if !self.is_open(
             Namespace::Ram,
             "SpecifiedTradeSettlementHeaderMonetarySummation",
         ) {
-            return Ok(summation);
+            return Ok(());
         }
         self.enter_structural(
             Namespace::Ram,
@@ -1359,16 +1150,16 @@ impl<N: crate::Namespace + From<Namespace>> Parser<Cii, N> {
         )?;
         while self.is_open_namespace(Namespace::Ram) {
             let (_, name) = self.head()?;
-            let (field, slot) = match name.as_str() {
-                "LineTotalAmount" => ("line_net_total", &mut summation.line_net_total),
-                "ChargeTotalAmount" => ("charges_total", &mut summation.charges_total),
-                "AllowanceTotalAmount" => ("allowances_total", &mut summation.allowances_total),
-                "TaxBasisTotalAmount" => ("net_total", &mut summation.net_total),
-                "TaxTotalAmount" => ("vat_total", &mut summation.vat_total),
-                "RoundingAmount" => ("rounding", &mut summation.rounding),
-                "GrandTotalAmount" => ("gross_total", &mut summation.gross_total),
-                "TotalPrepaidAmount" => ("paid", &mut summation.paid),
-                "DuePayableAmount" => ("due", &mut summation.due),
+            let (field, slot): (&'static str, &mut Option<Decimal>) = match name.as_str() {
+                "LineTotalAmount" => ("line_net_total", invoice.line_net_total()),
+                "ChargeTotalAmount" => ("charges_total", invoice.charges_total()),
+                "AllowanceTotalAmount" => ("allowances_total", invoice.allowances_total()),
+                "TaxBasisTotalAmount" => ("net_total", invoice.net_total()),
+                "TaxTotalAmount" => ("vat_total", invoice.vat_total()),
+                "RoundingAmount" => ("rounding", invoice.rounding()),
+                "GrandTotalAmount" => ("gross_total", invoice.gross_total()),
+                "TotalPrepaidAmount" => ("paid", invoice.paid()),
+                "DuePayableAmount" => ("due", invoice.due()),
                 _ => {
                     self.derived(Namespace::Ram, &name)?;
                     continue;
@@ -1378,13 +1169,13 @@ impl<N: crate::Namespace + From<Namespace>> Parser<Cii, N> {
             *slot = Some(parse_decimal(&text)?);
         }
         self.leave_structural()?;
-        Ok(summation)
+        Ok(())
     }
 
     fn parse_preceding_invoice(
         &mut self,
         instance: NonZeroUsize,
-    ) -> Result<PrecedingInvoice, Error> {
+    ) -> Result<InvoiceReference, Error> {
         self.enter_repeatable(
             Namespace::Ram,
             "InvoiceReferencedDocument",
@@ -1403,7 +1194,7 @@ impl<N: crate::Namespace + From<Namespace>> Parser<Cii, N> {
             None
         };
         self.leave_repeatable()?;
-        Ok(PrecedingInvoice { number, issue_date })
+        Ok(InvoiceReference { number, issue_date })
     }
 
     // Parses a billing period (`BG-14`/`BG-26`).
@@ -1488,67 +1279,7 @@ impl<N: crate::Namespace + From<Namespace>> Parser<Cii, N> {
     }
 }
 
-// ---- collected parts -----------------------------------------------------
-
-#[derive(Default)]
-struct Agreement {
-    buyer_reference: Option<NonEmptyString>,
-    seller: Option<Seller>,
-    buyer: Option<Buyer>,
-    tax_representative: Option<TaxRepresentative>,
-    sales_order_reference: Option<NonEmptyString>,
-    purchase_order_reference: Option<NonEmptyString>,
-    contract_reference: Option<NonEmptyString>,
-    object: Option<ObjectReference>,
-    tender_or_lot_reference: Option<NonEmptyString>,
-    supporting_documents: Vec<SupportingDocument>,
-    project_reference: Option<NonEmptyString>,
-}
-
-#[derive(Default)]
-struct DeliveryParts {
-    delivery: Option<Delivery>,
-    despatch_advice_reference: Option<NonEmptyString>,
-    receiving_advice_reference: Option<NonEmptyString>,
-}
-
-#[derive(Default)]
-struct Settlement {
-    currency: Option<Currency>,
-    vat_accounting_total: Option<Amount>,
-    vat_point: Option<VatPoint>,
-    payment_due_date: Option<Date>,
-    payee: Option<Payee>,
-    payment: Option<PaymentInstructions>,
-    exemptions: ExemptionMap,
-    invoicing_period: Option<Period>,
-    adjustments: Vec<Adjustment>,
-    payment_terms: Option<NonEmptyString>,
-    summation: Summation,
-    vat_breakdown: Vec<VatBreakdown>,
-    preceding_invoices: Vec<PrecedingInvoice>,
-    buyer_accounting_reference: Option<NonEmptyString>,
-}
-
-// The amounts of the header monetary summation, as the document states them.
-#[derive(Default)]
-struct Summation {
-    line_net_total: Option<Decimal>,
-    allowances_total: Option<Decimal>,
-    charges_total: Option<Decimal>,
-    net_total: Option<Decimal>,
-    vat_total: Option<Decimal>,
-    gross_total: Option<Decimal>,
-    paid: Option<Decimal>,
-    rounding: Option<Decimal>,
-    due: Option<Decimal>,
-}
-
-enum Additional {
-    Object(ObjectReference),
-    Tender(Option<NonEmptyString>),
-    Supporting(SupportingDocument),
-}
+// ---- helpers -------------------------------------------------------------
 
 enum AdditionalKind {
     Object,
@@ -1561,9 +1292,9 @@ enum TaxRegistration {
     Other(NonEmptyString),
 }
 
-#[derive(Default)]
+// The exemption reason of the single exempt VAT group, applied back to the model.
 struct ExemptionMap {
-    exempt: Option<(Option<ExemptionReason>, Option<NonEmptyString>)>,
+    exempt: Option<(Option<VatExemptionReason>, Option<NonEmptyString>)>,
 }
 
 impl ExemptionMap {
@@ -1571,11 +1302,12 @@ impl ExemptionMap {
         Self { exempt: None }
     }
 
-    fn set(&mut self, code: Option<ExemptionReason>, text: Option<NonEmptyString>) {
+    fn set(&mut self, code: Option<VatExemptionReason>, text: Option<NonEmptyString>) {
         self.exempt = Some((code, text));
     }
 
-    fn apply(&self, invoice: &mut Invoice) {
+    // Fills the exemption reason into every exempt line and adjustment VAT.
+    fn apply<I: Invoice>(&self, invoice: &mut I) {
         let Some((code, text)) = &self.exempt else {
             return;
         };
@@ -1589,19 +1321,15 @@ impl ExemptionMap {
                 *slot_text = text.clone();
             }
         };
-        for vat in invoice
-            .lines
-            .iter_mut()
-            .filter_map(|line| line.vat.as_mut())
-        {
-            fill(vat);
+        for line in invoice.lines().iter_mut() {
+            if let Some(vat) = line.vat() {
+                fill(vat);
+            }
         }
-        for vat in invoice
-            .adjustments
-            .iter_mut()
-            .filter_map(|adjustment| adjustment.vat.as_mut())
-        {
-            fill(vat);
+        for adjustment in invoice.adjustments().iter_mut() {
+            if let Some(vat) = &mut adjustment.vat {
+                fill(vat);
+            }
         }
     }
 }
@@ -1630,7 +1358,7 @@ fn period_from(start: Option<Date>, end: Option<Date>) -> Option<Period> {
 
 fn parse_quantity(attributes: &[(String, String)], text: &str) -> Result<Quantity, Error> {
     let code = attr(attributes, "unitCode").ok_or_else(|| bad("a quantity without a unit"))?;
-    let unit = Unit::from_code(code)
+    let unit = QuantityUnit::from_code(code)
         .ok_or_else(|| Error::malformed_xml(format!("invalid unit: {code}")))?;
     Ok(Quantity {
         unit,

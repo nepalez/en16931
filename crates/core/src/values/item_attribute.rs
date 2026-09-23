@@ -1,7 +1,8 @@
+//! An item attribute (`BG-32`).
+
 use crate::NonEmptyString;
 
-/// An item attribute (`BG-32`): a named characteristic of the item,
-/// such as a color or a size.
+/// A named characteristic of the item, such as a color or a size (`BG-32`).
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub struct ItemAttribute {
     /// Name (`BT-160`).

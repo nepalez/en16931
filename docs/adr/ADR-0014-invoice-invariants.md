@@ -20,7 +20,7 @@ Does the model store the derived amounts, or compute them?
 
 > The model stores every amount as the issuer states it. The library computes none.
 
-`Invoice` carries the inputs and the amounts derived from them alike. It holds the line nets, the document totals, the VAT breakdown, and the net price. A relative allowance or charge holds its amount next to the base and the rate.
+The `Invoice` trait exposes the inputs and the derived amounts alike. The types of `cius` store both. The trait covers line nets, document totals, the VAT breakdown, and the net price. A relative allowance or charge holds its amount next to the base and the rate.
 
 The issuer computes the amounts and picks the rounding. The validator checks the `BR-CO` rules. The library reports no inconsistency of its own.
 

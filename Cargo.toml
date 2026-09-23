@@ -1,6 +1,13 @@
 [workspace]
 resolver = "3"
-members = ["crates/core", "crates/envelopes/*", "crates/tests", "crates/xpath/*", "examples"]
+members = [
+    "crates/cius",
+    "crates/core",
+    "crates/envelopes/*",
+    "crates/tests",
+    "crates/xpath/*",
+    "examples",
+]
 
 # Metadata shared by every crate in the workspace.
 # Per-crate versions are declared individually:
@@ -21,6 +28,7 @@ repository = "https://github.com/nepalez/en16931"
 base64 = { version = "0.22", default-features = false }
 cefact-units = { version = "0.1", default-features = false }
 email_address = { version = "0.2", default-features = false }
+en16931-cius = { path = "crates/cius", version = "0.1", default-features = false }
 en16931-core = { path = "crates/core", version = "0.1", default-features = false }
 en16931-iso = { path = "crates/xpath/iso", version = "0.1", default-features = false }
 en16931-kosit = { path = "crates/envelopes/kosit", version = "0.1", default-features = false }

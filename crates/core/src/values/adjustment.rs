@@ -1,7 +1,6 @@
 use crate::{AllowanceReason, ChargeReason, Decimal, NonEmptyString, Percentage, VatTreatment};
 
-/// A document-level adjustment (`BG-20` allowance, `BG-21` charge):
-/// a deduction or addition applied to the whole invoice.
+/// A deduction or addition applied to the whole invoice (`BG-20` allowance, `BG-21` charge).
 /// The `reason` direction tells an allowance from a charge.
 ///
 /// All its amounts are in the invoice currency (`BT-5`).
@@ -15,8 +14,7 @@ pub struct Adjustment {
     pub reason: Option<AdjustmentReason>,
 }
 
-/// A line-level adjustment (`BG-27` allowance, `BG-28` charge):
-/// a deduction or addition applied to one invoice line.
+/// A deduction or addition applied to one invoice line (`BG-27` allowance, `BG-28` charge).
 /// The line carries its own VAT, so no VAT treatment appears here.
 ///
 /// All its amounts are in the invoice currency (`BT-5`).

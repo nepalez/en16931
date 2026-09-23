@@ -171,6 +171,14 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "e079f19b08ca6239f47f8ba8509c11cf3ea30095831f7fed61441475edd8c449"
 
 [[package]]
+name = "en16931-cius"
+version = "0.1.0"
+dependencies = [
+ "en16931-core",
+ "time",
+]
+
+[[package]]
 name = "en16931-core"
 version = "0.1.0"
 dependencies = [
@@ -194,6 +202,7 @@ dependencies = [
 name = "en16931-examples"
 version = "0.1.0"
 dependencies = [
+ "en16931-cius",
  "en16931-core",
  "en16931-iso",
  "en16931-kosit",
@@ -256,6 +265,7 @@ dependencies = [
 name = "en16931-tests"
 version = "0.1.0"
 dependencies = [
+ "en16931-cius",
  "en16931-core",
  "en16931-iso",
  "en16931-kosit",

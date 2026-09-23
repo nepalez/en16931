@@ -18,8 +18,7 @@ pub enum VatPoint {
     Event(VatPointEvent),
 }
 
-/// The VAT point event (`BT-8`, subset of `UNTDID 2005`):
-/// the event that fixes the date the VAT becomes chargeable.
+/// The event that fixes the date the VAT becomes chargeable (`BT-8`, subset of `UNTDID 2005`).
 #[derive(Debug, Clone, Copy, PartialEq, Eq, IntoPrimitive, TryFromPrimitive)]
 #[repr(u16)]
 pub enum VatPointEvent {

@@ -1,8 +1,6 @@
 use crate::{Decimal, NonEmptyString, Percentage, VatCategory};
 
-mod exemption_reason;
-
-pub use exemption_reason::ExemptionReason;
+pub use crate::values::vat_exemption_reason::VatExemptionReason;
 
 /// The VAT treatment of a taxable element.
 /// It includes VAT category with the rate or exemption reason the category admits
@@ -20,7 +18,7 @@ pub enum VatTreatment {
     /// Exempt from VAT (`E`).
     Exempt {
         /// Exemption reason code (`BT-121`).
-        code: Option<ExemptionReason>,
+        code: Option<VatExemptionReason>,
         /// Exemption reason text (`BT-120`).
         text: Option<NonEmptyString>,
     },

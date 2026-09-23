@@ -6,7 +6,7 @@
 //! cargo test -p en16931-phive --test integration -- --ignored
 //! ```
 
-use en16931_core::{Binding, DocumentKind, Entry, Profile, Severity, Target, Wrapper};
+use en16931_core::{Binding, Entry, InvoiceKind, Profile, Severity, Target, Wrapper};
 use en16931_phive::Phive;
 
 // A Peppol invoice with a broken line sum, which trips `BR-CO-10` and `BR-CO-13`.
@@ -20,7 +20,7 @@ fn answer() -> String {
         .vendor_id(Target {
             profile: Profile::PeppolBisBilling30,
             binding: Binding::Ubl,
-            kind: DocumentKind::Invoice,
+            kind: InvoiceKind::Invoice,
         })
         .expect("a rule set for the profile");
     reqwest::blocking::Client::new()

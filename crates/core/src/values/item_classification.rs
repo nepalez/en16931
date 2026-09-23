@@ -5,12 +5,25 @@
 //! * Variant names follow the names and descriptions of [UNCL7143](https://docs.peppol.eu/poacc/billing/3.0/codelist/UNCL7143/).
 
 use crate::Error;
+use crate::NonEmptyString;
 use crate::prelude::*;
 
-/// The item classification scheme (`BT-158`, UNTDID 7143): the external scheme that a
-/// line item classification identifier belongs to.
+/// A code that classifies the item under a registered scheme.
+/// (`BT-158`)
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub struct ItemClassification {
+    /// Classification code (`BT-158`).
+    pub id: Option<NonEmptyString>,
+    /// Scheme (`BT-158-1`).
+    pub scheme: Option<ItemClassificationScheme>,
+    /// Scheme list version (`BT-158-2`).
+    pub version: Option<NonEmptyString>,
+}
+
+/// The external scheme that a line item classification identifier belongs to.
+/// (`BT-158`, UNTDID 7143)
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Display, FromStr)]
-pub enum ItemClassification {
+pub enum ItemClassificationScheme {
     #[display("AA")]
     ProductVersionNumber,
     #[display("AB")]
@@ -383,7 +396,7 @@ pub enum ItemClassification {
     MutuallyDefined,
 }
 
-impl TryFrom<&str> for ItemClassification {
+impl TryFrom<&str> for ItemClassificationScheme {
     type Error = Error;
 
     fn try_from(value: &str) -> Result<Self, Self::Error> {
@@ -397,25 +410,26 @@ mod test {
 
     #[test]
     fn parses_a_known_code() {
-        let scheme: ItemClassification = "HS".parse().expect("HS is a valid item classification");
+        let scheme: ItemClassificationScheme =
+            "HS".parse().expect("HS is a valid item classification");
 
-        assert_eq!(scheme, ItemClassification::HarmonisedSystem);
+        assert_eq!(scheme, ItemClassificationScheme::HarmonisedSystem);
         assert_eq!(scheme.to_string(), "HS");
     }
 
     #[test]
     fn rejects_an_unknown_code() {
-        assert!("XX".parse::<ItemClassification>().is_err());
+        assert!("XX".parse::<ItemClassificationScheme>().is_err());
     }
 
     #[test]
     fn converts_via_try_from() {
         assert_eq!(
-            ItemClassification::try_from("SRV").expect("SRV is a valid item classification"),
-            ItemClassification::GlobalTradeItemNumber
+            ItemClassificationScheme::try_from("SRV").expect("SRV is a valid item classification"),
+            ItemClassificationScheme::GlobalTradeItemNumber
         );
         assert!(matches!(
-            ItemClassification::try_from("XX"),
+            ItemClassificationScheme::try_from("XX"),
             Err(Error::InvalidValue { .. })
         ));
     }

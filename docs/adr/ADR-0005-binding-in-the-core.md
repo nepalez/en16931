@@ -19,15 +19,15 @@ Is an XML binding an extension axis, like a profile or a dialect, or does it bel
 
 ## Decision
 
-> Both bindings live in the core. The core carries [UBL] and [CII] (de)serialization directly. A binding is not an extension axis.
+> Both bindings live in the core. The core carries the [UBL] and [CII] walks as public functions. A binding is not an extension axis.
 
 The binding set is closed and standards-controlled. [Directive 2014/55/EU] mandates a limited list of compliant syntaxes, and [EN-16931] admits exactly these two. A third would need a [CEN] revision and a new binding, not a downstream choice. The current direction, [ViDA], consolidates rather than expands.
 
 So a new binding is far less probable than a new profile, envelope, or dialect that can be added without touching the standard.
 
-The consumer states the binding before writing or parsing a document. The core keeps both bindings behind one closed set, which no downstream crate extends.
+The consumer states the binding before writing or parsing a document. The core keeps both bindings behind one closed set, which no downstream crate extends. Each walk is generic over the invoice traits. A contract for a concrete type calls the walk. No blanket implementation exists, since it would seal an open trait.
 
-A binding marker carries its namespace set as a type of its own and names the root namespace.
+A binding marker carries its namespace set as a type of its own and names the root namespace. The [UBL] root and its namespace depend on the document kind. An invoice and a credit note are different [UBL] documents, while [CII] keeps one root.
 
 ## Alternatives Considered
 

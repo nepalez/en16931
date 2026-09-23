@@ -3,7 +3,7 @@
 use crate::prelude::*;
 use crate::{Error, NonEmptyString};
 
-/// The payment account identifier (`BT-84`): a validated IBAN or another account number.
+/// A validated IBAN or another account number (`BT-84`).
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum AccountNumber {
     Iban(Iban),

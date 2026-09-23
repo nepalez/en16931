@@ -8,7 +8,7 @@ use crate::{BusinessProcess, Profile};
 pub struct DocumentBuilder<I> {
     /// The business document with every fact it carries.
     pub invoice: I,
-    /// The target profile (`BT-24`): stamps the specification identifier and forbids terms.
+    /// Stamps the specification identifier and forbids terms (`BT-24`).
     pub profile: Profile,
     /// Business process type (`BT-23`).
     pub business_process: Option<BusinessProcess>,

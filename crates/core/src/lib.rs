@@ -1,4 +1,4 @@
-//! Core of the EN-16931 toolkit: the semantic model, the two bindings,
+//! Core of the EN-16931 toolkit: the interfaces of the semantic model, the two bindings,
 //! the profiles, and the two extension traits (`Wrapper` and `Normalizer`).
 //!
 //! The crate follows its own semver line.
@@ -11,7 +11,6 @@ mod document;
 mod document_builder;
 mod error;
 mod format;
-mod invalid_document;
 mod invoice;
 mod location;
 mod namespace;
@@ -24,7 +23,6 @@ mod report;
 mod serializable;
 mod target;
 mod term;
-mod valid_document;
 mod values;
 mod wrapper;
 
@@ -32,10 +30,11 @@ pub use binding::Binding;
 pub use context::{Context, Segment};
 pub use deserializable::Deserializable;
 pub use document::Document;
+pub use document::invalid::InvalidDocument;
+pub use document::valid::ValidDocument;
 pub use document_builder::DocumentBuilder;
 pub use error::Error;
 pub use format::{Cii, Dictionary, Format, Parser, Serializer, Ubl, cii, ubl};
-pub use invalid_document::InvalidDocument;
 pub use invoice::*;
 pub use location::{Location, LocationStep, RawNamespace};
 pub use namespace::{Abbreviations, Namespace};
@@ -47,6 +46,5 @@ pub use report::{Problem, Report};
 pub use serializable::Serializable;
 pub use target::Target;
 pub use term::Term;
-pub use valid_document::ValidDocument;
 pub use values::*;
 pub use wrapper::Wrapper;

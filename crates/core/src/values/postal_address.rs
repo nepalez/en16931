@@ -1,6 +1,8 @@
+//! A postal address (`BG-5`/`BG-8`/`BG-12`/`BG-15`).
+
 use crate::{CountryCode, NonEmptyString};
 
-/// A postal address (`BG-5`/`BG-8`/`BG-15`): where a party is located or goods are delivered.
+/// Where a party is located or goods are delivered (`BG-5`/`BG-8`/`BG-12`/`BG-15`).
 ///
 /// The model carries the superset of all profiles,
 /// so a profile may forbid some of these on serialization.
@@ -14,10 +16,10 @@ pub struct PostalAddress {
     pub line3: Option<NonEmptyString>,
     /// City (`BT-37`).
     pub city: Option<NonEmptyString>,
-    /// Country code (`BT-40`).
-    pub country: Option<CountryCode>,
-    /// Country subdivision (`BT-39`).
-    pub country_subdivision: Option<NonEmptyString>,
     /// Post code (`BT-38`).
     pub postal_code: Option<NonEmptyString>,
+    /// Country subdivision (`BT-39`).
+    pub country_subdivision: Option<NonEmptyString>,
+    /// Country code (`BT-40`).
+    pub country: Option<CountryCode>,
 }

@@ -1,9 +1,8 @@
-//! One group of the VAT breakdown of an invoice.
+//! One group of the VAT breakdown (`BG-23`).
 
 use crate::{Decimal, VatTreatment};
 
-/// One group of the VAT breakdown (`BG-23`): a VAT category and rate
-/// with the amounts the issuer states for it.
+/// A VAT category and rate with the amounts the issuer states for it (`BG-23`).
 ///
 /// All its amounts are in the invoice currency (`BT-5`).
 #[derive(Debug, Clone, Default, PartialEq, Eq)]

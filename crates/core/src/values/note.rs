@@ -1,6 +1,8 @@
+//! An invoice note (`BG-1`).
+
 use crate::NonEmptyString;
 
-/// An invoice note (`BG-1`): a free-text remark, optionally tagged with a subject code.
+/// A free-text remark, optionally tagged with a subject code (`BG-1`).
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub struct Note {
     /// Subject code (`BT-21`).

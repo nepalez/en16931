@@ -10,11 +10,12 @@
 //! cargo run -p en16931-examples --example send_invoice
 //! ```
 
+use en16931_cius::{Buyer, Contact, Invoice, InvoiceLine, Item, Seller};
 use en16931_core::{
-    BusinessProcess, Buyer, Contact, CreditTransfer, Document, DocumentBuilder, ElectronicAddress,
-    ElectronicAddressScheme, Invoice, InvoiceLine, Item, LegalEntity, PaymentDetails,
-    PaymentInstructions, PaymentMeans, Percentage, Period, PostalAddress, Price, Profile, Quantity,
-    RawReport, Seller, Ubl, VatBreakdown, VatTreatment,
+    BusinessProcess, CreditTransfer, Document, DocumentBuilder, ElectronicAddress,
+    ElectronicAddressScheme, LegalEntity, PaymentDetails, PaymentInstructions, PaymentMeans,
+    Percentage, Period, PostalAddress, Price, Profile, Quantity, RawReport, Ubl, VatBreakdown,
+    VatTreatment,
 };
 use en16931_iso::Iso;
 use en16931_kosit::Kosit;

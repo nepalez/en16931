@@ -1,8 +1,10 @@
+//! A preceding invoice reference (`BG-3`).
+
 use crate::{Date, NonEmptyString};
 
-/// A preceding invoice reference (`BG-3`): an invoice that this one corrects or relates to.
+/// An invoice that this one corrects or relates to (`BG-3`).
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
-pub struct PrecedingInvoice {
+pub struct InvoiceReference {
     /// Preceding invoice number (`BT-25`).
     pub number: Option<NonEmptyString>,
     /// Preceding invoice issue date (`BT-26`).

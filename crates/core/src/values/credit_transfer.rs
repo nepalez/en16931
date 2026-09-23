@@ -1,6 +1,8 @@
+//! The credit transfer details (`BG-17`).
+
 use crate::{AccountNumber, Bic, NonEmptyString};
 
-/// Credit transfer details (`BG-17`): an account a credit-transfer payment is made to.
+/// An account a credit-transfer payment is made to (`BG-17`).
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub struct CreditTransfer {
     /// Payment account identifier (`BT-84`).

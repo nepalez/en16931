@@ -1,12 +1,11 @@
 use crate::Error;
 use crate::prelude::*;
 
-/// The VAT exemption reason (`BT-121`, CEF `VATEX`):
-/// the legal reason for a VAT exemption.
+/// The legal reason for a VAT exemption (`BT-121`, CEF `VATEX`).
 ///
 /// Source: [EN-16931 codelist](https://github.com/ConnectingEurope/eInvoicing-EN16931/blob/master/ubl/schematron/codelist/EN16931-UBL-codes.sch), rule `BR-CL-22`.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Display, FromStr)]
-pub enum ExemptionReason {
+pub enum VatExemptionReason {
     #[display("VATEX-EU-79-C")]
     Eu79C,
     #[display("VATEX-EU-132")]
@@ -177,7 +176,7 @@ pub enum ExemptionReason {
     FrAe,
 }
 
-impl TryFrom<&str> for ExemptionReason {
+impl TryFrom<&str> for VatExemptionReason {
     type Error = Error;
 
     fn try_from(value: &str) -> Result<Self, Self::Error> {
@@ -191,38 +190,38 @@ mod test {
 
     #[test]
     fn parses_a_known_code() {
-        let reason: ExemptionReason = "VATEX-EU-132"
+        let reason: VatExemptionReason = "VATEX-EU-132"
             .parse()
             .expect("VATEX-EU-132 is a valid exemption reason");
 
-        assert_eq!(reason, ExemptionReason::Eu132);
+        assert_eq!(reason, VatExemptionReason::Eu132);
         assert_eq!(reason.to_string(), "VATEX-EU-132");
     }
 
     #[test]
     fn parses_a_national_code() {
-        let reason: ExemptionReason = "VATEX-FR-298SEXDECIESA"
+        let reason: VatExemptionReason = "VATEX-FR-298SEXDECIESA"
             .parse()
             .expect("a national exemption reason parses");
 
-        assert_eq!(reason, ExemptionReason::Fr298Sexdeciesa);
+        assert_eq!(reason, VatExemptionReason::Fr298Sexdeciesa);
         assert_eq!(reason.to_string(), "VATEX-FR-298SEXDECIESA");
     }
 
     #[test]
     fn rejects_an_unknown_code() {
-        assert!("VATEX-EU-999".parse::<ExemptionReason>().is_err());
+        assert!("VATEX-EU-999".parse::<VatExemptionReason>().is_err());
     }
 
     #[test]
     fn converts_via_try_from() {
         assert_eq!(
-            ExemptionReason::try_from("VATEX-EU-F")
+            VatExemptionReason::try_from("VATEX-EU-F")
                 .expect("VATEX-EU-F is a valid exemption reason"),
-            ExemptionReason::EuF
+            VatExemptionReason::EuF
         );
         assert!(matches!(
-            ExemptionReason::try_from("FOO"),
+            VatExemptionReason::try_from("FOO"),
             Err(Error::InvalidValue { .. })
         ));
     }

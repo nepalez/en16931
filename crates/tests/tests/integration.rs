@@ -11,12 +11,13 @@
 //! cargo test -p en16931-tests --test integration -- --ignored
 //! ```
 
+use en16931_cius::{Buyer, Contact, Invoice, InvoiceLine, Item, Seller};
 use en16931_core::{
-    BusinessProcess, Buyer, Cii, Contact, CreditTransfer, Document, DocumentBuilder,
-    ElectronicAddress, ElectronicAddressScheme, Format, InvalidDocument, Invoice, InvoiceLine,
-    Item, LegalEntity, PaymentDetails, PaymentInstructions, PaymentMeans, Percentage, Period,
-    PostalAddress, Price, Profile, Quantity, RawReport, Seller, Ubl, Unit, ValidDocument,
-    VatBreakdown, VatIdentifier, VatTreatment, Wrapper,
+    BusinessProcess, Cii, CreditTransfer, Document, DocumentBuilder, ElectronicAddress,
+    ElectronicAddressScheme, Format, InvalidDocument, LegalEntity, PaymentDetails,
+    PaymentInstructions, PaymentMeans, Percentage, Period, PostalAddress, Price, Profile, Quantity,
+    QuantityUnit, RawReport, Ubl, ValidDocument, VatBreakdown, VatIdentifier, VatTreatment,
+    Wrapper,
 };
 use en16931_iso::Iso;
 use en16931_kosit::Kosit;
@@ -116,7 +117,7 @@ fn line() -> InvoiceLine {
     InvoiceLine {
         id: Some("1".parse().expect("an id")),
         quantity: Some(Quantity {
-            unit: Unit::from_code("C62").expect("a unit"),
+            unit: QuantityUnit::from_code("C62").expect("a unit"),
             value: Decimal::from(2),
         }),
         net_amount: Some(Decimal::new(20000, 2)),

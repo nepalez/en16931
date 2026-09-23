@@ -1,10 +1,35 @@
+//! The interfaces of the semantic model: the invoice and every group of the standard.
+//!
+//! Each trait names the fields of one group. Each method hands out a unique reference
+//! to one field, so the same method serves both the writing walk and the parsing walk.
+//! The concrete types of the base standard live in the `en16931-cius` crate,
+//! and an extension may implement the traits on types of its own.
+
 use crate::{
-    Adjustment, Amount, Buyer, Currency, Date, Decimal, Delivery, InvoiceLine, InvoiceType,
-    NonEmptyString, Note, ObjectReference, Payee, PaymentInstructions, Period, PrecedingInvoice,
-    Seller, SupportingDocument, TaxRepresentative, VatBreakdown, VatPoint,
+    Adjustment, Amount, Currency, Date, Decimal, InvoiceKind, InvoiceReference, InvoiceType,
+    NonEmptyString, Note, ObjectReference, PaymentInstructions, Period, SupportingDocument,
+    VatBreakdown, VatPoint,
 };
 
-/// This object carries business facts an invoice can describe.
+mod buyer;
+mod contact;
+mod delivery;
+mod item;
+mod line;
+mod payee;
+mod seller;
+mod tax_representative;
+
+pub use buyer::Buyer;
+pub use contact::Contact;
+pub use delivery::Delivery;
+pub use item::Item;
+pub use line::Line;
+pub use payee::Payee;
+pub use seller::Seller;
+pub use tax_representative::TaxRepresentative;
+
+/// The business facts a document can describe.
 ///
 /// Every field but the type code is optional: the model checks the types of the values,
 /// and the external validator checks the completeness of the document.
@@ -13,86 +38,106 @@ use crate::{
 /// The issuer states every amount: the library computes none of them,
 /// and the external validator checks their consistency.
 /// Regulatory-flow fields (`BT-23`, `BT-24`) do not live here but belong to the transport layer.
-#[derive(Debug, Clone, Default, PartialEq, Eq)]
-pub struct Invoice {
+///
+/// Reading through these methods needs exclusive access: a consumer takes the invoice
+/// out of a `Document` by value and works on it as its own.
+pub trait Invoice {
+    /// The type of the seller (`BG-4`).
+    type Seller: Seller;
+    /// The type of the buyer (`BG-7`).
+    type Buyer: Buyer;
+    /// The type of the payee (`BG-10`).
+    type Payee: Payee;
+    /// The type of the seller tax representative (`BG-11`).
+    type TaxRepresentative: TaxRepresentative;
+    /// The type of the delivery information (`BG-13`).
+    type Delivery: Delivery;
+    /// The type of an invoice line (`BG-25`).
+    type Line: Line;
+
+    /// The kind of the invoice, a claim for a payment by default.
+    /// The issuer states it by the business event, apart from the type code.
+    fn kind(&mut self) -> &mut InvoiceKind;
     /// Invoice number (`BT-1`).
-    pub number: Option<NonEmptyString>,
+    fn number(&mut self) -> &mut Option<NonEmptyString>;
     /// Issue date (`BT-2`).
-    pub issue_date: Option<Date>,
+    fn issue_date(&mut self) -> &mut Option<Date>;
     /// Type code (`BT-3`), the commercial invoice by default.
-    pub type_code: InvoiceType,
+    fn type_code(&mut self) -> &mut InvoiceType;
     /// Currency (`BT-5`).
-    pub currency: Option<Currency>,
+    fn currency(&mut self) -> &mut Option<Currency>;
     /// VAT total in the accounting currency (`BT-111`+`BT-6`).
-    pub vat_accounting_total: Option<Amount>,
+    fn vat_accounting_total(&mut self) -> &mut Option<Amount>;
     /// VAT point (`BT-7` date or `BT-8` code).
-    pub vat_point: Option<VatPoint>,
+    fn vat_point(&mut self) -> &mut Option<VatPoint>;
     /// Payment due date (`BT-9`).
-    pub payment_due_date: Option<Date>,
+    fn payment_due_date(&mut self) -> &mut Option<Date>;
     /// Buyer reference (`BT-10`).
-    pub buyer_reference: Option<NonEmptyString>,
+    fn buyer_reference(&mut self) -> &mut Option<NonEmptyString>;
     /// Project reference (`BT-11`).
-    pub project_reference: Option<NonEmptyString>,
+    fn project_reference(&mut self) -> &mut Option<NonEmptyString>;
     /// Contract reference (`BT-12`).
-    pub contract_reference: Option<NonEmptyString>,
+    fn contract_reference(&mut self) -> &mut Option<NonEmptyString>;
     /// Purchase order reference (`BT-13`).
-    pub purchase_order_reference: Option<NonEmptyString>,
+    fn purchase_order_reference(&mut self) -> &mut Option<NonEmptyString>;
     /// Sales order reference (`BT-14`).
-    pub sales_order_reference: Option<NonEmptyString>,
+    fn sales_order_reference(&mut self) -> &mut Option<NonEmptyString>;
     /// Receiving advice reference (`BT-15`).
-    pub receiving_advice_reference: Option<NonEmptyString>,
+    fn receiving_advice_reference(&mut self) -> &mut Option<NonEmptyString>;
     /// Despatch advice reference (`BT-16`).
-    pub despatch_advice_reference: Option<NonEmptyString>,
+    fn despatch_advice_reference(&mut self) -> &mut Option<NonEmptyString>;
     /// Tender or lot reference (`BT-17`).
-    pub tender_or_lot_reference: Option<NonEmptyString>,
+    fn tender_or_lot_reference(&mut self) -> &mut Option<NonEmptyString>;
     /// Invoiced object identifier (`BT-18`).
-    pub object: Option<ObjectReference>,
+    fn object(&mut self) -> &mut Option<ObjectReference>;
     /// Buyer accounting reference (`BT-19`).
-    pub buyer_accounting_reference: Option<NonEmptyString>,
+    fn buyer_accounting_reference(&mut self) -> &mut Option<NonEmptyString>;
     /// Payment terms (`BT-20`).
-    pub payment_terms: Option<NonEmptyString>,
-    /// Notes (`BG-1`).
-    pub notes: Vec<Note>,
-    /// Preceding invoice references (`BG-3`).
-    pub preceding_invoices: Vec<PrecedingInvoice>,
-    /// Seller (`BG-4`).
-    pub seller: Option<Seller>,
-    /// Buyer (`BG-7`).
-    pub buyer: Option<Buyer>,
-    /// Payee (`BG-10`).
-    pub payee: Option<Payee>,
-    /// Seller tax representative (`BG-11`).
-    pub tax_representative: Option<TaxRepresentative>,
-    /// Delivery information (`BG-13`).
-    pub delivery: Option<Delivery>,
+    fn payment_terms(&mut self) -> &mut Option<NonEmptyString>;
     /// Invoicing period (`BG-14`).
-    pub invoicing_period: Option<Period>,
-    /// Document-level allowances and charges (`BG-20`/`BG-21`).
-    pub adjustments: Vec<Adjustment>,
+    fn invoicing_period(&mut self) -> &mut Option<Period>;
+
     /// Sum of line net amounts (`BT-106`).
-    pub line_net_total: Option<Decimal>,
+    fn line_net_total(&mut self) -> &mut Option<Decimal>;
     /// Sum of document-level allowances (`BT-107`).
-    pub allowances_total: Option<Decimal>,
+    fn allowances_total(&mut self) -> &mut Option<Decimal>;
     /// Sum of document-level charges (`BT-108`).
-    pub charges_total: Option<Decimal>,
+    fn charges_total(&mut self) -> &mut Option<Decimal>;
     /// Total without VAT (`BT-109`).
-    pub net_total: Option<Decimal>,
+    fn net_total(&mut self) -> &mut Option<Decimal>;
     /// Total VAT amount (`BT-110`).
-    pub vat_total: Option<Decimal>,
+    fn vat_total(&mut self) -> &mut Option<Decimal>;
     /// Total with VAT (`BT-112`).
-    pub gross_total: Option<Decimal>,
-    /// Rounding amount (`BT-114`).
-    pub rounding: Option<Decimal>,
-    /// Payment instructions (`BG-16`).
-    pub payment: Option<PaymentInstructions>,
+    fn gross_total(&mut self) -> &mut Option<Decimal>;
     /// Paid amount (`BT-113`).
-    pub paid: Option<Decimal>,
+    fn paid(&mut self) -> &mut Option<Decimal>;
+    /// Rounding amount (`BT-114`).
+    fn rounding(&mut self) -> &mut Option<Decimal>;
     /// Amount due for payment (`BT-115`).
-    pub due: Option<Decimal>,
+    fn due(&mut self) -> &mut Option<Decimal>;
+
+    /// Notes (`BG-1`).
+    fn notes(&mut self) -> &mut Vec<Note>;
+    /// Preceding invoice references (`BG-3`).
+    fn preceding_invoices(&mut self) -> &mut Vec<InvoiceReference>;
+    /// Seller (`BG-4`).
+    fn seller(&mut self) -> &mut Option<Self::Seller>;
+    /// Buyer (`BG-7`).
+    fn buyer(&mut self) -> &mut Option<Self::Buyer>;
+    /// Payee (`BG-10`).
+    fn payee(&mut self) -> &mut Option<Self::Payee>;
+    /// Seller tax representative (`BG-11`).
+    fn tax_representative(&mut self) -> &mut Option<Self::TaxRepresentative>;
+    /// Delivery information (`BG-13`).
+    fn delivery(&mut self) -> &mut Option<Self::Delivery>;
+    /// Payment instructions (`BG-16`).
+    fn payment(&mut self) -> &mut Option<PaymentInstructions>;
+    /// Document-level allowances and charges (`BG-20`/`BG-21`).
+    fn adjustments(&mut self) -> &mut Vec<Adjustment>;
     /// VAT breakdown (`BG-23`).
-    pub vat_breakdown: Vec<VatBreakdown>,
+    fn vat_breakdown(&mut self) -> &mut Vec<VatBreakdown>;
     /// Additional supporting documents (`BG-24`).
-    pub supporting_documents: Vec<SupportingDocument>,
+    fn supporting_documents(&mut self) -> &mut Vec<SupportingDocument>;
     /// Invoice lines (`BG-25`).
-    pub lines: Vec<InvoiceLine>,
+    fn lines(&mut self) -> &mut Vec<Self::Line>;
 }

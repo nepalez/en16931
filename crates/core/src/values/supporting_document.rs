@@ -1,7 +1,8 @@
+//! An additional supporting document (`BG-24`).
+
 use crate::{BinaryObject, NonEmptyString, Url};
 
-/// An additional supporting document (`BG-24`):
-/// a referenced, linked, or embedded document.
+/// A referenced, linked, or embedded document (`BG-24`).
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub struct SupportingDocument {
     /// Reference (`BT-122`).

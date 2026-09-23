@@ -6,7 +6,7 @@
 use crate::Error;
 use crate::prelude::*;
 
-/// The payment means (`BT-81`): how the payment is made.
+/// How the payment is made (`BT-81`).
 ///
 /// The set is the EN-16931 subset of UNCL4461, enforced by `BR-CL-16`. Besides the
 /// numeric codes it admits `ZZZ` (mutually defined), so the codes are kept as strings.

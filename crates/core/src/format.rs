@@ -6,9 +6,6 @@ pub(crate) mod parser;
 pub(crate) mod serializer;
 pub(crate) mod trace;
 
-#[cfg(test)]
-pub(crate) mod test_helpers;
-
 pub mod cii;
 pub mod ubl;
 

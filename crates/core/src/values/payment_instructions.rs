@@ -1,6 +1,8 @@
-use crate::{CreditTransfer, DirectDebit, NonEmptyString, PaymentCard, PaymentMeans};
+//! The payment instructions (`BG-16`).
 
-/// Payment instructions (`BG-16`): how the invoice is to be paid.
+use crate::{NonEmptyString, PaymentDetails, PaymentMeans};
+
+/// How the invoice is to be paid (`BG-16`).
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub struct PaymentInstructions {
     /// Payment means type code (`BT-81`).
@@ -9,18 +11,6 @@ pub struct PaymentInstructions {
     pub means_text: Option<NonEmptyString>,
     /// Remittance information (`BT-83`).
     pub remittance_information: Option<NonEmptyString>,
-    /// Payment details (`BG-17`/`BG-18`/`BG-19`): at most one kind, keyed by the payment means.
+    /// At most one kind of payment details, keyed by the payment means (`BG-17`/`BG-18`/`BG-19`).
     pub details: Option<PaymentDetails>,
-}
-
-/// The means-specific payment details (`BG-17`/`BG-18`/`BG-19`):
-/// exactly one applies, chosen by the payment means code (`BT-81`).
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub enum PaymentDetails {
-    /// Credit transfer details (`BG-17`).
-    CreditTransfers(Vec<CreditTransfer>),
-    /// Payment card information (`BG-18`).
-    Card(PaymentCard),
-    /// Direct debit details (`BG-19`).
-    DirectDebit(DirectDebit),
 }

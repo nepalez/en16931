@@ -2,7 +2,7 @@
 
 use crate::{Error, MimeCode, NonEmptyString};
 
-/// A binary object (`BT-125`): an embedded document, its media type, and its filename.
+/// An embedded document, its media type, and its filename (`BT-125`).
 ///
 /// The content holds the raw bytes and is base64-encoded only at serialization. It must be
 /// non-empty. The media type and filename are mandatory whenever a binary object is present.

@@ -5,5 +5,8 @@ use crate::{Format, Namespace};
 pub trait Serializable<F: Format, N: Namespace + From<F::Namespace>>: Sized {
     /// Writes the whole document of the builder into the serializer, from the root element down,
     /// filling the dictionary and the abbreviation table in the same pass.
-    fn serialize(serializer: &mut Serializer<F, N>, builder: &DocumentBuilder<Self>);
+    ///
+    /// The builder is taken exclusively because the model hands out its fields
+    /// through unique references only. The walk leaves the content unchanged.
+    fn serialize(serializer: &mut Serializer<F, N>, builder: &mut DocumentBuilder<Self>);
 }

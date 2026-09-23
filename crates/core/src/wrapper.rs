@@ -26,7 +26,7 @@ pub trait Wrapper {
 #[cfg(test)]
 mod test {
     use super::*;
-    use crate::{Binding, DocumentKind, Profile};
+    use crate::{Binding, InvoiceKind, Profile};
 
     // A wrapper of a service that selects its rule set outside the request body.
     struct Routed;
@@ -44,7 +44,7 @@ mod test {
         let target = Target {
             profile: Profile::En16931,
             binding: Binding::Ubl,
-            kind: DocumentKind::CreditNote,
+            kind: InvoiceKind::CreditNote,
         };
 
         let outcome = Routed.vendor_id(target);

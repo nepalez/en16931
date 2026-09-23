@@ -3,7 +3,7 @@
 use crate::Error;
 use crate::prelude::*;
 
-/// The business process type (`BT-23`): the process context a document targets.
+/// The process context a document targets (`BT-23`).
 ///
 /// The value is an identifier, usually a URN like `urn:fdc:peppol.eu:2017:poacc:billing:01:1.0`.
 /// The allowed set is open and profile-specific.

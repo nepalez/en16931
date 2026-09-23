@@ -1,16 +1,16 @@
-use crate::{
-    Buyer, Contact, ElectronicAddress, LegalEntity, NonEmptyString, OperationalEntity,
-    PostalAddress, VatIdentifier,
-};
+//! The seller of the base invoice (`BG-4`).
 
-/// The seller (`BG-4`): the party that issues the invoice and supplies the goods or services.
+use crate::prelude::*;
+use crate::{Buyer, Contact};
+
+/// The party that issues the invoice and supplies the goods or services (`BG-4`).
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub struct Seller {
     /// Seller name (`BT-27`).
     pub name: Option<NonEmptyString>,
     /// Seller trading name (`BT-28`).
     pub trading_name: Option<NonEmptyString>,
-    /// Seller identifiers (`BT-29`): alternative identifiers of the same party.
+    /// Alternative identifiers of the same party (`BT-29`).
     pub identifiers: Vec<OperationalEntity>,
     /// Seller legal registration (`BT-30`).
     pub legal_entity: Option<LegalEntity>,
@@ -26,6 +26,50 @@ pub struct Seller {
     pub address: Option<PostalAddress>,
     /// Seller contact (`BG-6`).
     pub contact: Option<Contact>,
+}
+
+impl crate::prelude::Seller for Seller {
+    type Contact = Contact;
+
+    fn name(&mut self) -> &mut Option<NonEmptyString> {
+        &mut self.name
+    }
+
+    fn trading_name(&mut self) -> &mut Option<NonEmptyString> {
+        &mut self.trading_name
+    }
+
+    fn identifiers(&mut self) -> &mut Vec<OperationalEntity> {
+        &mut self.identifiers
+    }
+
+    fn legal_entity(&mut self) -> &mut Option<LegalEntity> {
+        &mut self.legal_entity
+    }
+
+    fn vat(&mut self) -> &mut Option<VatIdentifier> {
+        &mut self.vat
+    }
+
+    fn tax_registration(&mut self) -> &mut Option<NonEmptyString> {
+        &mut self.tax_registration
+    }
+
+    fn additional_legal_information(&mut self) -> &mut Option<NonEmptyString> {
+        &mut self.additional_legal_information
+    }
+
+    fn electronic_address(&mut self) -> &mut Option<ElectronicAddress> {
+        &mut self.electronic_address
+    }
+
+    fn address(&mut self) -> &mut Option<PostalAddress> {
+        &mut self.address
+    }
+
+    fn contact(&mut self) -> &mut Option<Contact> {
+        &mut self.contact
+    }
 }
 
 /// Re-casts the same organization from the buyer role into the seller role (a resale).

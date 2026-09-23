@@ -6,7 +6,7 @@
 use crate::Error;
 use crate::prelude::*;
 
-/// The electronic address scheme (`BT-34`/`BT-49`, CEF EAS): the scheme of an endpoint identifier.
+/// The scheme of an endpoint identifier (`BT-34`/`BT-49`, CEF EAS).
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Display, FromStr)]
 pub enum ElectronicAddressScheme {
     #[display("0002")]

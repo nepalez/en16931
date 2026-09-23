@@ -1,6 +1,8 @@
+//! The payment card information (`BG-18`).
+
 use crate::NonEmptyString;
 
-/// Payment card information (`BG-18`): the card a payment is made with.
+/// The card a payment is made with (`BG-18`).
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub struct PaymentCard {
     /// Payment card primary account number (`BT-87`), usually masked to the last digits.
