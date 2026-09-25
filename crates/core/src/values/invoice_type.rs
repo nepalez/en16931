@@ -84,7 +84,7 @@ pub enum InvoiceType {
 /// The issuer decides the kind by the business event, before it picks the type code (`BT-3`),
 /// and the external validator checks that the kind, the type code, and the amounts agree.
 /// The default is an invoice.
-#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, VariantArray)]
 pub enum InvoiceKind {
     /// A claim for a payment.
     #[default]

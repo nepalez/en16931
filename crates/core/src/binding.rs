@@ -1,5 +1,5 @@
 use crate::prelude::*;
-use crate::{Cii, Error, Format, Namespace, Ubl};
+use crate::{Cii, Error, Format, InvoiceKind, Namespace, Ubl};
 
 /// A serialization binding: one of the two EN-16931 XML syntaxes.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -30,9 +30,12 @@ impl Binding {
             return Err(Error::malformed_xml("the root element has no namespace"));
         };
         let uri = uri.into_inner();
-        if uri == Ubl::root_namespace().uri().as_bytes() {
+        if InvoiceKind::VARIANTS
+            .iter()
+            .any(|kind| uri == Ubl::root_namespace(*kind).uri().as_bytes())
+        {
             Ok(Self::Ubl)
-        } else if uri == Cii::root_namespace().uri().as_bytes() {
+        } else if uri == Cii::root_namespace(InvoiceKind::default()).uri().as_bytes() {
             Ok(Self::Cii)
         } else {
             Err(Error::malformed_xml(format!(
@@ -51,6 +54,13 @@ mod test {
     fn detects_the_ubl_binding_from_its_root() {
         let xml =
             r#"<Invoice xmlns="urn:oasis:names:specification:ubl:schema:xsd:Invoice-2"></Invoice>"#;
+
+        assert_eq!(Binding::detect(xml).expect("a UBL document"), Binding::Ubl);
+    }
+
+    #[test]
+    fn detects_the_ubl_binding_from_a_credit_note_root() {
+        let xml = r#"<CreditNote xmlns="urn:oasis:names:specification:ubl:schema:xsd:CreditNote-2"></CreditNote>"#;
 
         assert_eq!(Binding::detect(xml).expect("a UBL document"), Binding::Ubl);
     }

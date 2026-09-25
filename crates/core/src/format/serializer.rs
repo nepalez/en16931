@@ -2,7 +2,7 @@ use super::Trace;
 use crate::prelude::{
     BytesEnd, BytesStart, BytesText, Event, NonZeroUsize, PhantomData, VariantArray, Writer,
 };
-use crate::{Abbreviations, Dictionary, Term};
+use crate::{Abbreviations, Dictionary, InvoiceKind, Term};
 use crate::{Format, Namespace};
 
 /// The stateful writer of the binding `F`, handed to a `Serializable` walk.
@@ -40,13 +40,19 @@ impl<F: Format, N: Namespace + From<F::Namespace>> Serializer<F, N> {
         self.forbidden.contains(&term)
     }
 
-    // Writes the root element of the binding, declaring every namespace of its set,
-    // and records it at the root context.
-    pub(crate) fn root(&mut self, body: impl FnOnce(&mut Self)) {
-        let declarations: Vec<(String, &'static str)> = F::Namespace::VARIANTS
+    // Writes the root element of a document of the given kind, declaring its own namespace
+    // and every prefixed namespace of the set, and records it at the root context.
+    pub(crate) fn root(&mut self, kind: InvoiceKind, body: impl FnOnce(&mut Self)) {
+        let root_namespace = N::from(F::root_namespace(kind));
+        let root_element = F::root_element(kind);
+        let declared: Vec<N> = F::Namespace::VARIANTS
+            .iter()
+            .map(|namespace| N::from(*namespace))
+            .filter(|namespace| *namespace == root_namespace || !namespace.prefix().is_empty())
+            .collect();
+        let declarations: Vec<(String, &'static str)> = declared
             .iter()
             .map(|namespace| {
-                let namespace = N::from(*namespace);
                 let prefix = namespace.prefix();
                 let key = if prefix.is_empty() {
                     "xmlns".to_owned()
@@ -56,23 +62,21 @@ impl<F: Format, N: Namespace + From<F::Namespace>> Serializer<F, N> {
                 (key, namespace.uri())
             })
             .collect();
-        let root_namespace = N::from(F::root_namespace());
-        let root = BytesStart::new(qname(root_namespace, F::ROOT_ELEMENT))
+        let root = BytesStart::new(qname(root_namespace, root_element))
             .with_attributes(declarations.iter().map(|(key, uri)| (key.as_str(), *uri)));
         self.write(Event::Start(root));
-        for namespace in F::Namespace::VARIANTS {
-            let namespace = N::from(*namespace);
+        for namespace in declared {
             self.abbreviations
                 .declare(namespace.prefix(), namespace)
                 .expect("the writer binds each abbreviation to one namespace");
         }
-        self.trace.enter(root_namespace, F::ROOT_ELEMENT);
+        self.trace.enter(root_namespace, root_element);
         self.trace.record_root();
         body(self);
         self.trace.leave();
         self.write(Event::End(BytesEnd::new(qname(
             root_namespace,
-            F::ROOT_ELEMENT,
+            root_element,
         ))));
     }
 
@@ -166,6 +170,26 @@ impl<F: Format, N: Namespace + From<F::Namespace>> Serializer<F, N> {
         self.trace.record_context();
         self.write_element(namespace, name, &[], value);
         self.trace.pop_context();
+        self.trace.leave();
+    }
+
+    // Writes a term-bearing leaf mapped to a field of the invoice itself from inside a group,
+    // skipped when the profile forbids the term.
+    pub(crate) fn header_leaf(
+        &mut self,
+        namespace: impl Into<N>,
+        name: &str,
+        field: &'static str,
+        term: Term,
+        value: &str,
+    ) {
+        if self.forbids(term) {
+            return;
+        }
+        let namespace = namespace.into();
+        self.trace.enter(namespace, name);
+        self.trace.record_header(field);
+        self.write_element(namespace, name, &[], value);
         self.trace.leave();
     }
 

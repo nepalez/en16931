@@ -145,6 +145,24 @@ impl<F: Format, N: Namespace + From<F::Namespace>> Parser<F, N> {
         Ok(text)
     }
 
+    // Reads a leaf mapped to a field of the invoice itself from inside a group,
+    // returning its text.
+    pub(crate) fn header_leaf(
+        &mut self,
+        namespace: impl Into<N>,
+        name: &str,
+        field: &'static str,
+    ) -> Result<String, Error> {
+        let namespace = namespace.into();
+        self.take_open(namespace, name)?;
+        self.trace.enter(namespace, name);
+        self.trace.record_header(field);
+        let text = self.take_text();
+        self.take_close()?;
+        self.trace.leave();
+        Ok(text)
+    }
+
     // Reads a regulatory leaf recorded at the root context.
     pub(crate) fn rooted(&mut self, namespace: impl Into<N>, name: &str) -> Result<String, Error> {
         let namespace = namespace.into();

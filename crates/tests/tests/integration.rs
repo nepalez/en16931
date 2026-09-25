@@ -14,9 +14,10 @@
 use en16931_cius::{Buyer, Contact, Invoice, InvoiceLine, Item, Seller};
 use en16931_core::{
     BusinessProcess, Cii, CreditTransfer, Document, DocumentBuilder, ElectronicAddress,
-    ElectronicAddressScheme, Envelope, Format, InvalidDocument, LegalEntity, PaymentDetails,
-    PaymentInstructions, PaymentMeans, Percentage, Period, PostalAddress, Price, Profile, Quantity,
-    QuantityUnit, RawReport, Ubl, ValidDocument, VatBreakdown, VatIdentifier, VatTreatment,
+    ElectronicAddressScheme, Envelope, Format, InvalidDocument, InvoiceKind, LegalEntity,
+    PaymentDetails, PaymentInstructions, PaymentMeans, Percentage, Period, PostalAddress, Price,
+    Profile, Quantity, QuantityUnit, RawReport, Ubl, ValidDocument, VatBreakdown, VatIdentifier,
+    VatTreatment,
 };
 use en16931_iso::Iso;
 use en16931_kosit::Kosit;
@@ -269,6 +270,25 @@ fn reports_a_missing_buyer_reference_as_a_finding_of_phive() {
         checked.is_err(),
         "phive should report the missing buyer reference as a finding"
     );
+}
+
+#[test]
+#[ignore = "requires live validators (cargo make env-up)"]
+fn binds_the_answer_of_phive_to_the_peppol_credit_note() {
+    let serialized = Document::<Invoice, Ubl>::try_from(DocumentBuilder {
+        invoice: Invoice {
+            kind: InvoiceKind::CreditNote,
+            type_code: "381".parse().expect("a type code"),
+            ..invoice()
+        },
+        profile: Profile::PeppolBisBilling30,
+        business_process: business_process(),
+    })
+    .expect("a document");
+    let answer = phive_answer(&serialized);
+
+    // Whatever the verdict, every finding of the validator binds to the credit note.
+    let _ = outcome(serialized, &Phive, &answer);
 }
 
 #[test]

@@ -1,16 +1,16 @@
 //! The UBL parsing walk, generic over the interfaces of the semantic model.
 
-use super::{Namespace, Token};
+use super::{Namespace, Token, line_element, quantity_element, type_code_element};
 use crate::Format;
 use crate::prelude::*;
 use crate::{
     Adjustment, AdjustmentAmount, AdjustmentReason, Amount, BinaryObject, Buyer, Contact,
     CreditTransfer, Delivery, DirectDebit, DocumentBuilder, ElectronicAddress, Error, Invoice,
-    InvoiceReference, Item, ItemAttribute, ItemClassification, LegalEntity, Line, LineAdjustment,
-    LocationReference, MimeCode, NonEmptyString, Note, ObjectReference, OperationalEntity, Parser,
-    Payee, PaymentCard, PaymentDetails, PaymentInstructions, Percentage, Period, PostalAddress,
-    Price, Quantity, QuantityUnit, Seller, SupportingDocument, TaxRepresentative, Ubl,
-    VatBreakdown, VatCategory, VatExemptionReason, VatPoint, VatTreatment,
+    InvoiceKind, InvoiceReference, Item, ItemAttribute, ItemClassification, LegalEntity, Line,
+    LineAdjustment, LocationReference, MimeCode, NonEmptyString, Note, ObjectReference,
+    OperationalEntity, Parser, Payee, PaymentCard, PaymentDetails, PaymentInstructions, Percentage,
+    Period, PostalAddress, Price, Quantity, QuantityUnit, Seller, SupportingDocument,
+    TaxRepresentative, Ubl, VatBreakdown, VatCategory, VatExemptionReason, VatPoint, VatTreatment,
 };
 
 /// Reads the whole document from the parser into a builder, from the root element down,
@@ -34,7 +34,16 @@ where
     <I::Line as Line>::Item: Default,
     N: crate::Namespace + From<Namespace>,
 {
-    parser.enter_structural(Ubl::root_namespace(), Ubl::ROOT_ELEMENT)?;
+    let credit_note = InvoiceKind::CreditNote;
+    let kind = if parser.is_open(
+        Ubl::root_namespace(credit_note),
+        Ubl::root_element(credit_note),
+    ) {
+        credit_note
+    } else {
+        InvoiceKind::Invoice
+    };
+    parser.enter_structural(Ubl::root_namespace(kind), Ubl::root_element(kind))?;
 
     let profile = parser.rooted(Namespace::Cbc, "CustomizationID")?.parse()?;
     let business_process = if parser.is_open(Namespace::Cbc, "ProfileID") {
@@ -44,12 +53,18 @@ where
     };
 
     let mut invoice = I::default();
+    *invoice.kind() = kind;
     *invoice.number() = parser.optional_leaf(Namespace::Cbc, "ID", "number")?;
     *invoice.issue_date() = parser.optional_date(Namespace::Cbc, "IssueDate", "issue_date")?;
-    *invoice.payment_due_date() =
-        parser.optional_date(Namespace::Cbc, "DueDate", "payment_due_date")?;
+    if kind == InvoiceKind::Invoice {
+        *invoice.payment_due_date() =
+            parser.optional_date(Namespace::Cbc, "DueDate", "payment_due_date")?;
+    }
+    if kind == InvoiceKind::CreditNote {
+        parser.parse_tax_point(&mut invoice)?;
+    }
     *invoice.type_code() = parser
-        .leaf(Namespace::Cbc, "InvoiceTypeCode", "type_code")?
+        .leaf(Namespace::Cbc, type_code_element(kind), "type_code")?
         .parse()?;
 
     while parser.is_open(Namespace::Cbc, "Note") {
@@ -59,12 +74,8 @@ where
         invoice.notes().push(note);
     }
 
-    if parser.is_open(Namespace::Cbc, "TaxPointDate") {
-        *invoice.vat_point() = Some(VatPoint::Date(parse_date(&parser.leaf(
-            Namespace::Cbc,
-            "TaxPointDate",
-            "vat_point",
-        )?)?));
+    if kind == InvoiceKind::Invoice {
+        parser.parse_tax_point(&mut invoice)?;
     }
 
     *invoice.currency() = parser
@@ -119,11 +130,9 @@ where
         "ReceiptDocumentReference",
         "receiving_advice_reference",
     )?;
-    *invoice.tender_or_lot_reference() = parser.optional_reference(
-        Namespace::Cac,
-        "OriginatorDocumentReference",
-        "tender_or_lot_reference",
-    )?;
+    if kind == InvoiceKind::Invoice {
+        parser.parse_originator_reference(&mut invoice)?;
+    }
     *invoice.contract_reference() = parser.optional_reference(
         Namespace::Cac,
         "ContractDocumentReference",
@@ -131,11 +140,16 @@ where
     )?;
 
     while parser.is_open(Namespace::Cac, "AdditionalDocumentReference") {
-        parser.parse_additional_document(&mut invoice)?;
+        parser.parse_additional_document(&mut invoice, kind)?;
     }
 
-    *invoice.project_reference() =
-        parser.optional_reference(Namespace::Cac, "ProjectReference", "project_reference")?;
+    if kind == InvoiceKind::CreditNote {
+        parser.parse_originator_reference(&mut invoice)?;
+    }
+    if kind == InvoiceKind::Invoice {
+        *invoice.project_reference() =
+            parser.optional_reference(Namespace::Cac, "ProjectReference", "project_reference")?;
+    }
 
     if parser.is_open(Namespace::Cac, "AccountingSupplierParty") {
         *invoice.seller() = Some(parser.parse_supplier_party()?);
@@ -153,7 +167,17 @@ where
         *invoice.delivery() = Some(parser.parse_delivery()?);
     }
     if parser.is_open(Namespace::Cac, "PaymentMeans") {
-        *invoice.payment() = Some(parser.parse_payment_means()?);
+        if kind == InvoiceKind::CreditNote && parser.is_due_date_carrier() {
+            parser.enter_structural(Namespace::Cac, "PaymentMeans")?;
+            *invoice.payment_due_date() = parser.optional_payment_due_date()?;
+            parser.leave_structural()?;
+        } else {
+            let (payment, due) = parser.parse_payment_means(kind)?;
+            *invoice.payment() = Some(payment);
+            if kind == InvoiceKind::CreditNote {
+                *invoice.payment_due_date() = due;
+            }
+        }
     }
     if parser.is_open(Namespace::Cac, "PaymentTerms") {
         *invoice.payment_terms() = parser.parse_payment_terms()?;
@@ -177,9 +201,9 @@ where
         parser.parse_legal_monetary_total(&mut invoice)?;
     }
 
-    while parser.is_open(Namespace::Cac, "InvoiceLine") {
+    while parser.is_open(Namespace::Cac, line_element(kind)) {
         let instance = index(invoice.lines().len());
-        let line = parser.parse_line(instance)?;
+        let line = parser.parse_line(instance, kind)?;
         invoice.lines().push(line);
     }
 
@@ -248,10 +272,39 @@ impl<N: crate::Namespace + From<Namespace>> Parser<Ubl, N> {
         Ok(InvoiceReference { number, issue_date })
     }
 
-    // Parses one additional document reference into the object or a supporting document.
-    fn parse_additional_document<I: Invoice>(&mut self, invoice: &mut I) -> Result<(), Error> {
-        // Peek to know whether it is the invoiced object before committing an instance index.
-        let is_object = self.peek_child_text("DocumentTypeCode").as_deref() == Some("130");
+    // Parses the VAT point date (`BT-7`), when present.
+    fn parse_tax_point<I: Invoice>(&mut self, invoice: &mut I) -> Result<(), Error> {
+        if self.is_open(Namespace::Cbc, "TaxPointDate") {
+            *invoice.vat_point() = Some(VatPoint::Date(parse_date(&self.leaf(
+                Namespace::Cbc,
+                "TaxPointDate",
+                "vat_point",
+            )?)?));
+        }
+        Ok(())
+    }
+
+    // Parses the tender or lot reference (`BT-17`), when present.
+    fn parse_originator_reference<I: Invoice>(&mut self, invoice: &mut I) -> Result<(), Error> {
+        *invoice.tender_or_lot_reference() = self.optional_reference(
+            Namespace::Cac,
+            "OriginatorDocumentReference",
+            "tender_or_lot_reference",
+        )?;
+        Ok(())
+    }
+
+    // Parses one additional document reference into the object, the project reference
+    // of a credit note, or a supporting document.
+    fn parse_additional_document<I: Invoice>(
+        &mut self,
+        invoice: &mut I,
+        kind: InvoiceKind,
+    ) -> Result<(), Error> {
+        // Peek the document type before committing an instance index.
+        let code = self.peek_child_text("DocumentTypeCode");
+        let is_object = code.as_deref() == Some("130");
+        let is_project = kind == InvoiceKind::CreditNote && code.as_deref() == Some("50");
         if is_object {
             self.enter_group(Namespace::Cac, "AdditionalDocumentReference", "object")?;
             let mut id = None;
@@ -266,6 +319,18 @@ impl<N: crate::Namespace + From<Namespace>> Parser<Ubl, N> {
             self.derived(Namespace::Cbc, "DocumentTypeCode")?;
             self.leave_group()?;
             *invoice.object() = Some(ObjectReference { id, scheme });
+        } else if is_project {
+            self.enter_group(
+                Namespace::Cac,
+                "AdditionalDocumentReference",
+                "project_reference",
+            )?;
+            *invoice.project_reference() = Some(
+                self.leaf(Namespace::Cbc, "ID", "project_reference")?
+                    .parse()?,
+            );
+            self.derived(Namespace::Cbc, "DocumentTypeCode")?;
+            self.leave_group()?;
         } else {
             let instance = index(invoice.supporting_documents().len());
             self.enter_repeatable(
@@ -443,8 +508,37 @@ impl<N: crate::Namespace + From<Namespace>> Parser<Ubl, N> {
         Ok(delivery)
     }
 
-    // Parses the payment means.
-    fn parse_payment_means(&mut self) -> Result<PaymentInstructions, Error> {
+    // Whether the payment means at the cursor carries nothing but the payment due date,
+    // as a credit note without payment instructions states it.
+    fn is_due_date_carrier(&self) -> bool {
+        let due = N::from(Namespace::Cbc);
+        let mut tokens = self.tokens.iter().skip(self.cursor + 1);
+        matches!(
+            tokens.next(),
+            Some(Token::Open { namespace, name, .. }) if *namespace == due && name == "PaymentDueDate"
+        ) && matches!(tokens.next(), Some(Token::Text(_)))
+            && matches!(tokens.next(), Some(Token::Close))
+            && matches!(tokens.next(), Some(Token::Close))
+    }
+
+    // Reads the payment due date (`BT-9`) of a credit note from inside its payment means.
+    fn optional_payment_due_date(&mut self) -> Result<Option<Date>, Error> {
+        if self.is_open(Namespace::Cbc, "PaymentDueDate") {
+            Ok(Some(parse_date(&self.header_leaf(
+                Namespace::Cbc,
+                "PaymentDueDate",
+                "payment_due_date",
+            )?)?))
+        } else {
+            Ok(None)
+        }
+    }
+
+    // Parses the payment means, with the payment due date (`BT-9`) of a credit note.
+    fn parse_payment_means(
+        &mut self,
+        kind: InvoiceKind,
+    ) -> Result<(PaymentInstructions, Option<Date>), Error> {
         self.enter_group(Namespace::Cac, "PaymentMeans", "payment")?;
         let mut means = None;
         let mut means_text = None;
@@ -457,6 +551,10 @@ impl<N: crate::Namespace + From<Namespace>> Parser<Ubl, N> {
                 None => None,
             };
         }
+        let due = match kind {
+            InvoiceKind::Invoice => None,
+            InvoiceKind::CreditNote => self.optional_payment_due_date()?,
+        };
         let remittance_information =
             self.optional_leaf(Namespace::Cbc, "PaymentID", "remittance_information")?;
         let details = if self.is_open(Namespace::Cac, "PayeeFinancialAccount") {
@@ -473,12 +571,13 @@ impl<N: crate::Namespace + From<Namespace>> Parser<Ubl, N> {
             None
         };
         self.leave_group()?;
-        Ok(PaymentInstructions {
+        let payment = PaymentInstructions {
             means,
             means_text,
             remittance_information,
             details,
-        })
+        };
+        Ok((payment, due))
     }
 
     fn parse_credit_transfer(&mut self) -> Result<CreditTransfer, Error> {
@@ -772,16 +871,20 @@ impl<N: crate::Namespace + From<Namespace>> Parser<Ubl, N> {
     }
 
     // Parses one invoice line.
-    fn parse_line<L: Line + Default>(&mut self, instance: NonZeroUsize) -> Result<L, Error>
+    fn parse_line<L: Line + Default>(
+        &mut self,
+        instance: NonZeroUsize,
+        kind: InvoiceKind,
+    ) -> Result<L, Error>
     where
         L::Item: Default,
     {
-        self.enter_repeatable(Namespace::Cac, "InvoiceLine", "lines", instance)?;
+        self.enter_repeatable(Namespace::Cac, line_element(kind), "lines", instance)?;
         let mut line = L::default();
         *line.id() = self.optional_leaf(Namespace::Cbc, "ID", "id")?;
         *line.note() = self.optional_leaf(Namespace::Cbc, "Note", "note")?;
         *line.quantity() = self
-            .optional_leaf_attr(Namespace::Cbc, "InvoicedQuantity", "quantity")?
+            .optional_leaf_attr(Namespace::Cbc, quantity_element(kind), "quantity")?
             .map(|(attributes, text)| parse_quantity(&attributes, &text))
             .transpose()?;
         *line.net_amount() = self

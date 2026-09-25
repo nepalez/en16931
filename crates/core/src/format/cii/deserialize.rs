@@ -36,7 +36,8 @@ where
     <I::Line as Line>::Item: Default,
     N: crate::Namespace + From<Namespace>,
 {
-    parser.enter_structural(Cii::root_namespace(), Cii::ROOT_ELEMENT)?;
+    let kind = InvoiceKind::default();
+    parser.enter_structural(Cii::root_namespace(kind), Cii::root_element(kind))?;
 
     let (profile, business_process) = parser.exchanged_document_context()?;
     let mut invoice = I::default();

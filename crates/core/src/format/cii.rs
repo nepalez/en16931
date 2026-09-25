@@ -2,6 +2,7 @@ mod deserialize;
 mod serialize;
 
 use super::{Format, Sealed, Token};
+use crate::InvoiceKind;
 use crate::prelude::*;
 
 pub use deserialize::deserialize;
@@ -17,11 +18,13 @@ impl Sealed for Cii {}
 impl Format for Cii {
     type Namespace = Namespace;
 
-    const ROOT_ELEMENT: &'static str = "CrossIndustryInvoice";
-
     const BINDING: crate::Binding = crate::Binding::Cii;
 
-    fn root_namespace() -> Namespace {
+    fn root_element(_kind: InvoiceKind) -> &'static str {
+        "CrossIndustryInvoice"
+    }
+
+    fn root_namespace(_kind: InvoiceKind) -> Namespace {
         Namespace::Rsm
     }
 }
@@ -86,7 +89,7 @@ mod test {
 
     #[test]
     fn names_its_root_namespace() {
-        assert_eq!(Cii::root_namespace(), Namespace::Rsm);
+        assert_eq!(Cii::root_namespace(InvoiceKind::Invoice), Namespace::Rsm);
     }
 
     #[test]

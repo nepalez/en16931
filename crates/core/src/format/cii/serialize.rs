@@ -44,7 +44,8 @@ pub fn serialize<I: Invoice, N: crate::Namespace + From<Namespace>>(
         profile,
         business_process,
     } = builder;
-    serializer.root(|serializer| {
+    let kind = *invoice.kind();
+    serializer.root(kind, |serializer| {
         serializer.structural(Namespace::Rsm, "ExchangedDocumentContext", |serializer| {
             if let Some(process) = business_process {
                 serializer.structural(

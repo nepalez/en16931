@@ -1,13 +1,13 @@
 //! The UBL writing walk, generic over the interfaces of the semantic model.
 
-use super::Namespace;
+use super::{Namespace, line_element, quantity_element, type_code_element};
 use crate::prelude::*;
 use crate::{
     Adjustment, AdjustmentAmount, AdjustmentReason, BinaryObject, Buyer, Contact, Currency,
-    Delivery, DocumentBuilder, ElectronicAddress, Invoice, InvoiceReference, Item, LegalEntity,
-    Line, LineAdjustment, Note, ObjectReference, OperationalEntity, Payee, PaymentDetails,
-    PaymentInstructions, Period, PostalAddress, Price, Seller, Serializer, SupportingDocument,
-    TaxRepresentative, Term, Ubl, VatPoint, VatTreatment,
+    Delivery, DocumentBuilder, ElectronicAddress, Invoice, InvoiceKind, InvoiceReference, Item,
+    LegalEntity, Line, LineAdjustment, Note, ObjectReference, OperationalEntity, Payee,
+    PaymentDetails, PaymentInstructions, Period, PostalAddress, Price, Seller, Serializer,
+    SupportingDocument, TaxRepresentative, Term, Ubl, VatPoint, VatTreatment,
 };
 
 // Renders a date as an ISO-8601 calendar date (`YYYY-MM-DD`), the UBL form.
@@ -81,7 +81,8 @@ pub fn serialize<I: Invoice, N: crate::Namespace + From<Namespace>>(
         business_process,
     } = builder;
     let currency = currency_attribute(invoice);
-    serializer.root(|serializer| {
+    let kind = *invoice.kind();
+    serializer.root(kind, |serializer| {
         // Regulatory-flow fields: the specification identifier (BT-24) and business process (BT-23).
         serializer.rooted(Namespace::Cbc, "CustomizationID", &[], &profile.to_string());
         if let Some(process) = business_process {
@@ -100,31 +101,30 @@ pub fn serialize<I: Invoice, N: crate::Namespace + From<Namespace>>(
                 &date(issued),
             );
         }
-        if let Some(due) = *invoice.payment_due_date() {
-            serializer.leaf(
-                Namespace::Cbc,
-                "DueDate",
-                "payment_due_date",
-                Term::BT(9),
-                &date(due),
-            );
+        if kind == InvoiceKind::Invoice {
+            if let Some(due) = *invoice.payment_due_date() {
+                serializer.leaf(
+                    Namespace::Cbc,
+                    "DueDate",
+                    "payment_due_date",
+                    Term::BT(9),
+                    &date(due),
+                );
+            }
+        }
+        if kind == InvoiceKind::CreditNote {
+            serializer.tax_point(invoice);
         }
         serializer.leaf(
             Namespace::Cbc,
-            "InvoiceTypeCode",
+            type_code_element(kind),
             "type_code",
             Term::BT(3),
             &invoice.type_code().to_string(),
         );
         serializer.notes(invoice.notes());
-        if let Some(VatPointDate(point)) = tax_point_date(invoice) {
-            serializer.leaf(
-                Namespace::Cbc,
-                "TaxPointDate",
-                "vat_point",
-                Term::BT(7),
-                &date(point),
-            );
+        if kind == InvoiceKind::Invoice {
+            serializer.tax_point(invoice);
         }
         if let Some(currency) = invoice.currency() {
             serializer.leaf(
@@ -182,13 +182,8 @@ pub fn serialize<I: Invoice, N: crate::Namespace + From<Namespace>>(
                 reference.as_ref(),
             );
         }
-        if let Some(reference) = invoice.tender_or_lot_reference() {
-            serializer.reference_group(
-                Namespace::Cac,
-                "OriginatorDocumentReference",
-                Term::BT(17),
-                reference.as_ref(),
-            );
+        if kind == InvoiceKind::Invoice {
+            serializer.originator_reference(invoice);
         }
         if let Some(reference) = invoice.contract_reference() {
             serializer.reference_group(
@@ -198,14 +193,19 @@ pub fn serialize<I: Invoice, N: crate::Namespace + From<Namespace>>(
                 reference.as_ref(),
             );
         }
-        serializer.additional_documents(invoice);
-        if let Some(reference) = invoice.project_reference() {
-            serializer.reference_group(
-                Namespace::Cac,
-                "ProjectReference",
-                Term::BT(11),
-                reference.as_ref(),
-            );
+        serializer.additional_documents(invoice, kind);
+        if kind == InvoiceKind::CreditNote {
+            serializer.originator_reference(invoice);
+        }
+        if kind == InvoiceKind::Invoice {
+            if let Some(reference) = invoice.project_reference() {
+                serializer.reference_group(
+                    Namespace::Cac,
+                    "ProjectReference",
+                    Term::BT(11),
+                    reference.as_ref(),
+                );
+            }
         }
 
         if let Some(seller) = invoice.seller() {
@@ -223,8 +223,19 @@ pub fn serialize<I: Invoice, N: crate::Namespace + From<Namespace>>(
         if let Some(delivery) = invoice.delivery() {
             serializer.delivery(delivery);
         }
-        if let Some(payment) = invoice.payment() {
-            serializer.payment_means(payment);
+        let due = match kind {
+            InvoiceKind::Invoice => None,
+            InvoiceKind::CreditNote => *invoice.payment_due_date(),
+        };
+        match invoice.payment() {
+            Some(payment) => serializer.payment_means(payment, due),
+            None => {
+                if let Some(due) = due {
+                    serializer.structural(Namespace::Cac, "PaymentMeans", |serializer| {
+                        serializer.payment_due_date(due);
+                    });
+                }
+            }
         }
         if let Some(terms) = invoice.payment_terms() {
             serializer.group(
@@ -240,7 +251,7 @@ pub fn serialize<I: Invoice, N: crate::Namespace + From<Namespace>>(
         serializer.adjustments(invoice.adjustments(), &currency);
         serializer.tax_total(invoice);
         serializer.legal_monetary_total(invoice);
-        serializer.lines(invoice.lines(), &currency);
+        serializer.lines(invoice.lines(), &currency, kind);
     });
 }
 
@@ -374,15 +385,61 @@ impl<N: crate::Namespace + From<Namespace>> Serializer<Ubl, N> {
         });
     }
 
-    // Serializes the invoiced object (`BT-18`) and the supporting documents (`BG-24`).
-    fn additional_documents<I: Invoice>(&mut self, invoice: &mut I) {
+    // Serializes the VAT point date (`BT-7`), when the point is a date.
+    fn tax_point<I: Invoice>(&mut self, invoice: &mut I) {
+        if let Some(VatPointDate(point)) = tax_point_date(invoice) {
+            self.leaf(
+                Namespace::Cbc,
+                "TaxPointDate",
+                "vat_point",
+                Term::BT(7),
+                &date(point),
+            );
+        }
+    }
+
+    // Serializes the tender or lot reference (`BT-17`).
+    fn originator_reference<I: Invoice>(&mut self, invoice: &mut I) {
+        if let Some(reference) = invoice.tender_or_lot_reference() {
+            self.reference_group(
+                Namespace::Cac,
+                "OriginatorDocumentReference",
+                Term::BT(17),
+                reference.as_ref(),
+            );
+        }
+    }
+
+    // Serializes the invoiced object (`BT-18`), the project reference (`BT-11`) of a credit note,
+    // and the supporting documents (`BG-24`).
+    fn additional_documents<I: Invoice>(&mut self, invoice: &mut I, kind: InvoiceKind) {
         if let Some(object) = invoice.object() {
             self.additional_object(object);
+        }
+        if kind == InvoiceKind::CreditNote {
+            if let Some(reference) = invoice.project_reference() {
+                self.additional_project(reference.as_ref());
+            }
         }
         for (position, document) in invoice.supporting_documents().iter_mut().enumerate() {
             let instance = NonZeroUsize::new(position + 1).expect("a positive reference index");
             self.additional_supporting(document, instance);
         }
+    }
+
+    // Serializes the project reference of a credit note as an additional document reference.
+    fn additional_project(&mut self, id: &str) {
+        let term = Term::BT(11);
+        self.group(
+            Namespace::Cac,
+            "AdditionalDocumentReference",
+            field_of(term),
+            term,
+            |serializer| {
+                serializer.field_leaf(Namespace::Cbc, "ID", field_of(term), id);
+                serializer.derived(Namespace::Cbc, "DocumentTypeCode", &[], "50");
+            },
+        );
     }
 
     // Serializes the invoiced object identifier as an additional document reference.
@@ -869,8 +926,20 @@ impl<N: crate::Namespace + From<Namespace>> Serializer<Ubl, N> {
         );
     }
 
-    // Serializes the payment instructions (`BG-16`).
-    fn payment_means(&mut self, payment: &PaymentInstructions) {
+    // Serializes the payment due date (`BT-9`) of a credit note inside its payment means.
+    fn payment_due_date(&mut self, due: Date) {
+        self.header_leaf(
+            Namespace::Cbc,
+            "PaymentDueDate",
+            "payment_due_date",
+            Term::BT(9),
+            &date(due),
+        );
+    }
+
+    // Serializes the payment instructions (`BG-16`),
+    // with the payment due date (`BT-9`) of a credit note.
+    fn payment_means(&mut self, payment: &PaymentInstructions, due: Option<Date>) {
         self.group(
             Namespace::Cac,
             "PaymentMeans",
@@ -893,6 +962,9 @@ impl<N: crate::Namespace + From<Namespace>> Serializer<Ubl, N> {
                         &borrowed,
                         &means.to_string(),
                     );
+                }
+                if let Some(due) = due {
+                    serializer.payment_due_date(due);
                 }
                 if let Some(reference) = &payment.remittance_information {
                     serializer.field_leaf(
@@ -1267,24 +1339,29 @@ impl<N: crate::Namespace + From<Namespace>> Serializer<Ubl, N> {
     }
 
     // Serializes the invoice lines (`BG-25`), each a repeatable-group instance.
-    fn lines<L: Line>(&mut self, lines: &mut [L], currency: &[(&str, &str)]) {
+    fn lines<L: Line>(&mut self, lines: &mut [L], currency: &[(&str, &str)], kind: InvoiceKind) {
         for (position, line) in lines.iter_mut().enumerate() {
             let instance = NonZeroUsize::new(position + 1).expect("a positive line index");
             self.repeatable(
                 Namespace::Cac,
-                "InvoiceLine",
+                line_element(kind),
                 "lines",
                 Term::BG(25),
                 instance,
                 |serializer| {
-                    serializer.invoice_line(line, currency);
+                    serializer.invoice_line(line, currency, kind);
                 },
             );
         }
     }
 
     // Serializes one invoice line body.
-    fn invoice_line<L: Line>(&mut self, line: &mut L, currency: &[(&str, &str)]) {
+    fn invoice_line<L: Line>(
+        &mut self,
+        line: &mut L,
+        currency: &[(&str, &str)],
+        kind: InvoiceKind,
+    ) {
         if let Some(id) = line.id() {
             self.leaf(Namespace::Cbc, "ID", "id", Term::BT(126), id.as_ref());
         }
@@ -1294,7 +1371,7 @@ impl<N: crate::Namespace + From<Namespace>> Serializer<Ubl, N> {
         if let Some(quantity) = line.quantity() {
             self.leaf_attr(
                 Namespace::Cbc,
-                "InvoicedQuantity",
+                quantity_element(kind),
                 "quantity",
                 Term::BT(129),
                 &[("unitCode", quantity.unit.code())],

@@ -74,6 +74,14 @@ impl<N: Namespace> Trace<N> {
         });
     }
 
+    /// Records the current node against a field of the invoice itself,
+    /// whatever group encloses the node.
+    pub(crate) fn record_header(&mut self, field: &'static str) {
+        self.record(Context {
+            segments: vec![Segment { field, index: None }],
+        });
+    }
+
     /// Consumes the trace, yielding the dictionary it has built.
     pub(crate) fn into_dictionary(self) -> Dictionary<N> {
         self.dictionary

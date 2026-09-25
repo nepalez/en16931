@@ -1,6 +1,6 @@
 use crate::Namespace;
 use crate::prelude::*;
-use crate::{Abbreviations, Binding, Context, Error, Path};
+use crate::{Abbreviations, Binding, Context, Error, InvoiceKind, Path};
 
 pub(crate) mod parser;
 pub(crate) mod serializer;
@@ -22,14 +22,14 @@ pub trait Format: Sealed {
     /// The base set of record-form namespaces this binding writes.
     type Namespace: Namespace;
 
-    /// The local name of the root element of a document in this binding.
-    const ROOT_ELEMENT: &'static str;
-
     /// The binding this marker stands for, as a validator's target names it.
     const BINDING: Binding;
 
-    /// The namespace of the root element of a document in this binding.
-    fn root_namespace() -> Self::Namespace;
+    /// The local name of the root element of a document of the given kind in this binding.
+    fn root_element(kind: InvoiceKind) -> &'static str;
+
+    /// The namespace of the root element of a document of the given kind in this binding.
+    fn root_namespace(kind: InvoiceKind) -> Self::Namespace;
 
     /// Reads a document into resolved, owned tokens,
     /// collecting the abbreviations it declares and dropping insignificant whitespace.

@@ -10,13 +10,13 @@ use en16931_cius::{
 use en16931_core::{
     Adjustment, AdjustmentAmount, AdjustmentReason, AllowanceReason, Binding, BusinessProcess,
     Context, CountryCode, CreditTransfer, Currency, Date, Decimal, DirectDebit, Document,
-    DocumentBuilder, ElectronicAddress, ElectronicAddressScheme, Entry, Format, InvoiceReference,
-    IssuingAgency, ItemAttribute, ItemClassification, ItemClassificationScheme, ItemReference,
-    LegalEntity, LineAdjustment, Location, LocationReference, LocationStep, NonEmptyString, Note,
-    ObjectReference, OperationalEntity, PaymentCard, PaymentDetails, PaymentInstructions,
-    PaymentMeans, Percentage, Period, PostalAddress, Price, Profile, Quantity, QuantityUnit,
-    RawNamespace, RawReport, Segment, Severity, SupportingDocument, VatBreakdown, VatIdentifier,
-    VatPoint, VatTreatment,
+    DocumentBuilder, ElectronicAddress, ElectronicAddressScheme, Entry, Format, InvoiceKind,
+    InvoiceReference, IssuingAgency, ItemAttribute, ItemClassification, ItemClassificationScheme,
+    ItemReference, LegalEntity, LineAdjustment, Location, LocationReference, LocationStep,
+    NonEmptyString, Note, ObjectReference, OperationalEntity, PaymentCard, PaymentDetails,
+    PaymentInstructions, PaymentMeans, Percentage, Period, PostalAddress, Price, Profile, Quantity,
+    QuantityUnit, RawNamespace, RawReport, Segment, Severity, SupportingDocument, VatBreakdown,
+    VatIdentifier, VatPoint, VatTreatment,
 };
 use time::Month;
 
@@ -86,6 +86,19 @@ pub fn card_builder(binding: Binding) -> DocumentBuilder<Invoice> {
             ..invoice(binding)
         },
         ..builder(binding)
+    }
+}
+
+/// A rich `DocumentBuilder` whose invoice is a credit note (`BT-3` code 381),
+/// written to UBL as a `CreditNote` document.
+pub fn credit_note_builder() -> DocumentBuilder<Invoice> {
+    DocumentBuilder {
+        invoice: Invoice {
+            kind: InvoiceKind::CreditNote,
+            type_code: "381".parse().expect("a type code"),
+            ..invoice(Binding::Ubl)
+        },
+        ..builder(Binding::Ubl)
     }
 }
 

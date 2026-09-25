@@ -3,11 +3,13 @@
 mod common;
 
 use common::{
-    bound, builder, card_builder, context, empty_builder, field, instance, location, pretty,
-    variant_builder,
+    bound, builder, card_builder, context, credit_note_builder, empty_builder, field, instance,
+    location, pretty, variant_builder,
 };
 use en16931_cius::{Invoice, InvoiceLine};
-use en16931_core::{Binding, Decimal, Document, DocumentBuilder, Error, Price, Profile, Ubl};
+use en16931_core::{
+    Binding, Decimal, Document, DocumentBuilder, Error, InvoiceKind, Price, Profile, Ubl,
+};
 
 fn written(builder: DocumentBuilder<Invoice>) -> Document<Invoice, Ubl> {
     Document::try_from(builder).expect("a serialized document")
@@ -45,8 +47,10 @@ fn emit_fixtures() {
     let base = concat!(env!("CARGO_MANIFEST_DIR"), "/tests/fixtures/ubl");
     let rich = written(builder(Binding::Ubl));
     let variant = written(variant_builder(Binding::Ubl));
+    let credit_note = written(credit_note_builder());
     std::fs::write(format!("{base}/1.xml"), pretty(rich.xml())).expect("write");
     std::fs::write(format!("{base}/2.xml"), pretty(variant.xml())).expect("write");
+    std::fs::write(format!("{base}/4.xml"), pretty(credit_note.xml())).expect("write");
 }
 
 #[test]
@@ -87,6 +91,46 @@ fn round_trips_the_card_document_through_ubl() {
     let parsed = read(document.xml()).expect("a valid UBL document");
 
     assert_eq!(parsed.into_invoice(), source.invoice);
+}
+
+#[test]
+fn serializes_the_credit_note_to_ubl() {
+    let document = written(credit_note_builder());
+
+    assert_eq!(pretty(document.xml()), include_str!("fixtures/ubl/4.xml"));
+}
+
+#[test]
+fn round_trips_the_credit_note_through_ubl() {
+    let source = credit_note_builder();
+    let document = written(source.clone());
+
+    let parsed = read(document.xml()).expect("a valid UBL document");
+
+    assert_eq!(parsed.into_invoice(), source.invoice);
+}
+
+#[test]
+fn round_trips_the_due_date_of_a_credit_note_without_payment_instructions() {
+    let mut source = credit_note_builder();
+    source.invoice.payment = None;
+    let document = written(source.clone());
+
+    // The due date travels in a payment means of its own, without a payment means code.
+    assert!(document.xml().contains(
+        "<cac:PaymentMeans><cbc:PaymentDueDate>2026-02-15</cbc:PaymentDueDate></cac:PaymentMeans>"
+    ));
+    let parsed = read(document.xml()).expect("a valid UBL document");
+    assert_eq!(parsed.into_invoice(), source.invoice);
+}
+
+#[test]
+fn reads_the_kind_from_the_root() {
+    let credit_note = read(include_str!("fixtures/ubl/4.xml")).expect("a valid UBL document");
+    let invoice = read(include_str!("fixtures/ubl/1.xml")).expect("a valid UBL document");
+
+    assert_eq!(credit_note.into_invoice().kind, InvoiceKind::CreditNote);
+    assert_eq!(invoice.into_invoice().kind, InvoiceKind::Invoice);
 }
 
 #[test]
@@ -131,6 +175,32 @@ fn maps_nodes_to_their_contexts() {
     assert_eq!(
         bound(&document, second_line_net),
         Some(context(vec![instance("lines", 2), field("net_amount")]))
+    );
+}
+
+#[test]
+fn maps_credit_note_nodes_to_their_contexts() {
+    let document = written(credit_note_builder());
+
+    let quantity = location(&[
+        ("cn", "CreditNote", 1),
+        ("cac", "CreditNoteLine", 1),
+        ("cbc", "CreditedQuantity", 1),
+    ]);
+    let due = location(&[
+        ("cn", "CreditNote", 1),
+        ("cac", "PaymentMeans", 1),
+        ("cbc", "PaymentDueDate", 1),
+    ]);
+
+    assert_eq!(
+        bound(&document, quantity),
+        Some(context(vec![instance("lines", 1), field("quantity")]))
+    );
+    // The due date maps to the invoice field, not to the payment means around it.
+    assert_eq!(
+        bound(&document, due),
+        Some(context(vec![field("payment_due_date")]))
     );
 }
 
@@ -251,4 +321,13 @@ fn rejects_an_element_of_an_unknown_namespace() {
         outcome,
         Err(Error::MalformedXml { message, .. }) if message.starts_with("unknown namespace")
     ));
+}
+
+#[test]
+fn rejects_a_root_of_no_document_kind() {
+    let xml = r#"<Foo xmlns="urn:oasis:names:specification:ubl:schema:xsd:Invoice-2"/>"#;
+
+    let outcome = read(xml);
+
+    assert!(matches!(outcome, Err(Error::MalformedXml { .. })));
 }
