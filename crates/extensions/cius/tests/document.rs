@@ -229,7 +229,7 @@ fn fails_the_pass_of_an_unbound_location() {
 }
 
 #[test]
-fn fails_the_pass_of_a_location_no_normalizer_read() {
+fn fails_the_pass_of_a_location_no_dialect_read() {
     let source = document();
     let unread = en16931_core::Entry {
         normalized_location: None,

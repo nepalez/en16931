@@ -5,7 +5,7 @@ use crate::{Error, Location};
 /// An extension crate implements the trait for the dialect of that processor.
 /// The implementation strips the processor-specific syntax of error references
 /// and converts them into the standard representation.
-pub trait Normalizer {
+pub trait Dialect {
     type Error: Into<Error>;
 
     /// Turns a validator-specific location into its normalized form.

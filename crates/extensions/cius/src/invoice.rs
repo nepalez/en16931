@@ -7,10 +7,8 @@ use crate::{Buyer, Delivery, InvoiceLine, Payee, Seller, TaxRepresentative};
 ///
 /// Every field but the type code is optional: the model checks the types of the values,
 /// and the external validator checks the completeness of the document.
-/// A profile decides on serialization which terms to forbid.
+///
 /// All amounts are in the invoice currency (`BT-5`).
-/// The issuer states every amount: the library computes none of them,
-/// and the external validator checks their consistency.
 /// Regulatory-flow fields (`BT-23`, `BT-24`) do not live here but belong to the transport layer.
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub struct Invoice {

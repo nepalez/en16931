@@ -58,7 +58,7 @@ Install the parts first:
 
 5. **Wire the application.**
 
-    The service answers with a bare [SVRL] report, so the application reads it with `en16931-svrl`. The normalizer follows the tool of step 2 — `en16931-iso` for the precompiled stylesheets, `en16931-schxslt` for a [SchXslt] run.
+    The service answers with a bare [SVRL] report, so the application reads it with `en16931-svrl`. The dialect follows the tool of step 2 — `en16931-iso` for the precompiled stylesheets, `en16931-schxslt` for a [SchXslt] run.
 
 [CII]: https://en.wikipedia.org/wiki/UN/CEFACT
 [Docker]: https://docs.docker.com/

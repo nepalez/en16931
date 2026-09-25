@@ -11,7 +11,7 @@ use crate::prelude::*;
 ///
 /// The address is purely positional:
 /// a singleton element and the first node of a repeatable group are both index `1`.
-/// A normalizer supplies `1` for a location that omits the index.
+/// A dialect supplies `1` for a location that omits the index.
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub struct Step<N: Namespace> {
     /// The element namespace.

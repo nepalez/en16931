@@ -1,5 +1,5 @@
 use crate::prelude::*;
-use crate::{Error, Location, Normalizer, Wrapper};
+use crate::{Dialect, Envelope, Error, Location};
 
 /// The weight of a report entry.
 ///
@@ -22,7 +22,7 @@ pub enum Severity {
 
 /// A single finding of a validator report.
 ///
-/// A `Wrapper` fills every field but the normalized address.
+/// An `Envelope` fills every field but the normalized address.
 /// That one comes later, from `RawReport::parse`.
 /// The original address survives, so a failure can quote what the validator wrote.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -35,7 +35,7 @@ pub struct Entry {
     pub text: String,
     /// The address of the reported node, in the syntax of the processor.
     pub original_location: String,
-    /// The same address parsed by a `Normalizer`, empty until then.
+    /// The same address parsed by a `Dialect`, empty until then.
     pub normalized_location: Option<Location>,
 }
 
@@ -49,19 +49,19 @@ pub struct RawReport {
 impl RawReport {
     /// Reads the answer of a validator through a pair of extensions.
     ///
-    /// The caller pairs a wrapper for the service that answered
-    /// with a normalizer for the processor that wrote the addresses.
+    /// The caller pairs an envelope for the service that answered
+    /// with a dialect for the processor that wrote the addresses.
     ///
     /// A failure of either one drops the whole report.
     /// It arrives as a core error that keeps its own type behind `std::error::Error::source`.
-    pub fn parse<W, N>(report: &str, wrapper: &W, normalizer: &N) -> Result<Self, Error>
+    pub fn parse<E, D>(report: &str, envelope: &E, dialect: &D) -> Result<Self, Error>
     where
-        W: Wrapper,
-        N: Normalizer,
+        E: Envelope,
+        D: Dialect,
     {
-        let mut findings = wrapper.unwrap(report).map_err(Into::into)?;
+        let mut findings = envelope.unwrap(report).map_err(Into::into)?;
         for finding in &mut findings {
-            let location = normalizer
+            let location = dialect
                 .normalize(&finding.original_location)
                 .map_err(Into::into)?;
             finding.normalized_location = Some(location);
@@ -76,14 +76,14 @@ mod test {
     use crate::{LocationStep, RawNamespace};
 
     // Reads one entry per line, and rejects an empty answer.
-    struct Envelope;
+    struct Service;
 
-    impl Wrapper for Envelope {
-        type Error = EnvelopeError;
+    impl Envelope for Service {
+        type Error = ServiceError;
 
         fn unwrap(&self, report: &str) -> Result<Vec<Entry>, Self::Error> {
             if report.is_empty() {
-                return Err(EnvelopeError);
+                return Err(ServiceError);
             }
             Ok(report
                 .lines()
@@ -99,26 +99,26 @@ mod test {
     }
 
     #[derive(Debug)]
-    struct EnvelopeError;
+    struct ServiceError;
 
-    impl Display for EnvelopeError {
+    impl Display for ServiceError {
         fn fmt(&self, formatter: &mut Formatter<'_>) -> fmt::Result {
             write!(formatter, "the envelope stays closed")
         }
     }
 
-    impl std::error::Error for EnvelopeError {}
+    impl std::error::Error for ServiceError {}
 
-    impl From<EnvelopeError> for Error {
-        fn from(value: EnvelopeError) -> Self {
+    impl From<ServiceError> for Error {
+        fn from(value: ServiceError) -> Self {
             Self::UnreadableReport(Box::new(value))
         }
     }
 
     // Reads an address of one abbreviated step, and rejects an address without a prefix.
-    struct Dialect;
+    struct Processor;
 
-    impl Normalizer for Dialect {
+    impl Dialect for Processor {
         type Error = AddressError;
 
         fn normalize(&self, location: &str) -> Result<Location, Self::Error> {
@@ -159,7 +159,7 @@ mod test {
 
     #[test]
     fn normalizes_the_address_of_every_entry() {
-        let report = RawReport::parse("/ubl:Invoice\n/cbc:ID", &Envelope, &Dialect)
+        let report = RawReport::parse("/ubl:Invoice\n/cbc:ID", &Service, &Processor)
             .expect("a report of the pair");
 
         assert_eq!(report.findings.len(), 2);
@@ -178,8 +178,8 @@ mod test {
     }
 
     #[test]
-    fn keeps_the_failure_of_a_wrapper() {
-        let Err(error) = RawReport::parse("", &Envelope, &Dialect) else {
+    fn keeps_the_failure_of_an_envelope() {
+        let Err(error) = RawReport::parse("", &Service, &Processor) else {
             panic!("the closed envelope should fail the pass");
         };
 
@@ -187,14 +187,14 @@ mod test {
         assert!(
             std::error::Error::source(&error)
                 .expect("the source of the failure")
-                .downcast_ref::<EnvelopeError>()
+                .downcast_ref::<ServiceError>()
                 .is_some()
         );
     }
 
     #[test]
-    fn keeps_the_failure_of_a_normalizer() {
-        let Err(error) = RawReport::parse("/Invoice", &Envelope, &Dialect) else {
+    fn keeps_the_failure_of_a_dialect() {
+        let Err(error) = RawReport::parse("/Invoice", &Service, &Processor) else {
             panic!("the unread address should fail the pass");
         };
 

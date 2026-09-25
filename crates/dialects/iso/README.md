@@ -1,6 +1,6 @@
 # en16931-iso
 
-A normalizer of the [en16931] toolkit. It reads addresses in the dialect of the [ISO Schematron skeleton], such as `/ubl:Invoice/cac:InvoiceLine[2]/cbc:ID`.
+A dialect of the [en16931] toolkit. It reads addresses in the dialect of the [ISO Schematron skeleton], such as `/ubl:Invoice/cac:InvoiceLine[2]/cbc:ID`.
 
 ```rust
 use en16931_core::RawReport;

@@ -1,6 +1,6 @@
 # en16931-phive
 
-A wrapper of the [en16931] toolkit. It reads the answers of [phive] services, such as [phorm], and names the rule set for the request URL.
+An envelope of the [en16931] toolkit. It reads the answers of [phive] services, such as [phorm], and names the rule set for the request URL.
 
 ```rust
 use en16931_core::RawReport;

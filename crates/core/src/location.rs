@@ -2,7 +2,7 @@ use crate::prelude::*;
 
 /// A normalized address of a report entry: one location stripped of its dialect.
 ///
-/// It is what a `Normalizer` yields and what the match against a document consumes.
+/// It is what a `Dialect` yields and what the match against a document consumes.
 /// Nothing here is resolved yet. A namespace stays in the form its dialect wrote,
 /// and a trailing step that addresses no element of the model, such as an attribute,
 /// stays in place. Resolving the namespaces and dropping the unmatched tail
@@ -19,7 +19,7 @@ pub struct Location {
 /// The name and the namespace stay as the address wrote them.
 /// The position is purely positional: a singleton element
 /// and the first node of a repeatable group are both index `1`.
-/// A normalizer supplies `1` for a step whose dialect omits the index.
+/// A dialect supplies `1` for a step whose address omits the index.
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub struct LocationStep {
     /// The namespace the step belongs to, or `None` for a step that belongs to none.

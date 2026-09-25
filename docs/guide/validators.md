@@ -6,8 +6,8 @@ This chapter explains how to build a request for each supported validation servi
 
 The answer of a validator is read by a pair of extensions, each shipped as a crate of its own:
 
-* a `Wrapper` describes how the validator packages its findings,
-* a `Normalizer` describes the **dialect** of spelling [XPath] addresses in error references.
+* an `Envelope` describes how the validator packages its findings,
+* a `Dialect` describes how the validator spells [XPath] addresses in error references.
 
 Both ready services, the [KoSIT validator] and [phive], answer in the `Iso` dialect. `Schxslt` and `Schxslt2` can be used in [SVRL] assemblies of your own.
 
@@ -19,7 +19,7 @@ The request is the bare invoice XML. The service picks the rules by inspecting t
 
 ## The `phive` Services
 
-A [phive] service, such as [phorm], carries many rule sets, and the caller names one in the request. `Wrapper::vendor_id` derives that name from the `Target` of the document:
+A [phive] service, such as [phorm], carries many rule sets, and the caller names one in the request. `Envelope::vendor_id` derives that name from the `Target` of the document:
 
 ```rust
 let rules = Phive.vendor_id(document.target())?; // "eu.peppol.bis3:invoice"
@@ -34,10 +34,10 @@ The ready services do not cover every standard. For the rest, assemble a service
 
 Such an assembly differs from the ready services in two ways:
 
-* The answer is a raw [SVRL] report without any envelope. The `Svrl` wrapper reads it as is.
+* The answer is a raw [SVRL] report without any envelope. The `Svrl` envelope reads it as is.
 * The processor bundles no rule sets. You should compile the rule set into the stylesheet it executes.
 
-Three compilers exist for that compilation, and each spells addresses in a dialect of its own. Pick the normalizer by your compiler:
+Three compilers exist for that compilation, and each spells addresses in a dialect of its own. Pick the dialect by your compiler:
 
 * `Iso` for the [ISO Schematron skeleton],
 * `Schxslt` for [SchXslt],
@@ -49,7 +49,7 @@ Add the two crates of your service:
 
 * the [KoSIT validator] — `en16931-kosit` with `en16931-iso`,
 * a [phive] service — `en16931-phive` with `en16931-iso`,
-* your own assembly — `en16931-svrl` with the normalizer depending on the compiler you use: `en16931-iso`, `en16931-schxslt`, or `en16931-schxslt2`.
+* your own assembly — `en16931-svrl` with the dialect depending on the compiler you use: `en16931-iso`, `en16931-schxslt`, or `en16931-schxslt2`.
 
 [CII]: https://en.wikipedia.org/wiki/UN/CEFACT
 [CIUS]: https://ec.europa.eu/digital-building-blocks/sites/spaces/DIGITAL/pages/467108937/CIUS+and+Extension+-+What+is+allowed

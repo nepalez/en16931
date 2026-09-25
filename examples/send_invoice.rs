@@ -41,8 +41,8 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     // The library produces the request parts, while the application owns the transport.
     let answer = post(document.xml())?;
 
-    // The wrapper opens the envelope of the service,
-    // and the normalizer reads the addresses its processor wrote.
+    // The envelope opens the answer of the service,
+    // and the dialect reads the addresses its processor wrote.
     let report = RawReport::parse(&answer, &Kosit, &Iso)?;
 
     // The dictionary binds every address of the report to the model field it points at.

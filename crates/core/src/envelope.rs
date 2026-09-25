@@ -9,7 +9,7 @@ use crate::{Entry, Error, Target};
 /// The trait also covers the request side of the same service.
 /// A service that names its rule set by an identifier supplies that identifier here.
 /// A service that selects the rule set otherwise leaves the default in place.
-pub trait Wrapper {
+pub trait Envelope {
     type Error: Into<Error>;
 
     /// Turns a service-specific report into the findings it carries.
@@ -28,10 +28,10 @@ mod test {
     use super::*;
     use crate::{Binding, InvoiceKind, Profile};
 
-    // A wrapper of a service that selects its rule set outside the request body.
+    // An envelope of a service that selects its rule set outside the request body.
     struct Routed;
 
-    impl Wrapper for Routed {
+    impl Envelope for Routed {
         type Error = Error;
 
         fn unwrap(&self, _report: &str) -> Result<Vec<Entry>, Self::Error> {

@@ -21,10 +21,10 @@ A virtual manifest at the root holds the workspace. Every crate lives under `cra
 ```text
 en16931/
 └── crates/
-    ├── cius/                  — en16931-cius: base invoice types, CIUS profiles
     ├── core/                  — en16931-core: interfaces, bindings, profile trait, extension traits
-    ├── envelopes/{svrl, ...}  — en16931-{svrl, ...}: validator-output wrappers
-    └── xpath/{iso, ...}       — en16931-{iso, ...}: dialect xpath normalizers
+    ├── dialects/{iso, ...}    — en16931-{iso, ...}: xpath dialects
+    ├── envelopes/{svrl, ...}  — en16931-{svrl, ...}: validator-output envelopes
+    └── extensions/{cius, ...} — en16931-{cius, ...}: invoice types and profiles
 ```
 
 > The invoice interfaces and the two bindings are not extension axes. A profile is one.
@@ -36,14 +36,14 @@ A profile type names its binding, its namespace set, and its invoice type. It st
 The core defines five extension traits, and each of them is open:
 * `Serializable` and `Deserializable` write an invoice type into a binding and parse it back,
 * a hook trait lets an extension write and parse its own nodes,
-* `Wrapper` unwraps the validator-specific envelope,
-* `Normalizer` rewrites a processor dialect into the record form (ADR-0004).
+* `Envelope` unwraps the validator-specific answer,
+* `Dialect` rewrites a processor location into the record form (ADR-0004).
 
 Sealing any of them would admit growth inside the core alone, which defeats the axis.
 
 A validator service declares a trait of its own. It derives the vendor id of a rule set from a profile type and a document kind (ADR-0002). A service trait that covers the [CIUS] profiles depends on `cius`.
 
-Extensions are plain Cargo dependencies, not feature flags. The consumer composes them at the call site, pairing a `Wrapper` with a `Normalizer`. Together they turn a validator artifact into the record form (ADR-0004).
+Extensions are plain Cargo dependencies, not feature flags. The consumer composes them at the call site, pairing an `Envelope` with a `Dialect`. Together they turn a validator artifact into the record form (ADR-0004).
 
 Core follows semver. Each extension crate carries its own version. It declares a compatibility range of core in `Cargo.toml`. A breaking change in a trait, or a newly supported standard, bumps the core. Extensions update their range and re-release.
 

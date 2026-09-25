@@ -2,7 +2,7 @@
 //!
 //! One business invoice holds the shared content. Each profile gets its own
 //! serialization, validated by the service that carries the rules of that
-//! profile, and the answer comes back through a `Wrapper`/`Normalizer` pair
+//! profile, and the answer comes back through an `Envelope`/`Dialect` pair
 //! into `Document::check`.
 //!
 //! The tests need the services of step 2. Start them with `cargo make env-up`, then run:
@@ -14,10 +14,9 @@
 use en16931_cius::{Buyer, Contact, Invoice, InvoiceLine, Item, Seller};
 use en16931_core::{
     BusinessProcess, Cii, CreditTransfer, Document, DocumentBuilder, ElectronicAddress,
-    ElectronicAddressScheme, Format, InvalidDocument, LegalEntity, PaymentDetails,
+    ElectronicAddressScheme, Envelope, Format, InvalidDocument, LegalEntity, PaymentDetails,
     PaymentInstructions, PaymentMeans, Percentage, Period, PostalAddress, Price, Profile, Quantity,
     QuantityUnit, RawReport, Ubl, ValidDocument, VatBreakdown, VatIdentifier, VatTreatment,
-    Wrapper,
 };
 use en16931_iso::Iso;
 use en16931_kosit::Kosit;
@@ -199,14 +198,14 @@ fn kosit_answer<F: Format>(document: &Document<Invoice, F>) -> String {
     )
 }
 
-// Reads the answer through a wrapper paired with the ISO normalizer, and checks the document.
+// Reads the answer through an envelope paired with the ISO dialect, and checks the document.
 #[allow(clippy::result_large_err)]
-fn outcome<W: Wrapper, F: Format>(
+fn outcome<E: Envelope, F: Format>(
     document: Document<Invoice, F>,
-    wrapper: &W,
+    envelope: &E,
     answer: &str,
 ) -> Result<ValidDocument<Invoice, F>, InvalidDocument<Invoice, F>> {
-    let report = RawReport::parse(answer, wrapper, &Iso).expect("a report the pair reads");
+    let report = RawReport::parse(answer, envelope, &Iso).expect("a report the pair reads");
     document.check(report).expect("every address to bind")
 }
 

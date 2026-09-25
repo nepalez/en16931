@@ -162,7 +162,7 @@ A raw report addresses problems by XML paths. The library translates each path i
 
 ## Crates
 
-Validators disagree on two things: how the response is packaged, and how the location of a finding — the path to the offending XML element — is spelled. The core stays neutral, while small extension crates absorb the differences: a **wrapper** decodes the response of one service, a **normalizer** decodes one location spelling, and any wrapper combines with any normalizer.
+Validators disagree on two things: how the response is packaged, and how the location of a finding — the path to the offending XML element — is spelled. The core stays neutral, while small extension crates absorb the differences: an **envelope** decodes the response of one service, a **dialect** decodes one location spelling, and any envelope combines with any dialect.
 
 The core follows semantic versioning, and each extension evolves on its own line, declaring the range of core versions it is compatible with.
 
@@ -170,7 +170,7 @@ The core follows semantic versioning, and each extension evolves on its own line
 
 * `en16931-core` — the invoice model, both bindings, the profiles, and report handling
 
-### Wrappers
+### Envelopes
 
 One crate per response format:
 
@@ -178,9 +178,9 @@ One crate per response format:
 * `en16931-phive` — services built on [phive], an open-source validation engine
 * `en16931-svrl` — a bare report in the Schematron Validation Report Language ([SVRL]), the standard output of [Schematron] tools
 
-The bare-[SVRL] wrapper stands apart. It reads the raw output of a Schematron processor with no service around it, so it works with any rule set — including one the [KoSIT] and [phive] services do not bundle, or your own. One caveat: a rule set belongs to a profile, and the profile shapes the serialized invoice. A new rule set therefore requires a new entry in `Profile` in `en16931-core`.
+The bare-[SVRL] envelope stands apart. It reads the raw output of a Schematron processor with no service around it, so it works with any rule set — including one the [KoSIT] and [phive] services do not bundle, or your own. One caveat: a rule set belongs to a profile, and the profile shapes the serialized invoice. A new rule set therefore requires a new entry in `Profile` in `en16931-core`.
 
-### Normalizers
+### Dialects
 
 One crate per location spelling, which varies with the Schematron processor behind the service:
 

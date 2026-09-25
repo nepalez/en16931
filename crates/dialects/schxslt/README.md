@@ -1,6 +1,6 @@
 # en16931-schxslt
 
-A normalizer of the [en16931] toolkit. It reads addresses in the dialect of the [SchXslt] processor, such as `Q{urn:…}Invoice[1]`.
+A dialect of the [en16931] toolkit. It reads addresses in the dialect of the [SchXslt] processor, such as `Q{urn:…}Invoice[1]`.
 
 ```rust
 use en16931_core::RawReport;

@@ -11,7 +11,7 @@
 //! ```
 
 use en16931_cius::Invoice;
-use en16931_core::{Cii, Document, RawReport, Wrapper};
+use en16931_core::{Cii, Document, Envelope, RawReport};
 use en16931_iso::Iso;
 use en16931_phive::Phive;
 

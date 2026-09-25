@@ -50,14 +50,14 @@ The optional `mime` feature adds conversions for the attachment media type.
 
 Validator differences live in small extension crates:
 
-* wrappers for the answer envelopes: `en16931-kosit`, `en16931-phive`, `en16931-svrl`
-* normalizers for the address spellings: `en16931-iso`, `en16931-schxslt`, `en16931-schxslt2`
+* envelopes of the validator answers: `en16931-kosit`, `en16931-phive`, `en16931-svrl`
+* dialects of the address spellings: `en16931-iso`, `en16931-schxslt`, `en16931-schxslt2`
 
-Pick one wrapper for your service and one normalizer for its processor. Any pair works together. Separate crates let a new validator arrive without a core release.
+Pick one envelope for your service and one dialect for its processor. Any pair works together. Separate crates let a new validator arrive without a core release.
 
-The extension points are the public `Wrapper` and `Normalizer` traits. A third-party crate implements them for another service or dialect without touching the library.
+The extension points are the public `Envelope` and `Dialect` traits. A third-party crate implements them for another service or dialect without touching the library.
 
-Two ready services are supported: the [KoSIT validator] and the [phive]-based ones. They do not cover every standard, and the `en16931-svrl` wrapper fills that gap. It reads the bare output of any [Schematron] processor. So you can assemble a validation service of your own. The only restriction: the rule set must be known to the core crate.
+Two ready services are supported: the [KoSIT validator] and the [phive]-based ones. They do not cover every standard, and the `en16931-svrl` envelope fills that gap. It reads the bare output of any [Schematron] processor. So you can assemble a validation service of your own. The only restriction: the rule set must be known to the core crate.
 
 ## Versioning
 

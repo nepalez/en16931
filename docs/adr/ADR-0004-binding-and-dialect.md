@@ -40,7 +40,7 @@ An abbreviation that stands for two namespaces at once is a hard failure of that
 
 * **Declarations of the report as the only source.** A report declares the namespaces it uses, so a step could read them. Rejected because a processor may copy the abbreviation of the document, which the report never declares.
 
-* **A fixed table inside every normalizer.** The rule sets fix `cac`, `cbc`, `ram`, and `rsm`, so no input is needed. Rejected because a document may declare an abbreviation of its own, which such a table misses.
+* **A fixed table inside every dialect.** The rule sets fix `cac`, `cbc`, `ram`, and `rsm`, so no input is needed. Rejected because a document may declare an abbreviation of its own, which such a table misses.
 
 ## Consequences
 
@@ -60,7 +60,7 @@ An abbreviation that stands for two namespaces at once is a hard failure of that
 
 ## Examples
 
-The normalizer applies one mechanical rewrite, copying the name, the namespace and the index of every step:
+The dialect applies one mechanical rewrite, copying the name, the namespace and the index of every step:
 
 * `*[local-name()='N' and namespace-uri()='U'][i]` → the name `N`, the URI `U`, the index `i`;
 * `p:N[i]` → the name `N`, the abbreviation `p`, the index `i`;

@@ -7,7 +7,7 @@ license.workspace = true
 authors.workspace = true
 homepage.workspace = true
 repository.workspace = true
-description = "Wrapper extension for the plain SVRL envelope"
+description = "Envelope extension for the plain SVRL report"
 
 [dependencies]
 en16931-core.workspace = true

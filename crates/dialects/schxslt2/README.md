@@ -1,6 +1,6 @@
 # en16931-schxslt2
 
-A normalizer of the [en16931] toolkit. It reads addresses in the dialect of the [SchXslt 2] processor, with quirks such as a bare attribute `@schemeID`.
+A dialect of the [en16931] toolkit. It reads addresses in the dialect of the [SchXslt 2] processor, with quirks such as a bare attribute `@schemeID`.
 
 ```rust
 use en16931_core::RawReport;

@@ -8,7 +8,7 @@ Each scenario is covered by a complete, compilable example in the `examples/` di
 
 The seller fills the `Invoice` model with business facts. The `DocumentBuilder` stages it for one profile and one binding, here [XRechnung] over UBL, and `Document::try_from` renders the XML.
 
-The application owns the transport. The example posts the XML to the [KoSIT validator] with a plain HTTP client. The answer comes back through a pair of extensions: the `Kosit` wrapper opens the envelope of the service, and the `Iso` normalizer reads the addresses its processor writes.
+The application owns the transport. The example posts the XML to the [KoSIT validator] with a plain HTTP client. The answer comes back through a pair of extensions: the `Kosit` envelope opens the answer of the service, and the `Iso` dialect reads the addresses its processor writes.
 
 `Document::check` binds every finding to a field of the model and splits the outcome. A `ValidDocument` may still carry warnings and remarks. An `InvalidDocument` carries at least one error, and each problem names the model field it points at.
 

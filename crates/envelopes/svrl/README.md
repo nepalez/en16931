@@ -1,6 +1,6 @@
 # en16931-svrl
 
-A wrapper of the [en16931] toolkit. It reads bare [SVRL] reports with no service envelope around them. Such reports come from validation services of your own assembly.
+An envelope of the [en16931] toolkit. It reads bare [SVRL] reports with no service envelope around them. Such reports come from validation services of your own assembly.
 
 ```rust
 use en16931_core::RawReport;

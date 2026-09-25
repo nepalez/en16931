@@ -1,5 +1,14 @@
-use crate::Error;
+//! `Dialect` for the ISO-skeleton XPath addresses.
+//!
+//! The crate covers the addresses a processor of that skeleton writes.
+//! It pairs with an envelope of the service that answered with them.
+
 use crate::prelude::*;
+
+mod error;
+mod prelude;
+
+pub use error::Error;
 
 // The position of a step whose address omits it.
 const FIRST: NonZeroUsize = NonZeroUsize::new(1).expect("a positive index");
@@ -26,7 +35,7 @@ const FIRST: NonZeroUsize = NonZeroUsize::new(1).expect("a positive index");
 #[derive(Debug)]
 pub struct Iso;
 
-impl Normalizer for Iso {
+impl Dialect for Iso {
     type Error = Error;
 
     fn normalize(&self, location: &str) -> Result<Location, Self::Error> {

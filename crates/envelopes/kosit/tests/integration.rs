@@ -6,7 +6,7 @@
 //! cargo test -p en16931-kosit --test integration -- --ignored
 //! ```
 
-use en16931_core::{Entry, Severity, Wrapper};
+use en16931_core::{Entry, Envelope, Severity};
 use en16931_kosit::Kosit;
 
 // An XRechnung invoice with a broken payable amount, which trips `BR-CO-16`.

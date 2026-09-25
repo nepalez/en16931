@@ -1,6 +1,6 @@
 # en16931-kosit
 
-A wrapper of the [en16931] toolkit. It reads the answers of the [KoSIT validator].
+An envelope of the [en16931] toolkit. It reads the answers of the [KoSIT validator].
 
 ```rust
 use en16931_core::RawReport;

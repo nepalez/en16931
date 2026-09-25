@@ -22,7 +22,7 @@ What abstractions does the library offer to a consumer?
 
 `Target<P>` is what a validator needs to pick a rule set. It carries the document kind, while its parameter names the profile and the binding. A `Document<P>` yields one, and an extension turns it into the identifier of that service (ADR-0002).
 
-`RawReport` is the normalized validator output. The core defines its shape and parsing pipeline, through `Wrapper` and `Normalizer` (ADR-0006). Every entry carries a severity, the rule identifier, the message text, and the address of the reported node. The severity tells an error from a warning. The entry keeps the address twice, as the processor wrote it and in the normalized form. Neither form is resolved yet, which `Document::check` supplies (ADR-0004). A user can build one too.
+`RawReport` is the normalized validator output. The core defines its shape and parsing pipeline, through `Envelope` and `Dialect` (ADR-0006). Every entry carries a severity, the rule identifier, the message text, and the address of the reported node. The severity tells an error from a warning. The entry keeps the address twice, as the processor wrote it and in the normalized form. Neither form is resolved yet, which `Document::check` supplies (ADR-0004). A user can build one too.
 
 `Report` is the typed list of problems bound to `Context`-s, without references to XML. `Document::check` extends it from a `RawReport`.
 

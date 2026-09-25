@@ -6,7 +6,7 @@
 //! cargo test -p en16931-phive --test integration -- --ignored
 //! ```
 
-use en16931_core::{Binding, Entry, InvoiceKind, Profile, Severity, Target, Wrapper};
+use en16931_core::{Binding, Entry, Envelope, InvoiceKind, Profile, Severity, Target};
 use en16931_phive::Phive;
 
 // A Peppol invoice with a broken line sum, which trips `BR-CO-10` and `BR-CO-13`.

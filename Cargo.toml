@@ -1,11 +1,11 @@
 [workspace]
 resolver = "3"
 members = [
-    "crates/cius",
     "crates/core",
+    "crates/dialects/*",
     "crates/envelopes/*",
+    "crates/extensions/*",
     "crates/tests",
-    "crates/xpath/*",
     "examples",
 ]
 
@@ -28,9 +28,9 @@ repository = "https://github.com/nepalez/en16931"
 base64 = { version = "0.22", default-features = false }
 cefact-units = { version = "0.1", default-features = false }
 email_address = { version = "0.2", default-features = false }
-en16931-cius = { path = "crates/cius", version = "0.1", default-features = false }
+en16931-cius = { path = "crates/extensions/cius", version = "0.1", default-features = false }
 en16931-core = { path = "crates/core", version = "0.1", default-features = false }
-en16931-iso = { path = "crates/xpath/iso", version = "0.1", default-features = false }
+en16931-iso = { path = "crates/dialects/iso", version = "0.1", default-features = false }
 en16931-kosit = { path = "crates/envelopes/kosit", version = "0.1", default-features = false }
 en16931-phive = { path = "crates/envelopes/phive", version = "0.1", default-features = false }
 iban_validate = { version = "5", default-features = false }
